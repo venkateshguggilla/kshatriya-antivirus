@@ -292,8 +292,8 @@ public sealed class ServiceCore : IDisposable
             Exclusions = Exclusions.Current.Paths.Count + Exclusions.Current.Hashes.Count,
             AuditChainValid = Quarantine.Audit.Verify().Valid,
             RealTime = RealTime?.Stats is { } rt
-                ? new RealTimeStatusDto { Enabled = true, Paths = [.. rt.WatchedPaths], Processes = rt.Processes, RemovableMedia = rt.RemovableMedia, Queued = rt.Queued, Scanned = rt.Scanned, Findings = rt.Findings, LostEvents = rt.Overflows }
-                : new RealTimeStatusDto { Enabled = false, Paths = [], Processes = "off", RemovableMedia = "off", Queued = 0, Scanned = 0, Findings = 0, LostEvents = 0 },
+                ? new RealTimeStatusDto { Enabled = true, Paths = [.. rt.WatchedPaths], Processes = rt.Processes, RemovableMedia = rt.RemovableMedia, Queued = rt.Queued, Scanned = rt.Scanned, Findings = rt.Findings, LostEvents = rt.Overflows, Behaviour = rt.Behaviour, BehaviourAlerts = rt.BehaviourAlerts }
+                : new RealTimeStatusDto { Enabled = false, Paths = [], Processes = "off", RemovableMedia = "off", Queued = 0, Scanned = 0, Findings = 0, LostEvents = 0, Behaviour = "off", BehaviourAlerts = 0 },
             Content = new ContentStatusDto
             {
                 Sequence = ActiveContent?.Manifest.Sequence ?? 0,
@@ -303,6 +303,14 @@ public sealed class ServiceCore : IDisposable
                 Problem = ContentProblem,
             },
         };
+    }
+
+    /// <summary>Records a ransomware behaviour alert (suspicious only; no automatic action).</summary>
+    public void RecordBehaviour(BehaviourAlert alert)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+        History.Add(new DetectionRecord(_options.Time.GetUtcNow(), "behaviour", alert.Path, ScanStatus.Suspicious, [alert.Name], "alert only (no automatic action)"));
+        Log.BehaviourAlert(_logger, alert.Name, alert.Path, alert.Detail);
     }
 
     /// <summary>Logs each detection or suspicious item (with the action taken) and adds it to the history.</summary>

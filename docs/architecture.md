@@ -36,6 +36,7 @@ sentinel.exe (Sentinel.Cli) ─────────────┐        Se
                                                     │  ├─ Response: QuarantineManager · encrypted vault · audit log · ExclusionStore
                                                     │  ├─ RealTimeMonitor (opt-in): FileSystemWatcher · WMI process start · removable
                                                     │       drives → debounced background scans (shared pool, cache, exclusions)
+                                                    │       └─ RansomwareDetector: behaviour alerts (suspicious only, no action)
                                                     │  └─ ContentStore: signed .sntu packages (ECDSA P-256), anti-rollback, expiry;
                                                     │       new content → new sandboxed pool → swapped between scans
         broker (CLI or service)
@@ -127,7 +128,7 @@ Labels: **P** prototype/educational · **B** beta for trusted testers. Nothing h
 | M5 | Desktop app (WPF + Fluent, [ADR 0007](adr/0007-desktop-app-wpf.md)): dashboard, scan, quarantine, exclusions, history; accessibility ✔ (updates page with M6) | P |
 | M6 | Signed content updates with rollback/freeze protection, offline import ✔ ([ADR 0008](adr/0008-signed-content-updates.md)) | P |
 | M7 | User-mode real-time monitoring (file activity, process start, removable media) ✔ ([ADR 0009](adr/0009-user-mode-real-time-monitoring.md)); detects after the fact, cannot block | P |
-| M8 | Ransomware behaviour protection | B |
+| M8 | Ransomware behaviour detection (mass modification, ransom notes, recovery tampering, opt-in decoys), alert only ✔ ([ADR 0010](adr/0010-ransomware-behaviour-detection.md)) | P |
 | M9 | Optional local ML (EMBER-style features, ONNX), off by default | P |
 | M10 | Web/network protection via WFP user-mode filters | B |
 | M11 | WiX MSI packaging, signing pipeline, product updater | B |

@@ -140,6 +140,13 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
 
     public string AntivirusText => SecurityCenter.Describe(Antivirus);
 
+    private string _folderAccess = string.Empty;
+
+    public string FolderAccessText { get => _folderAccess; private set => Set(ref _folderAccess, value); }
+
+    /// <summary>Optional source of Defender's Controlled folder access value (tests replace it).</summary>
+    public Func<int?> FolderAccessSource { get; set; } = SecurityCenter.GetControlledFolderAccess;
+
     public bool AntivirusNeedsAttention => Antivirus is AntivirusHealth.Poor or AntivirusHealth.Snoozed;
 
     public ObservableCollection<string> Schedules { get; } = [];
@@ -154,6 +161,7 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
     protected override async Task RefreshCoreAsync()
     {
         Antivirus = AntivirusSource();
+        FolderAccessText = SecurityCenter.DescribeControlledFolderAccess(FolderAccessSource());
         try
         {
             var (hello, status) = await gateway.GetStatusAsync(CancellationToken.None);
@@ -168,7 +176,7 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
             Quarantine = $"{status.QuarantineItems} item(s) in quarantine. {status.Exclusions} exclusion(s).";
             RealTimeStatusDto rt = status.RealTime;
             RealTime = rt.Enabled
-                ? $"Real-time monitoring is on for {string.Join(", ", rt.Paths)}. Programs: {rt.Processes}. Removable drives: {rt.RemovableMedia}. It scans files after they are written; it cannot block them."
+                ? $"Real-time monitoring is on for {string.Join(", ", rt.Paths)}. Programs: {rt.Processes}. Removable drives: {rt.RemovableMedia}. Ransomware behaviour: {rt.Behaviour} ({rt.BehaviourAlerts} alert(s)). It scans files after they are written; it cannot block them."
                 : "Real-time monitoring is off (it can be enabled in the service settings).";
             ContentStatusDto c = status.Content;
             Content = c.Sequence == 0

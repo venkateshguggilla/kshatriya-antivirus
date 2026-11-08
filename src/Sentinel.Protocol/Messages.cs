@@ -45,7 +45,7 @@ public static class MessageType
 public static class ProtocolVersion
 {
     public const int Worker = 1;
-    public const int Service = 4;
+    public const int Service = 5;
 }
 
 // ---- Shared ----
@@ -293,6 +293,11 @@ public sealed class RealTimeStatusDto
 
     /// <summary>How often change notifications were lost and a folder had to be rescanned.</summary>
     public required long LostEvents { get; init; }
+
+    /// <summary>State of ransomware behaviour detection.</summary>
+    public required string Behaviour { get; init; }
+
+    public required long BehaviourAlerts { get; init; }
 }
 
 public sealed class DetectionsQueryDto

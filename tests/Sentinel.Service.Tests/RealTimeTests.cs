@@ -135,13 +135,15 @@ public sealed class RealTimeTests : IDisposable
         bool admin = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
         if (!admin)
         {
-            Assert.ThrowsAny<ManagementException>(source.Start);
+            // Only a genuine access refusal is acceptable here; any other error is a bug (for example a malformed query).
+            var refused = Assert.Throws<ManagementException>(source.Start);
+            Assert.Equal(ManagementStatus.AccessDenied, refused.ErrorCode);
             return;
         }
 
         string? seen = null;
         using var signal = new ManualResetEventSlim();
-        source.Started += path =>
+        source.Started += (path, _) =>
         {
             if (path.EndsWith("PING.EXE", StringComparison.OrdinalIgnoreCase))
             {
@@ -189,13 +191,13 @@ public sealed class RealTimeTests : IDisposable
 
     private sealed class FakeProcessSource : IProcessStartSource
     {
-        public event Action<string>? Started;
+        public event Action<string, string?>? Started;
 
         public bool IsListening { get; private set; }
 
         public void Start() => IsListening = true;
 
-        public void Raise(string path) => Started?.Invoke(path);
+        public void Raise(string path, string? commandLine = null) => Started?.Invoke(path, commandLine);
 
         public void Dispose()
         {

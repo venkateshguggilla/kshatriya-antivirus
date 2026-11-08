@@ -74,6 +74,9 @@ internal static partial class Log
     [LoggerMessage(7000, LogLevel.Warning, "{Problem}")]
     public static partial void RealTimeProblem(ILogger logger, string problem);
 
+    [LoggerMessage(8000, LogLevel.Critical, "Possible ransomware activity ({Name}) at {Path}: {Detail} No automatic action was taken.")]
+    public static partial void BehaviourAlert(ILogger logger, string name, string path, string detail);
+
     [LoggerMessage(7001, LogLevel.Information, "Removable drive {Drive} attached; scanning it.")]
     public static partial void RemovableDrive(ILogger logger, string drive);
 

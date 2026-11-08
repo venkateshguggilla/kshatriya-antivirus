@@ -48,6 +48,7 @@
         <StackPanel>
           <TextBlock Text="ACTION NEEDED" FontWeight="Bold" Visibility="{Binding AntivirusNeedsAttention, Converter={StaticResource BoolToVisibility}}" />
           <TextBlock Text="{Binding AntivirusText}" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding FolderAccessText}" TextWrapping="Wrap" Margin="0,6,0,0" />
         </StackPanel>
       </Border>
 

@@ -56,6 +56,37 @@ public static partial class SecurityCenter
         _ => "Windows antivirus status could not be read.",
     };
 
+    /// <summary>
+    /// Reads (never changes) Microsoft Defender's Controlled folder access setting: null if unknown,
+    /// otherwise 0 off, 1 on, 2 audit, 3/4 block or audit disk modification only.
+    /// </summary>
+    public static int? GetControlledFolderAccess()
+    {
+        try
+        {
+            using var searcher = new System.Management.ManagementObjectSearcher(@"root\Microsoft\Windows\Defender", "SELECT EnableControlledFolderAccess FROM MSFT_MpPreference");
+            using var results = searcher.Get();
+            foreach (System.Management.ManagementBaseObject item in results)
+            {
+                return item["EnableControlledFolderAccess"] is byte b ? b : item["EnableControlledFolderAccess"] is int i ? i : null;
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (ex is System.Management.ManagementException or COMException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    public static string DescribeControlledFolderAccess(int? value) => value switch
+    {
+        1 => "Controlled folder access (Defender ransomware protection) is on.",
+        2 => "Controlled folder access is in audit mode. Consider turning it on in Windows Security > Virus & threat protection > Ransomware protection.",
+        0 or 3 or 4 => "Controlled folder access (Defender ransomware protection) is off. Consider turning it on in Windows Security > Virus & threat protection > Ransomware protection. Sentinel never changes this setting.",
+        _ => "Controlled folder access status could not be read.",
+    };
+
     [LibraryImport("wscapi.dll")]
     private static partial int WscGetSecurityProviderHealth(int providers, out int health);
 }

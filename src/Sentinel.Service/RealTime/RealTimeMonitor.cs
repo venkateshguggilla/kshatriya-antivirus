@@ -27,6 +27,9 @@ public sealed record RealTimeOptions
 
     /// <summary>Quiet period after the last change before a file is scanned.</summary>
     public TimeSpan Debounce { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Ransomware behaviour detection on top of the file and process events.</summary>
+    public BehaviourOptions Behaviour { get; init; } = new();
 }
 
 /// <summary>A finding recorded for the detections history.</summary>
@@ -60,12 +63,13 @@ public sealed class DetectionHistory(int capacity = 500)
 }
 
 /// <summary>Live counters for status.</summary>
-public sealed record RealTimeStats(bool Enabled, IReadOnlyList<string> WatchedPaths, string Processes, string RemovableMedia, int Queued, long Scanned, long Findings, long Overflows);
+public sealed record RealTimeStats(bool Enabled, IReadOnlyList<string> WatchedPaths, string Processes, string RemovableMedia, int Queued, long Scanned, long Findings, long Overflows, string Behaviour, long BehaviourAlerts);
 
 /// <summary>Source of process-start notifications (image paths).</summary>
 public interface IProcessStartSource : IDisposable
 {
-    event Action<string>? Started;
+    /// <summary>Raised with the image path and, when it could be read, the command line.</summary>
+    event Action<string, string?>? Started;
 
     /// <summary>Starts listening; throws if the platform refuses (for example without administrator rights).</summary>
     void Start();
@@ -94,6 +98,9 @@ public sealed class RealTimeMonitor : IDisposable
     private readonly Func<IEnumerable<string>> _removableDrives;
     private readonly string[] _ignoredRoots;
     private readonly HashSet<string> _knownDrives = new(StringComparer.OrdinalIgnoreCase);
+    private readonly RansomwareDetector? _behaviour;
+    private long _behaviourAlerts;
+    private long _lastCanaryCheck;
     private string _processState = "off";
     private string _removableState = "off";
     private long _scanned;
@@ -112,7 +119,11 @@ public sealed class RealTimeMonitor : IDisposable
         _removableDrives = removableDrives ?? DefaultRemovableDrives;
         // The service's own data (quarantine vault, reports, audit) is never fed back into monitoring.
         _ignoredRoots = [Path.GetFullPath(serviceRoot).TrimEnd('\\')];
+        _behaviour = options.Behaviour.Enabled ? new RansomwareDetector(options.Behaviour, time) : null;
     }
+
+    /// <summary>The behaviour detector, when enabled (tests feed it directly).</summary>
+    internal RansomwareDetector? Behaviour => _behaviour;
 
     public RealTimeStats Stats => new(
         _options.Enabled,
@@ -122,12 +133,22 @@ public sealed class RealTimeMonitor : IDisposable
         _pending.Count,
         Interlocked.Read(ref _scanned),
         Interlocked.Read(ref _findings),
-        Interlocked.Read(ref _overflows));
+        Interlocked.Read(ref _overflows),
+        _behaviour is null ? "off" : _options.Behaviour.CanaryFolders.Count > 0 ? $"watching for mass changes, ransom notes, recovery tampering; {_options.Behaviour.CanaryFolders.Count} decoy folder(s)" : "watching for mass changes, ransom notes, recovery tampering",
+        Interlocked.Read(ref _behaviourAlerts));
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         StartWatchers();
         StartProcessMonitor();
+        if (_behaviour is not null)
+        {
+            foreach (string folder in _behaviour.EnsureCanaries())
+            {
+                Log.RealTimeProblem(_logger, $"Could not place a decoy file in '{folder}'.");
+            }
+        }
+
         _removableState = _options.RemovableMedia ? "watching for removable drives" : "off";
         foreach (string drive in SafeDrives())
         {
@@ -197,9 +218,22 @@ public sealed class RealTimeMonitor : IDisposable
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
                 InternalBufferSize = 64 * 1024,
             };
-            watcher.Created += (_, e) => Enqueue(e.FullPath, "file");
-            watcher.Changed += (_, e) => Enqueue(e.FullPath, "file");
-            watcher.Renamed += (_, e) => Enqueue(e.FullPath, "file");
+            watcher.Created += (_, e) =>
+            {
+                _behaviour?.OnFileEvent(e.FullPath, FileEventKind.Created);
+                Enqueue(e.FullPath, "file");
+            };
+            watcher.Changed += (_, e) =>
+            {
+                _behaviour?.OnFileEvent(e.FullPath, FileEventKind.Changed);
+                Enqueue(e.FullPath, "file");
+            };
+            watcher.Renamed += (_, e) =>
+            {
+                _behaviour?.OnFileEvent(e.FullPath, FileEventKind.Renamed, e.OldFullPath);
+                Enqueue(e.FullPath, "file");
+            };
+            watcher.Deleted += (_, e) => _behaviour?.OnFileEvent(e.FullPath, FileEventKind.Deleted);
             watcher.Error += (_, e) =>
             {
                 // Events were lost (buffer overflow or the folder went away): rescan the whole root
@@ -220,7 +254,11 @@ public sealed class RealTimeMonitor : IDisposable
             return;
         }
 
-        _processes.Started += path => Enqueue(path, "process", TimeSpan.Zero);
+        _processes.Started += (path, commandLine) =>
+        {
+            _behaviour?.OnProcessStart(path, commandLine);
+            Enqueue(path, "process", TimeSpan.Zero);
+        };
         try
         {
             _processes.Start();
@@ -275,6 +313,7 @@ public sealed class RealTimeMonitor : IDisposable
         while (!cancellationToken.IsCancellationRequested)
         {
             await _signal.WaitAsync(TimeSpan.FromMilliseconds(250), cancellationToken);
+            CollectBehaviour();
             long now = _time.GetUtcNow().UtcTicks;
             var due = _pending.Where(p => p.Value.DueTicks <= now).Take(BatchSize).ToList();
             if (due.Count == 0)
@@ -288,6 +327,29 @@ public sealed class RealTimeMonitor : IDisposable
             }
 
             await ScanBatchAsync(due, cancellationToken);
+        }
+    }
+
+    private void CollectBehaviour()
+    {
+        if (_behaviour is null)
+        {
+            return;
+        }
+
+        IReadOnlyList<BehaviourAlert> alerts = _behaviour.Collect();
+        foreach (BehaviourAlert alert in alerts)
+        {
+            Interlocked.Increment(ref _behaviourAlerts);
+            _core.RecordBehaviour(alert);
+        }
+
+        // Decoys are restored whenever they go missing, independent of alert cooldowns.
+        long now = Environment.TickCount64;
+        if (alerts.Any(a => a.Name == RansomwareDetector.CanaryTouched) || now - _lastCanaryCheck > 5000)
+        {
+            _lastCanaryCheck = now;
+            _behaviour.EnsureCanaries();
         }
     }
 
@@ -334,16 +396,16 @@ public sealed partial class WmiProcessStartSource : IProcessStartSource
 {
     private ManagementEventWatcher? _watcher;
 
-    public event Action<string>? Started;
+    public event Action<string, string?>? Started;
 
     public void Start()
     {
-        _watcher = new ManagementEventWatcher(new WqlEventQuery("SELECT ProcessID FROM Win32_ProcessStartTrace"));
+        _watcher = new ManagementEventWatcher(new EventQuery("SELECT ProcessID FROM Win32_ProcessStartTrace"));
         _watcher.EventArrived += (_, e) =>
         {
             if (e.NewEvent["ProcessID"] is uint pid && ImagePath(pid) is string path)
             {
-                Started?.Invoke(path);
+                Started?.Invoke(path, CommandLine(pid));
             }
         };
         _watcher.Start();
@@ -353,6 +415,20 @@ public sealed partial class WmiProcessStartSource : IProcessStartSource
     {
         _watcher?.Stop();
         _watcher?.Dispose();
+    }
+
+    internal static string? CommandLine(uint pid)
+    {
+        try
+        {
+            using var searcher = new ManagementObjectSearcher($"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {pid}");
+            using ManagementObjectCollection results = searcher.Get();
+            return results.Cast<ManagementBaseObject>().Select(o => o["CommandLine"] as string).FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is ManagementException or COMException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     internal static unsafe string? ImagePath(uint pid)

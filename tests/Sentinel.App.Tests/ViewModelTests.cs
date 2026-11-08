@@ -40,7 +40,7 @@ internal sealed class FakeGateway : IServiceGateway
                 QuarantineItems = Quarantine.Count,
                 Exclusions = Exclusions.Count,
                 AuditChainValid = true,
-                RealTime = new RealTimeStatusDto { Enabled = true, Paths = [@"C:\Users"], Processes = "scanning started programs", RemovableMedia = "watching for removable drives", Queued = 0, Scanned = 12, Findings = 1, LostEvents = 0 },
+                RealTime = new RealTimeStatusDto { Enabled = true, Paths = [@"C:\Users"], Processes = "scanning started programs", RemovableMedia = "watching for removable drives", Queued = 0, Scanned = 12, Findings = 1, LostEvents = 0, Behaviour = "off", BehaviourAlerts = 0 },
                 Content = new ContentStatusDto { Sequence = 7, Channel = "stable", ExpiresUtc = "2020-01-01T00:00:00Z", Expired = true },
             }));
     }
@@ -173,7 +173,7 @@ public class ViewModelTests
     [Fact]
     public async Task Dashboard_shows_status_and_reminds_about_defender()
     {
-        var vm = new DashboardViewModel(new FakeGateway(), new FakeHost()) { AntivirusSource = () => AntivirusHealth.Poor };
+        var vm = new DashboardViewModel(new FakeGateway(), new FakeHost()) { AntivirusSource = () => AntivirusHealth.Poor, FolderAccessSource = () => 0 };
 
         await vm.RefreshCommand.ExecuteAsync(null);
 
@@ -182,6 +182,7 @@ public class ViewModelTests
         Assert.Contains("need an administrator", vm.ConnectedAs, StringComparison.Ordinal);
         Assert.True(vm.AntivirusNeedsAttention);
         Assert.Contains("Turn Microsoft Defender back on", vm.AntivirusText, StringComparison.Ordinal);
+        Assert.Contains("never changes this setting", vm.FolderAccessText, StringComparison.Ordinal);
         Assert.Single(vm.Schedules);
         Assert.True(vm.CanRestartElevated);
     }

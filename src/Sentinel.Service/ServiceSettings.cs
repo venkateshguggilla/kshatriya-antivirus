@@ -148,6 +148,40 @@ public sealed record ServiceSettings
             Processes = dto.Processes ?? true,
             RemovableMedia = dto.RemovableMedia ?? true,
             Debounce = TimeSpan.FromSeconds(debounce),
+            Behaviour = ParseBehaviour(dto.Ransomware, paths),
+        };
+    }
+
+    private static RealTime.BehaviourOptions ParseBehaviour(RansomwareDto? dto, List<string> watched)
+    {
+        if (dto is null)
+        {
+            return new RealTime.BehaviourOptions();
+        }
+
+        int threshold = dto.Threshold ?? 40;
+        int window = dto.WindowSeconds ?? 30;
+        if (threshold is < 5 or > 10_000 || window is < 5 or > 600)
+        {
+            throw new FormatException("'ransomware.threshold' must be 5-10000 and 'ransomware.windowSeconds' 5-600.");
+        }
+
+        List<string> canaries = dto.CanaryFolders ?? [];
+        foreach (string folder in canaries)
+        {
+            bool inside = watched.Any(w => folder.StartsWith(w.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase) || folder.Equals(w, StringComparison.OrdinalIgnoreCase));
+            if (!ScanPathPolicy.IsLocalAbsolutePath(folder) || !inside)
+            {
+                throw new FormatException($"'ransomware.canaryFolders' entry '{folder}' must be a local folder inside a real-time path.");
+            }
+        }
+
+        return new RealTime.BehaviourOptions
+        {
+            Enabled = dto.Enabled ?? true,
+            Threshold = threshold,
+            Window = TimeSpan.FromSeconds(window),
+            CanaryFolders = [.. canaries],
         };
     }
 
@@ -276,6 +310,19 @@ internal sealed class RealTimeDto
     public bool? RemovableMedia { get; init; }
 
     public int? DebounceSeconds { get; init; }
+
+    public RansomwareDto? Ransomware { get; init; }
+}
+
+internal sealed class RansomwareDto
+{
+    public bool? Enabled { get; init; }
+
+    public int? Threshold { get; init; }
+
+    public int? WindowSeconds { get; init; }
+
+    public List<string>? CanaryFolders { get; init; }
 }
 
 internal sealed class ScheduleDto

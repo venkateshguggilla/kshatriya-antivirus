@@ -28,5 +28,6 @@
 - Synthetic test executables come from `tests/Shared/PeBuilder.cs`; never commit real binaries.
 - Public report formats are versioned (`docs/schemas`). Map enum values to wire names explicitly; never serialize enum member names directly.
 - Real-time monitoring is user mode and runs as the service: never follow its events into the service data folder, never terminate processes, keep queues bounded and treat lost events as a reason to rescan ([ADR 0009](docs/adr/0009-user-mode-real-time-monitoring.md)).
+- Behaviour detection (ransomware) produces suspicious findings only and never triggers automatic action ([ADR 0010](docs/adr/0010-ransomware-behaviour-detection.md)). Decoy files are opt-in.
 - Content updates are accepted only as signed `.sntu` packages ([ADR 0008](docs/adr/0008-signed-content-updates.md)): never parse a manifest before its signature is verified, never weaken anti-rollback or expiry checks, never commit private signing keys.
 - Record significant design decisions as ADRs in `docs/adr`.

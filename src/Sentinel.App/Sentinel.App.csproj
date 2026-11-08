@@ -12,6 +12,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Sentinel.Runtime\Sentinel.Runtime.csproj" />
+    <PackageReference Include="System.Management" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="System.IO" />
