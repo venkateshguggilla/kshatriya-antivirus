@@ -1,0 +1,58 @@
+using Microsoft.Extensions.Logging;
+
+namespace Sentinel.Service;
+
+/// <summary>
+/// Every service log and audit event, source-generated. Event IDs are stable so that event-log
+/// filters and monitoring rules keep working across versions.
+/// </summary>
+internal static partial class Log
+{
+    [LoggerMessage(1000, LogLevel.Information, "Sentinel service {Version} started ({Mode}); engines: {Engines}.")]
+    public static partial void Started(ILogger logger, string version, string mode, string engines);
+
+    [LoggerMessage(1001, LogLevel.Warning, "{Warning}")]
+    public static partial void EngineWarning(ILogger logger, string warning);
+
+    [LoggerMessage(1002, LogLevel.Information, "No settings file at {File}; using defaults.")]
+    public static partial void DefaultSettings(ILogger logger, string file);
+
+    [LoggerMessage(1003, LogLevel.Critical, "Sentinel service failed to start: {Reason}")]
+    public static partial void StartFailed(ILogger logger, Exception exception, string reason);
+
+    [LoggerMessage(2000, LogLevel.Information, "Client connected: {User} (pid {Pid}, administrator {IsAdmin}, client '{Client}').")]
+    public static partial void ClientConnected(ILogger logger, string user, uint pid, bool isAdmin, string client);
+
+    [LoggerMessage(2001, LogLevel.Information, "Client connection ended: {Reason}")]
+    public static partial void ConnectionEnded(ILogger logger, string reason);
+
+    [LoggerMessage(2002, LogLevel.Error, "Unexpected error while serving a client.")]
+    public static partial void ClientError(ILogger logger, Exception exception);
+
+    [LoggerMessage(2003, LogLevel.Information, "Client sent message 0x{Type:X2} during a scan; the scan was cancelled.")]
+    public static partial void UnexpectedDuringScan(ILogger logger, byte type);
+
+    [LoggerMessage(3000, LogLevel.Information, "Scan requested by {User}: {Count} path(s).")]
+    public static partial void ScanRequested(ILogger logger, string user, int count);
+
+    [LoggerMessage(3001, LogLevel.Information, "Scan for {User} finished: {Files} file(s), {Detected} detected, {Suspicious} suspicious, {NotScanned} not scanned.")]
+    public static partial void ScanFinished(ILogger logger, string user, long files, long detected, long suspicious, long notScanned);
+
+    [LoggerMessage(3002, LogLevel.Information, "Scan for {User} was cancelled.")]
+    public static partial void ScanCancelled(ILogger logger, string user);
+
+    [LoggerMessage(3003, LogLevel.Warning, "{Status} in {Path} (requested by {Requester}): {Names}. No files were changed.")]
+    public static partial void Finding(ILogger logger, string status, string path, string requester, string names);
+
+    [LoggerMessage(4000, LogLevel.Information, "Scheduled scan '{Name}' starting ({Count} path(s)).")]
+    public static partial void ScheduleStarting(ILogger logger, string name, int count);
+
+    [LoggerMessage(4001, LogLevel.Information, "Scheduled scan '{Name}' finished: {Outcome}. Report: {File}")]
+    public static partial void ScheduleFinished(ILogger logger, string name, string outcome, string file);
+
+    [LoggerMessage(4002, LogLevel.Warning, "Scheduled scan '{Name}' postponed: the service is busy.")]
+    public static partial void SchedulePostponed(ILogger logger, string name);
+
+    [LoggerMessage(4003, LogLevel.Error, "Scheduled scan '{Name}' failed.")]
+    public static partial void ScheduleFailed(ILogger logger, Exception exception, string name);
+}
