@@ -1,220 +1,15 @@
 using System.Globalization;
 using System.Text;
-using System.Text.Json;
 using Sentinel.Core;
 
 namespace Sentinel.Cli;
 
-/// <summary>
-/// Writes the versioned JSON report (schema v1). Wire names are mapped explicitly so that renaming
-/// a C# enum member can never silently change the public format.
-/// </summary>
+/// <summary>Writes the versioned JSON report. The format itself lives in <see cref="ScanReportJson"/>.</summary>
 public static class JsonReportWriter
 {
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = ScanReportJson.SchemaVersion;
 
-    public static string Write(ScanReport report, string toolVersion)
-    {
-        ArgumentNullException.ThrowIfNull(report);
-        using var buffer = new MemoryStream();
-        using (var json = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
-        {
-            json.WriteStartObject();
-            json.WriteNumber("schemaVersion", SchemaVersion);
-            json.WriteStartObject("tool");
-            json.WriteString("name", "Sentinel");
-            json.WriteString("version", toolVersion);
-            json.WriteEndObject();
-            json.WriteString("startedUtc", report.StartedUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
-            json.WriteString("finishedUtc", report.FinishedUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
-            json.WriteNumber("durationMs", (long)report.Duration.TotalMilliseconds);
-            json.WriteBoolean("complete", report.IsComplete);
-            json.WriteBoolean("cleanItemsIncluded", report.CleanItemsIncluded);
-
-            json.WriteStartArray("targets");
-            foreach (string target in report.Targets)
-            {
-                json.WriteStringValue(target);
-            }
-
-            json.WriteEndArray();
-
-            json.WriteStartArray("engines");
-            foreach (EngineInfo engine in report.Engines)
-            {
-                json.WriteStartObject();
-                json.WriteString("id", engine.Id);
-                json.WriteString("version", engine.Version);
-                json.WriteString("contentVersion", engine.ContentVersion);
-                json.WriteEndObject();
-            }
-
-            json.WriteEndArray();
-
-            ScanSummary s = report.Summary;
-            json.WriteStartObject("summary");
-            json.WriteNumber("itemsSeen", s.ItemsSeen);
-            json.WriteNumber("filesScanned", s.FilesScanned);
-            json.WriteNumber("detected", s.Detected);
-            json.WriteNumber("suspicious", s.Suspicious);
-            json.WriteNumber("partial", s.Partial);
-            json.WriteNumber("skipped", s.Skipped);
-            json.WriteNumber("notScanned", s.NotScanned);
-            json.WriteNumber("bytesScanned", s.BytesScanned);
-            json.WriteEndObject();
-
-            json.WriteStartArray("items");
-            foreach (ScanItemResult item in report.Items)
-            {
-                WriteItem(json, item);
-            }
-
-            json.WriteEndArray();
-            json.WriteEndObject();
-        }
-
-        return Encoding.UTF8.GetString(buffer.ToArray());
-    }
-
-    private static void WriteItem(Utf8JsonWriter json, ScanItemResult item)
-    {
-        json.WriteStartObject();
-        json.WriteString("path", item.Path);
-        json.WriteString("kind", Wire(item.Kind));
-        json.WriteString("status", Wire(item.Status));
-        if (item.Reason != ScanReason.None)
-        {
-            json.WriteString("reason", Wire(item.Reason));
-        }
-
-        if (item.SizeBytes is long size)
-        {
-            json.WriteNumber("sizeBytes", size);
-        }
-
-        if (item.Sha256 is not null)
-        {
-            json.WriteString("sha256", item.Sha256);
-        }
-
-        if (item.Message is not null)
-        {
-            json.WriteString("message", item.Message);
-        }
-
-        json.WriteBoolean("incomplete", item.IsIncomplete);
-
-        if (item.Trust is FileTrust trust)
-        {
-            json.WriteStartObject("trust");
-            json.WriteString("status", Wire(trust.Status));
-            if (trust.Source != TrustSource.None)
-            {
-                json.WriteString("source", Wire(trust.Source));
-            }
-
-            if (trust.Signer is not null)
-            {
-                json.WriteString("signer", trust.Signer);
-            }
-
-            json.WriteEndObject();
-        }
-
-        json.WriteStartArray("detections");
-        foreach (Detection d in item.Detections)
-        {
-            json.WriteStartObject();
-            json.WriteString("engine", d.EngineId);
-            json.WriteString("name", d.Name);
-            json.WriteString("category", Wire(d.Category));
-            json.WriteString("confidence", Wire(d.Confidence));
-            if (d.Description is not null)
-            {
-                json.WriteString("description", d.Description);
-            }
-
-            if (d.Location is not null)
-            {
-                json.WriteString("location", d.Location);
-            }
-
-            json.WriteEndObject();
-        }
-
-        json.WriteEndArray();
-        json.WriteEndObject();
-    }
-
-    public static string Wire(ScanItemKind kind) => kind switch
-    {
-        ScanItemKind.File => "file",
-        ScanItemKind.Directory => "directory",
-        ScanItemKind.Stream => "stream",
-        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
-    };
-
-    public static string Wire(ScanStatus status) => status switch
-    {
-        ScanStatus.Clean => "clean",
-        ScanStatus.Detected => "detected",
-        ScanStatus.Suspicious => "suspicious",
-        ScanStatus.Skipped => "skipped",
-        ScanStatus.NotScanned => "notScanned",
-        _ => throw new ArgumentOutOfRangeException(nameof(status)),
-    };
-
-    public static string Wire(ScanReason reason) => reason switch
-    {
-        ScanReason.None => "none",
-        ScanReason.ReparsePoint => "reparsePoint",
-        ScanReason.CloudPlaceholder => "cloudPlaceholder",
-        ScanReason.LoopDetected => "loopDetected",
-        ScanReason.TooLarge => "tooLarge",
-        ScanReason.Timeout => "timeout",
-        ScanReason.AccessDenied => "accessDenied",
-        ScanReason.Locked => "locked",
-        ScanReason.NotFound => "notFound",
-        ScanReason.IoError => "ioError",
-        ScanReason.EngineError => "engineError",
-        ScanReason.ArchiveLimit => "archiveLimit",
-        ScanReason.ArchiveEncrypted => "archiveEncrypted",
-        ScanReason.ArchiveError => "archiveError",
-        _ => throw new ArgumentOutOfRangeException(nameof(reason)),
-    };
-
-    public static string Wire(DetectionCategory category) => category switch
-    {
-        DetectionCategory.Malware => "malware",
-        DetectionCategory.PotentiallyUnwanted => "pua",
-        DetectionCategory.Suspicious => "suspicious",
-        DetectionCategory.TestFile => "test",
-        _ => throw new ArgumentOutOfRangeException(nameof(category)),
-    };
-
-    public static string Wire(TrustStatus status) => status switch
-    {
-        TrustStatus.NotSigned => "notSigned",
-        TrustStatus.Valid => "valid",
-        TrustStatus.Invalid => "invalid",
-        _ => throw new ArgumentOutOfRangeException(nameof(status)),
-    };
-
-    public static string Wire(TrustSource source) => source switch
-    {
-        TrustSource.None => "none",
-        TrustSource.Embedded => "embedded",
-        TrustSource.Catalog => "catalog",
-        _ => throw new ArgumentOutOfRangeException(nameof(source)),
-    };
-
-    public static string Wire(DetectionConfidence confidence) => confidence switch
-    {
-        DetectionConfidence.Low => "low",
-        DetectionConfidence.Medium => "medium",
-        DetectionConfidence.High => "high",
-        _ => throw new ArgumentOutOfRangeException(nameof(confidence)),
-    };
+    public static string Write(ScanReport report, string toolVersion) => ScanReportJson.Write(report, toolVersion);
 }
 
 /// <summary>Plain-text report for people. Calm and factual: what was found, what was not scanned, and why.</summary>
@@ -235,23 +30,23 @@ public static class TextReportWriter
                 {
                     string label = d.Category == DetectionCategory.Suspicious ? "SUSPICIOUS" : "DETECTED";
                     string where = d.Location is null ? item.Path : $"{item.Path} > {d.Location}";
-                    sb.Append(CultureInfo.InvariantCulture, $"{label}  {d.Name} ({JsonReportWriter.Wire(d.Category)}, {JsonReportWriter.Wire(d.Confidence)} confidence)  {where}").AppendLine();
+                    sb.Append(CultureInfo.InvariantCulture, $"{label}  {d.Name} ({WireNames.Of(d.Category)}, {WireNames.Of(d.Confidence)} confidence)  {where}").AppendLine();
                 }
 
                 if (item.Reason != ScanReason.None)
                 {
-                    sb.Append(CultureInfo.InvariantCulture, $"  partially scanned [{JsonReportWriter.Wire(item.Reason)}]: {item.Message}").AppendLine();
+                    sb.Append(CultureInfo.InvariantCulture, $"  partially scanned [{WireNames.Of(item.Reason)}]: {item.Message}").AppendLine();
                 }
             }
 
             foreach (ScanItemResult item in report.Items.Where(i => i.Status == ScanStatus.NotScanned))
             {
-                sb.Append(CultureInfo.InvariantCulture, $"NOT SCANNED  [{JsonReportWriter.Wire(item.Reason)}]  {item.Path}").AppendLine();
+                sb.Append(CultureInfo.InvariantCulture, $"NOT SCANNED  [{WireNames.Of(item.Reason)}]  {item.Path}").AppendLine();
             }
 
             foreach (ScanItemResult item in report.Items.Where(i => i.Status == ScanStatus.Skipped))
             {
-                sb.Append(CultureInfo.InvariantCulture, $"skipped  [{JsonReportWriter.Wire(item.Reason)}]  {item.Path}").AppendLine();
+                sb.Append(CultureInfo.InvariantCulture, $"skipped  [{WireNames.Of(item.Reason)}]  {item.Path}").AppendLine();
             }
 
             if (sb.Length > 0)
@@ -282,7 +77,7 @@ public static class TextReportWriter
         {
             ScanStatus.Detected or ScanStatus.Suspicious => string.Join(Environment.NewLine, item.Detections.Select(d => $"DETECTED  {d.Name}  {item.Path}")) + Environment.NewLine,
             ScanStatus.Clean => $"Nothing detected in {item.Path}." + Environment.NewLine,
-            _ => $"NOT SCANNED  [{JsonReportWriter.Wire(item.Reason)}]  {item.Path}" + Environment.NewLine,
+            _ => $"NOT SCANNED  [{WireNames.Of(item.Reason)}]  {item.Path}" + Environment.NewLine,
         };
     }
 

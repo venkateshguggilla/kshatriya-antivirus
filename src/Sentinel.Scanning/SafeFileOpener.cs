@@ -13,6 +13,12 @@ public readonly record struct OpenResult(SafeFileHandle? Handle, ScanReason Fail
 }
 
 /// <summary>
+/// Identity of a file version: which file (volume + 128-bit file ID) and stamps that change when its
+/// content or metadata changes. Used as the verdict-cache key.
+/// </summary>
+public readonly record struct FileIdentity(ulong Volume, UInt128 FileId, long Length, long LastWriteTime, long ChangeTime);
+
+/// <summary>
 /// Opens files strictly read-only, without following reparse points, while allowing other processes
 /// to keep reading, writing and deleting the file (the scanner must never block the user).
 /// </summary>
@@ -76,6 +82,22 @@ public static class SafeFileOpener
         NativeMethods.ErrorSharingViolation or NativeMethods.ErrorLockViolation => ScanReason.Locked,
         _ => ScanReason.IoError,
     };
+
+    /// <summary>
+    /// Reads the identity and change stamps of an open file. Returns null if the file system does not
+    /// provide them (the verdict cache is then simply not used for that file).
+    /// </summary>
+    public static FileIdentity? TryGetIdentity(SafeFileHandle handle, long length)
+    {
+        ArgumentNullException.ThrowIfNull(handle);
+        if (!NativeMethods.GetFileIdInfo(handle, NativeMethods.FileIdInfoClass, out NativeMethods.FileIdInfo id, (uint)Marshal.SizeOf<NativeMethods.FileIdInfo>())
+            || !NativeMethods.GetFileBasicInfo(handle, NativeMethods.FileBasicInfoClass, out NativeMethods.FileBasicInfo basic, (uint)Marshal.SizeOf<NativeMethods.FileBasicInfo>()))
+        {
+            return null;
+        }
+
+        return new FileIdentity(id.VolumeSerialNumber, new UInt128(id.FileIdHigh, id.FileIdLow), length, basic.LastWriteTime, basic.ChangeTime);
+    }
 
     /// <summary>
     /// Returns a stable identity (volume serial + file index) for a directory, without following reparse points.

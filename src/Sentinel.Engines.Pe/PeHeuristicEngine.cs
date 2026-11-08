@@ -34,7 +34,7 @@ public sealed class PeHeuristicEngine : IDetectionEngine
     public PeHeuristicEngine(PeHeuristicOptions? options = null)
     {
         _options = options ?? new PeHeuristicOptions();
-        Descriptor = new EngineDescriptor(EngineId, EngineVersion, string.Create(CultureInfo.InvariantCulture, $"threshold-{_options.ReportThreshold}"));
+        Descriptor = new EngineDescriptor(EngineId, EngineVersion, string.Create(CultureInfo.InvariantCulture, $"threshold-{_options.ReportThreshold};signed-{(_options.SkipValidlySigned ? "skip" : "scored")}"));
     }
 
     public EngineDescriptor Descriptor { get; }

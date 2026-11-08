@@ -28,8 +28,34 @@ internal static partial class NativeMethods
     internal const int ErrorInvalidName = 123;
     internal const int ErrorCantAccessFile = 1920;
 
+    /// <summary>FILE_INFO_BY_HANDLE_CLASS.FileBasicInfo.</summary>
+    internal const int FileBasicInfoClass = 0;
+
     /// <summary>FILE_INFO_BY_HANDLE_CLASS.FileAttributeTagInfo.</summary>
     internal const int FileAttributeTagInfoClass = 9;
+
+    /// <summary>FILE_INFO_BY_HANDLE_CLASS.FileIdInfo.</summary>
+    internal const int FileIdInfoClass = 18;
+
+    /// <summary>FILE_BASIC_INFO (LARGE_INTEGER members are 8-byte aligned).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct FileBasicInfo
+    {
+        public long CreationTime;
+        public long LastAccessTime;
+        public long LastWriteTime;
+        public long ChangeTime;
+        public uint FileAttributes;
+    }
+
+    /// <summary>FILE_ID_INFO: 64-bit volume serial number and 128-bit file identifier.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct FileIdInfo
+    {
+        public ulong VolumeSerialNumber;
+        public ulong FileIdLow;
+        public ulong FileIdHigh;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct FileAttributeTagInfo
@@ -38,7 +64,12 @@ internal static partial class NativeMethods
         public uint ReparseTag;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    /// <summary>
+    /// BY_HANDLE_FILE_INFORMATION. The FILETIME members are pairs of DWORDs with 4-byte alignment, so the
+    /// struct must be packed to 4: with natural 8-byte alignment of <see cref="long"/> every field after
+    /// <c>FileAttributes</c> would be read from the wrong offset.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
     internal struct ByHandleFileInformation
     {
         public uint FileAttributes;
@@ -69,6 +100,22 @@ internal static partial class NativeMethods
         SafeFileHandle file,
         int fileInformationClass,
         out FileAttributeTagInfo fileInformation,
+        uint bufferSize);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetFileBasicInfo(
+        SafeFileHandle file,
+        int fileInformationClass,
+        out FileBasicInfo fileInformation,
+        uint bufferSize);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFileInformationByHandleEx", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetFileIdInfo(
+        SafeFileHandle file,
+        int fileInformationClass,
+        out FileIdInfo fileInformation,
         uint bufferSize);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
