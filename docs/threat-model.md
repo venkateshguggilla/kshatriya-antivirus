@@ -1,4 +1,4 @@
-# Threat model (draft, M11)
+# Threat model (draft, M12)
 
 Scope: the M1–M4 scanner, service, workers and response component, plus threats that later milestones must design for. Reviewed at every milestone.
 

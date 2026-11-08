@@ -133,5 +133,5 @@ Labels: **P** prototype/educational · **B** beta for trusted testers. Nothing h
 | M9 | Optional local ML scoring (EMBER-style `pe-v1` features, JSON tree/logistic models in pure C#, no native runtime), off by default, no model shipped ✔ ([ADR 0011](adr/0011-local-ml-scoring.md)) | P |
 | M10 | Network protection: IP blocklists from signed content as WFP filters in a dynamic session (fail open) ✔ ([ADR 0012](adr/0012-network-protection-wfp.md)) | P |
 | M11 | Release packaging (self-contained zip, checksums, dependency inventory), optional signing pipeline, verified install ✔; MSI/MSIX and product auto-update pending owner decisions ([ADR 0013](adr/0013-packaging-and-signing.md)) | P |
-| M12 | Release hardening: fuzzing, performance budgets, false-positive corpus, disclosure process | B |
+| M12 | Release hardening: CI release gates (performance budget, System32 false-positive check), dependency audit, nightly fuzzing, disclosure process ✔ ([release checklist](release-checklist.md)) | P |
 | M13+ | Optional kernel minifilter (Microsoft Scanner sample model) | P |

@@ -35,6 +35,17 @@ jobs:
         # A hung test fails the run after 5 minutes and names the test, instead of stalling the job.
         run: dotnet test Sentinel.slnx --no-build -c Release --logger trx --results-directory TestResults --blame-hang-timeout 5m --blame-hang-dump-type mini
 
+      - name: Dependency vulnerability audit
+        shell: pwsh
+        run: |
+          $report = dotnet list Sentinel.slnx package --vulnerable --include-transitive 2>&1 | Out-String
+          Write-Host $report
+          if ($report -match 'has the following vulnerable packages') { throw 'Vulnerable dependencies found.' }
+
+      - name: Release gates (performance budget, false positives on System32)
+        shell: pwsh
+        run: ./scripts/Test-ReleaseGates.ps1
+
       - name: Fuzz smoke (100k iterations per parser)
         run: dotnet run -c Release --no-build --project tools/Sentinel.Fuzz -- all 100000
 
@@ -43,4 +54,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: TestResults
+          path: |
+            TestResults
+            artifacts/release-gates.json

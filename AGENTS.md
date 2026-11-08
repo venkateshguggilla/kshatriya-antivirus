@@ -30,4 +30,5 @@
 - Real-time monitoring is user mode and runs as the service: never follow its events into the service data folder, never terminate processes, keep queues bounded and treat lost events as a reason to rescan ([ADR 0009](docs/adr/0009-user-mode-real-time-monitoring.md)).
 - Behaviour detection (ransomware) produces suspicious findings only and never triggers automatic action ([ADR 0010](docs/adr/0010-ransomware-behaviour-detection.md)). Decoy files are opt-in.
 - Content updates are accepted only as signed `.sntu` packages ([ADR 0008](docs/adr/0008-signed-content-updates.md)): never parse a manifest before its signature is verified, never weaken anti-rollback or expiry checks, never commit private signing keys.
+- Keep the release gates green (`scripts/Test-ReleaseGates.ps1`): no finding on System32, performance budget met. Never raise a budget or exclude a path to make a gate pass without recording why.
 - Record significant design decisions as ADRs in `docs/adr`.

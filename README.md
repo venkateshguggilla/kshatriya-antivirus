@@ -1,10 +1,10 @@
 # Sentinel
 
-> **Status: Milestone 11 prototype.** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
+> **Status: Milestone 12 prototype (roadmap M1–M12 complete as prototypes).** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
 
 "Sentinel" is a working name and will change before any release.
 
-## What works today (M1–M11)
+## What works today (M1–M12)
 
 - `sentinel scan <path>...`: on-demand, **read-only** scan of files and folders
   - **Sandboxed parsing (M3):** file contents are analysed in separate worker processes. Each worker runs on a restricted token with the account SID deny-only and low integrity, inside a Job Object (one process, memory cap, killed with its parent) with process mitigations. Workers cannot write your files, start programs or read files private to your account. A crashed or hung worker is replaced and the item is reported as not scanned. `--no-sandbox` turns this off for development only.
@@ -46,6 +46,8 @@
 - **Network protection (M10, opt-in):** with `"networkProtection": true` the service turns IP blocklists from signed content packages (`*.netblock`) into Windows Filtering Platform filters that block outbound connections to those addresses. The filters live in a dynamic session, so they disappear if the service stops (it never strands the machine offline), and broad or local ranges are refused. **IP only** (no domain or URL filtering); no blocklist is published by this project.
 
 - **Release packaging (M11):** `./scripts/Build-Release.ps1` builds a self-contained `Sentinel-<version>-win-x64.zip` (service, worker, CLI, app) with `SHA256SUMS.txt`, a dependency inventory and the licence files. Binaries are Authenticode-signed only when a certificate is supplied; otherwise the release is marked **UNSIGNED**. `Install-SentinelService.ps1 -FromRelease <folder> [-RequireSignature]` verifies every file before installing. An MSI/MSIX installer and automatic product updates are not built yet (they need licensing, certificate and hosting decisions, see [ADR 0013](docs/adr/0013-packaging-and-signing.md)).
+
+- **Release hardening (M12):** every push runs a dependency vulnerability audit and release gates (a performance budget through the sandboxed workers, and a false-positive check that fails on any finding in `C:\Windows\System32`); parsers are fuzzed nightly at 1,000,000 iterations each. [SECURITY.md](SECURITY.md) describes private reporting and response targets. The [release checklist](docs/release-checklist.md) lists what is still missing before a beta label.
 
 Scans without `--quarantine` (and the service without quarantine requests or schedules) **never modify, move or delete files**.
 
@@ -218,7 +220,7 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 
 ## Roadmap
 
-See [docs/architecture.md](docs/architecture.md#roadmap). Next: M12 release hardening (performance budgets, false-positive checks, dependency audit, disclosure process).
+See [docs/architecture.md](docs/architecture.md#roadmap). All planned user-mode milestones (M1–M12) exist as prototypes. What a beta would still need is listed in the [release checklist](docs/release-checklist.md). The optional kernel minifilter (M13+) stays out of scope until the user-mode design has been reviewed.
 
 ## Security
 

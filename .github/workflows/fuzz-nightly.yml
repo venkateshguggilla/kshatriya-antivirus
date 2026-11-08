@@ -1,0 +1,35 @@
+name: fuzz-nightly
+
+# Longer mutation fuzzing than the per-push smoke run: 1,000,000 iterations per target with a
+# date-based seed, so every night explores different inputs. Crashing inputs are uploaded.
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Fetch YARA-X (hash-pinned)
+        shell: pwsh
+        run: ./scripts/Get-YaraX.ps1
+      - name: Fuzz all parsers
+        shell: pwsh
+        run: |
+          $seed = [int](Get-Date -Format 'yyyyMMdd')
+          dotnet run -c Release --project tools/Sentinel.Fuzz -- all 1000000 $seed "$env:RUNNER_TEMP/fuzz-crashes"
+      - name: Upload crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: ${{ runner.temp }}/fuzz-crashes
