@@ -30,6 +30,14 @@ public sealed record CliOptions
 
     public IReadOnlyList<string> SignatureFiles { get; init; } = [];
 
+    public IReadOnlyList<string> RuleFiles { get; init; } = [];
+
+    public bool NoHeuristics { get; init; }
+
+    public bool HeuristicsIncludeSigned { get; init; }
+
+    public int? ArchiveDepth { get; init; }
+
     public long? MaxFileSizeBytes { get; init; }
 
     public TimeSpan? Timeout { get; init; }
@@ -37,7 +45,7 @@ public sealed record CliOptions
     public int? Parallelism { get; init; }
 
     public const string HelpText = """
-        Sentinel scanner (milestone 1, read-only prototype)
+        Sentinel scanner (milestone 2, read-only prototype)
 
         Usage:
           sentinel scan <path>... [options]
@@ -46,10 +54,14 @@ public sealed record CliOptions
           sentinel help
 
         Options:
-          --json                 Write the report as JSON (schema: docs/schemas/scan-report.v1.schema.json)
+          --json                 Write the report as JSON (schema: docs/schemas/scan-report.v2.schema.json)
           --output <file>        Write the report to a file instead of standard output
           --include-clean        List clean items in the report (counts are always included)
           --signatures <file>    Load an additional hash database (repeatable)
+          --rules <file>         Load additional YARA rules (repeatable; includes are disabled)
+          --no-heuristics        Disable static PE heuristics
+          --heuristics-include-signed  Also score validly signed files (for false-positive evaluation)
+          --archive-depth <n>    Nested archive depth to inspect, 0-10 (default 3; 0 disables)
           --max-file-size <MiB>  Skip files larger than this (default 256)
           --timeout <seconds>    Per-item time limit (default 60)
           --parallelism <n>      Items scanned concurrently (default: CPU count, max 16)
@@ -58,7 +70,8 @@ public sealed record CliOptions
           --name <label>         Display name for --stdin content
 
         Exit codes:
-          0 clean   1 detections   2 incomplete (items not scanned)   3 usage error   4 fatal error
+          0 clean   1 detections   5 suspicious only   2 incomplete   3 usage error   4 fatal error
+          (precedence: 1, then 5, then 2)
 
         This tool never modifies, moves or deletes files.
         """;
@@ -85,6 +98,7 @@ public sealed record CliOptions
 
         var targets = new List<string>();
         var signatures = new List<string>();
+        var rules = new List<string>();
         var options = new CliOptions { Command = CliCommand.Scan };
 
         for (int i = 1; i < args.Count; i++)
@@ -112,6 +126,18 @@ public sealed record CliOptions
                     break;
                 case "--signatures":
                     signatures.Add(Next(args, ref i, arg));
+                    break;
+                case "--rules":
+                    rules.Add(Next(args, ref i, arg));
+                    break;
+                case "--no-heuristics":
+                    options = options with { NoHeuristics = true };
+                    break;
+                case "--heuristics-include-signed":
+                    options = options with { HeuristicsIncludeSigned = true };
+                    break;
+                case "--archive-depth":
+                    options = options with { ArchiveDepth = (int)ParseRange(Next(args, ref i, arg), arg, min: 0, max: 10) };
                     break;
                 case "--max-file-size":
                     long mib = ParsePositive(Next(args, ref i, arg), arg, max: 1024 * 1024);
@@ -148,7 +174,7 @@ public sealed record CliOptions
             throw new CliUsageException("No scan targets given.");
         }
 
-        return options with { Targets = targets, SignatureFiles = signatures };
+        return options with { Targets = targets, SignatureFiles = signatures, RuleFiles = rules };
     }
 
     private static string Next(IReadOnlyList<string> args, ref int i, string option)
@@ -161,11 +187,13 @@ public sealed record CliOptions
         return args[++i];
     }
 
-    private static long ParsePositive(string value, string option, long max)
+    private static long ParsePositive(string value, string option, long max) => ParseRange(value, option, 1, max);
+
+    private static long ParseRange(string value, string option, long min, long max)
     {
-        if (!long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out long result) || result < 1 || result > max)
+        if (!long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out long result) || result < min || result > max)
         {
-            throw new CliUsageException($"Option '{option}' expects an integer between 1 and {max}.");
+            throw new CliUsageException($"Option '{option}' expects an integer between {min} and {max}.");
         }
 
         return result;

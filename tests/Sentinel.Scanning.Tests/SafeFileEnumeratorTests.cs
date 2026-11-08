@@ -114,6 +114,40 @@ public class SafeFileEnumeratorTests
     }
 
     [Fact]
+    public void Access_denied_directory_is_reported_and_walk_continues()
+    {
+        using var temp = new TempDirectory();
+        temp.File("visible.txt", [1]);
+        string locked = temp.Dir("locked");
+        temp.File(@"locked\hidden.txt", [2]);
+        temp.File(@"after\later.txt", [3]);
+
+        var dir = new DirectoryInfo(locked);
+        var deny = new System.Security.AccessControl.FileSystemAccessRule(
+            System.Security.Principal.WindowsIdentity.GetCurrent().User!,
+            System.Security.AccessControl.FileSystemRights.ListDirectory | System.Security.AccessControl.FileSystemRights.ReadData,
+            System.Security.AccessControl.AccessControlType.Deny);
+        var acl = dir.GetAccessControl();
+        acl.AddAccessRule(deny);
+        dir.SetAccessControl(acl);
+        try
+        {
+            WalkEntry[] entries = SafeFileEnumerator.Walk(temp.Path).ToArray();
+
+            WalkEntry failure = Assert.Single(entries, e => !e.IsCandidate);
+            Assert.Equal(locked, failure.Path);
+            Assert.Equal(ScanStatus.NotScanned, failure.Result!.Status);
+            Assert.Equal(ScanReason.AccessDenied, failure.Result.Reason);
+            Assert.Equal(["later.txt", "visible.txt"], entries.Where(e => e.IsCandidate).Select(e => Path.GetFileName(e.Path)).Order());
+        }
+        finally
+        {
+            acl.RemoveAccessRule(deny);
+            dir.SetAccessControl(acl);
+        }
+    }
+
+    [Fact]
     public void Missing_target_is_reported_not_found()
     {
         using var temp = new TempDirectory();

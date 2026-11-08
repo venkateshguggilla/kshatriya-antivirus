@@ -117,12 +117,40 @@ public static class SafeFileEnumerator
     /// <summary>Reads one directory level. Returns a failure result if the directory could not be (fully) listed.</summary>
     private static ScanItemResult? ReadDirectory(string directory, List<WalkEntry> entries, List<string> subdirectories)
     {
-        var enumerable = new FileSystemEnumerable<(string Path, FileAttributes Attributes, long Length)>(
-            directory,
-            static (ref FileSystemEntry e) => (e.ToFullPath(), e.Attributes, e.IsDirectory ? 0 : e.Length),
-            s_options);
+        // The directory handle is opened when the enumerable is constructed, so construction can fail
+        // (for example access denied) just like MoveNext; both are guarded.
+        IEnumerator<(string Path, FileAttributes Attributes, long Length)> enumerator;
+        try
+        {
+            enumerator = new FileSystemEnumerable<(string Path, FileAttributes Attributes, long Length)>(
+                directory,
+                static (ref FileSystemEntry e) => (e.ToFullPath(), e.Attributes, e.IsDirectory ? 0 : e.Length),
+                s_options).GetEnumerator();
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            return DirectoryFailure(directory, ex);
+        }
 
-        using var enumerator = enumerable.GetEnumerator();
+        using (enumerator)
+        {
+            return ReadEntries(directory, enumerator, entries, subdirectories);
+        }
+    }
+
+    private static ScanItemResult DirectoryFailure(string directory, Exception ex) => ex switch
+    {
+        UnauthorizedAccessException => ScanItemResult.Fail(directory, ScanItemKind.Directory, ScanReason.AccessDenied, ex.Message),
+        DirectoryNotFoundException => ScanItemResult.Fail(directory, ScanItemKind.Directory, ScanReason.NotFound, ex.Message),
+        _ => ScanItemResult.Fail(directory, ScanItemKind.Directory, ScanReason.IoError, ex.Message),
+    };
+
+    private static ScanItemResult? ReadEntries(
+        string directory,
+        IEnumerator<(string Path, FileAttributes Attributes, long Length)> enumerator,
+        List<WalkEntry> entries,
+        List<string> subdirectories)
+    {
         while (true)
         {
             try
@@ -132,17 +160,9 @@ public static class SafeFileEnumerator
                     return null;
                 }
             }
-            catch (UnauthorizedAccessException ex)
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
-                return ScanItemResult.Fail(directory, ScanItemKind.Directory, ScanReason.AccessDenied, ex.Message);
-            }
-            catch (DirectoryNotFoundException ex)
-            {
-                return ScanItemResult.Fail(directory, ScanItemKind.Directory, ScanReason.NotFound, ex.Message);
-            }
-            catch (IOException ex)
-            {
-                return ScanItemResult.Fail(directory, ScanItemKind.Directory, ScanReason.IoError, ex.Message);
+                return DirectoryFailure(directory, ex);
             }
 
             var (path, attributes, length) = enumerator.Current;

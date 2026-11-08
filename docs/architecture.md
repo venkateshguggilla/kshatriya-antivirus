@@ -23,7 +23,7 @@ This document describes the target architecture and what exists today. Planned p
  Defender stays ON · optional minifilter driver = final phase
 ```
 
-## What exists in M1
+## What exists (M1–M2)
 
 ```
 sentinel.exe (Sentinel.Cli)
@@ -33,8 +33,21 @@ sentinel.exe (Sentinel.Cli)
        ├─ SafeFileOpener      → CreateFileW(GENERIC_READ, share all, OPEN_REPARSE_POINT); re-checks the
        │                        handle's attributes to close enumeration→open races
        ├─ SHA-256 (streamed, size- and time-limited)
-       └─ IDetectionEngine[]  → HashEngine (Sentinel.Engines.Hash)
+       ├─ AuthenticodeTrustProvider → WinVerifyTrust on the open handle: embedded, then catalog; offline
+       ├─ IDetectionEngine[]
+       │    ├─ HashEngine          (Sentinel.Engines.Hash)  exact SHA-256 signatures
+       │    ├─ YaraEngine          (Sentinel.Engines.Yara)  YARA-X rules via C API, includes disabled
+       │    └─ PeHeuristicEngine   (Sentinel.Engines.Pe)    static PE indicators → "suspicious" only
+       └─ ZipExpander         → in-memory, metered expansion of ZIP-based containers under a per-item
+                                budget; every engine runs on every entry; findings carry the entry path
 ```
+
+### Verdict aggregation
+
+- Any detection whose category is not `suspicious` → item status `detected`.
+- Only `suspicious` findings (PE heuristics, rules without a category) → status `suspicious`. Never auto-actioned.
+- Findings found before a timeout or archive limit are kept; the item is marked partial (`incomplete: true`).
+- Validly signed executables are not scored by PE heuristics (hash and YARA still apply).
 
 ### Extension point
 
@@ -57,7 +70,8 @@ Engines and (future) protection modules are compiled in and shipped signed. Thir
 | `clean` | Every engine ran; nothing found | no |
 | `detected` | At least one detection | no |
 | `skipped` | Not opened by policy: `reparsePoint`, `cloudPlaceholder`, `loopDetected` | no |
-| `notScanned` | Should have been scanned but wasn't: `tooLarge`, `timeout`, `accessDenied`, `locked`, `notFound`, `ioError`, `engineError` | **yes** |
+| `suspicious` | Only heuristic findings | partial findings only |
+| `notScanned` | Should have been scanned but wasn't: `tooLarge`, `timeout`, `accessDenied`, `locked`, `notFound`, `ioError`, `engineError`, `archiveLimit`, `archiveEncrypted`, `archiveError` | **yes** |
 
 Detections carry a category (`malware`, `pua`, `suspicious`, `test`) and a confidence (`low`, `medium`, `high`). Only high-confidence detections may ever drive automatic actions (from M4).
 
@@ -74,8 +88,8 @@ Labels: **P** prototype/educational · **B** beta for trusted testers. Nothing h
 
 | # | Milestone | Label |
 |---|---|---|
-| M1 | Foundation + read-only scanner CLI (**this milestone**) | P |
-| M2 | YARA-X rules, PE heuristics, Authenticode checks, archive scanning with limits | P |
+| M1 | Foundation + read-only scanner CLI ✔ | P |
+| M2 | YARA-X rules, PE heuristics, Authenticode checks, archive scanning with limits ✔ | P |
 | M3 | Windows service, sandboxed scan workers, authenticated IPC, scheduler, verdict cache | P |
 | M4 | Encrypted quarantine, handle-based removal, restore, exclusions, audit log | P |
 | M5 | WinUI 3 app: dashboard, scan, detections, quarantine, protection, updates, settings; accessibility | P→B |

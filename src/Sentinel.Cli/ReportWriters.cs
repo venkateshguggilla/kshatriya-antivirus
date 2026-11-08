@@ -11,7 +11,7 @@ namespace Sentinel.Cli;
 /// </summary>
 public static class JsonReportWriter
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
 
     public static string Write(ScanReport report, string toolVersion)
     {
@@ -56,6 +56,8 @@ public static class JsonReportWriter
             json.WriteNumber("itemsSeen", s.ItemsSeen);
             json.WriteNumber("filesScanned", s.FilesScanned);
             json.WriteNumber("detected", s.Detected);
+            json.WriteNumber("suspicious", s.Suspicious);
+            json.WriteNumber("partial", s.Partial);
             json.WriteNumber("skipped", s.Skipped);
             json.WriteNumber("notScanned", s.NotScanned);
             json.WriteNumber("bytesScanned", s.BytesScanned);
@@ -100,6 +102,25 @@ public static class JsonReportWriter
             json.WriteString("message", item.Message);
         }
 
+        json.WriteBoolean("incomplete", item.IsIncomplete);
+
+        if (item.Trust is FileTrust trust)
+        {
+            json.WriteStartObject("trust");
+            json.WriteString("status", Wire(trust.Status));
+            if (trust.Source != TrustSource.None)
+            {
+                json.WriteString("source", Wire(trust.Source));
+            }
+
+            if (trust.Signer is not null)
+            {
+                json.WriteString("signer", trust.Signer);
+            }
+
+            json.WriteEndObject();
+        }
+
         json.WriteStartArray("detections");
         foreach (Detection d in item.Detections)
         {
@@ -111,6 +132,11 @@ public static class JsonReportWriter
             if (d.Description is not null)
             {
                 json.WriteString("description", d.Description);
+            }
+
+            if (d.Location is not null)
+            {
+                json.WriteString("location", d.Location);
             }
 
             json.WriteEndObject();
@@ -132,6 +158,7 @@ public static class JsonReportWriter
     {
         ScanStatus.Clean => "clean",
         ScanStatus.Detected => "detected",
+        ScanStatus.Suspicious => "suspicious",
         ScanStatus.Skipped => "skipped",
         ScanStatus.NotScanned => "notScanned",
         _ => throw new ArgumentOutOfRangeException(nameof(status)),
@@ -150,6 +177,9 @@ public static class JsonReportWriter
         ScanReason.NotFound => "notFound",
         ScanReason.IoError => "ioError",
         ScanReason.EngineError => "engineError",
+        ScanReason.ArchiveLimit => "archiveLimit",
+        ScanReason.ArchiveEncrypted => "archiveEncrypted",
+        ScanReason.ArchiveError => "archiveError",
         _ => throw new ArgumentOutOfRangeException(nameof(reason)),
     };
 
@@ -160,6 +190,22 @@ public static class JsonReportWriter
         DetectionCategory.Suspicious => "suspicious",
         DetectionCategory.TestFile => "test",
         _ => throw new ArgumentOutOfRangeException(nameof(category)),
+    };
+
+    public static string Wire(TrustStatus status) => status switch
+    {
+        TrustStatus.NotSigned => "notSigned",
+        TrustStatus.Valid => "valid",
+        TrustStatus.Invalid => "invalid",
+        _ => throw new ArgumentOutOfRangeException(nameof(status)),
+    };
+
+    public static string Wire(TrustSource source) => source switch
+    {
+        TrustSource.None => "none",
+        TrustSource.Embedded => "embedded",
+        TrustSource.Catalog => "catalog",
+        _ => throw new ArgumentOutOfRangeException(nameof(source)),
     };
 
     public static string Wire(DetectionConfidence confidence) => confidence switch
@@ -183,11 +229,18 @@ public static class TextReportWriter
 
         if (!quiet)
         {
-            foreach (ScanItemResult item in report.Items.Where(i => i.Status == ScanStatus.Detected))
+            foreach (ScanItemResult item in report.Items.Where(i => i.Status is ScanStatus.Detected or ScanStatus.Suspicious))
             {
                 foreach (Detection d in item.Detections)
                 {
-                    sb.Append(CultureInfo.InvariantCulture, $"DETECTED  {d.Name} ({JsonReportWriter.Wire(d.Category)}, {JsonReportWriter.Wire(d.Confidence)} confidence)  {item.Path}").AppendLine();
+                    string label = d.Category == DetectionCategory.Suspicious ? "SUSPICIOUS" : "DETECTED";
+                    string where = d.Location is null ? item.Path : $"{item.Path} > {d.Location}";
+                    sb.Append(CultureInfo.InvariantCulture, $"{label}  {d.Name} ({JsonReportWriter.Wire(d.Category)}, {JsonReportWriter.Wire(d.Confidence)} confidence)  {where}").AppendLine();
+                }
+
+                if (item.Reason != ScanReason.None)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"  partially scanned [{JsonReportWriter.Wire(item.Reason)}]: {item.Message}").AppendLine();
                 }
             }
 
@@ -209,9 +262,11 @@ public static class TextReportWriter
 
         string verdict = s.Detected > 0
             ? $"{s.Detected} item(s) detected. No files were changed; review the items above."
-            : s.NotScanned > 0
-                ? $"Nothing detected, but {s.NotScanned} item(s) could not be scanned."
-                : "Nothing detected.";
+            : s.Suspicious > 0
+                ? $"{s.Suspicious} item(s) look suspicious but are not confirmed malware. No files were changed; review before acting."
+                : s.NotScanned > 0
+                    ? $"Nothing detected, but {s.NotScanned} item(s) could not be scanned."
+                    : "Nothing detected.";
 
         sb.AppendLine(verdict);
         sb.Append(CultureInfo.InvariantCulture, $"Scanned {s.FilesScanned:N0} file(s), {FormatBytes(s.BytesScanned)} in {seconds:F2}s ({s.FilesScanned / seconds:N0} files/s). ")
@@ -225,7 +280,7 @@ public static class TextReportWriter
         ArgumentNullException.ThrowIfNull(item);
         return item.Status switch
         {
-            ScanStatus.Detected => string.Join(Environment.NewLine, item.Detections.Select(d => $"DETECTED  {d.Name}  {item.Path}")) + Environment.NewLine,
+            ScanStatus.Detected or ScanStatus.Suspicious => string.Join(Environment.NewLine, item.Detections.Select(d => $"DETECTED  {d.Name}  {item.Path}")) + Environment.NewLine,
             ScanStatus.Clean => $"Nothing detected in {item.Path}." + Environment.NewLine,
             _ => $"NOT SCANNED  [{JsonReportWriter.Wire(item.Reason)}]  {item.Path}" + Environment.NewLine,
         };

@@ -1,8 +1,12 @@
 using System.Reflection;
 using System.Text;
 using Sentinel.Core;
+using Sentinel.Engines;
 using Sentinel.Engines.Hash;
+using Sentinel.Engines.Pe;
+using Sentinel.Engines.Yara;
 using Sentinel.Scanning;
+using Sentinel.Scanning.Trust;
 
 namespace Sentinel.Cli;
 
@@ -45,32 +49,68 @@ public static class CliApp
                 return ExitCodes.Clean;
         }
 
-        HashEngine engine;
+        var engines = new List<IDetectionEngine>();
+        YaraEngine? yara = null;
         try
         {
-            engine = HashEngine.CreateDefault(options.SignatureFiles.Select(HashSignatureDatabase.LoadFile));
+            engines.Add(HashEngine.CreateDefault(options.SignatureFiles.Select(HashSignatureDatabase.LoadFile)));
+
+            if (YaraEngine.IsAvailable(out string? yaraUnavailable))
+            {
+                var sources = new List<YaraSource> { YaraEngine.BuiltInRules() };
+                sources.AddRange(options.RuleFiles.Select(f => new YaraSource(File.ReadAllText(f, Encoding.UTF8), Path.GetFileName(f))));
+                yara = YaraEngine.Create(sources, new YaraEngineOptions { MaxScanBytes = options.MaxFileSizeBytes ?? new ScanLimits().MaxFileSizeBytes });
+                engines.Add(yara);
+            }
+            else if (options.RuleFiles.Count > 0)
+            {
+                await stderr.WriteLineAsync($"error: --rules requires the YARA engine, which is unavailable: {yaraUnavailable}");
+                return ExitCodes.Fatal;
+            }
+            else
+            {
+                await stderr.WriteLineAsync($"warning: YARA engine unavailable ({yaraUnavailable}). Scanning without YARA rules.");
+            }
+
+            if (!options.NoHeuristics)
+            {
+                engines.Add(new PeHeuristicEngine(new PeHeuristicOptions { SkipValidlySigned = !options.HeuristicsIncludeSigned }));
+            }
         }
         catch (Exception ex) when (ex is FormatException or IOException or UnauthorizedAccessException)
         {
-            await stderr.WriteLineAsync($"error: could not load signatures: {ex.Message}");
+            yara?.Dispose();
+            await stderr.WriteLineAsync($"error: could not load signatures or rules: {ex.Message}");
+            return ExitCodes.Fatal;
+        }
+        catch (YaraCompileException ex)
+        {
+            await stderr.WriteLineAsync($"error: {ex.Message}");
             return ExitCodes.Fatal;
         }
 
+        using var yaraLifetime = yara;
         var limits = new ScanLimits();
         limits = limits with
         {
             MaxFileSizeBytes = options.MaxFileSizeBytes ?? limits.MaxFileSizeBytes,
             PerItemTimeout = options.Timeout ?? limits.PerItemTimeout,
             MaxDegreeOfParallelism = options.Parallelism ?? limits.MaxDegreeOfParallelism,
+            Archives = options.ArchiveDepth is int depth ? limits.Archives with { MaxDepth = depth } : limits.Archives,
         };
 
-        var runner = new ScanRunner([engine], new ScanOptions { Limits = limits, IncludeCleanItems = options.IncludeClean });
+        var runner = new ScanRunner(engines, new ScanOptions
+        {
+            Limits = limits,
+            IncludeCleanItems = options.IncludeClean,
+            TrustProvider = new AuthenticodeTrustProvider(),
+        });
 
         ScanReport report;
         try
         {
             report = options.ReadStdin
-                ? await ScanStdinAsync(runner, [engine.Descriptor.ToInfo()], stdin, options.StdinName, cancellationToken)
+                ? await ScanStdinAsync(runner, engines.Select(e => e.Descriptor.ToInfo()).ToArray(), stdin, options.StdinName, cancellationToken)
                 : await runner.ScanPathsAsync(options.Targets, progress: null, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -101,6 +141,7 @@ public static class CliApp
         }
 
         return report.HasDetections ? ExitCodes.Detections
+            : report.HasSuspicious ? ExitCodes.Suspicious
             : report.IsComplete ? ExitCodes.Clean
             : ExitCodes.Incomplete;
     }
@@ -109,7 +150,7 @@ public static class CliApp
     {
         DateTimeOffset started = DateTimeOffset.UtcNow;
         ScanItemResult item = await runner.ScanStreamAsync(stdin, name, ct);
-        bool scanned = item.Status is ScanStatus.Clean or ScanStatus.Detected;
+        bool scanned = item.Status is ScanStatus.Clean or ScanStatus.Detected or ScanStatus.Suspicious;
         return new ScanReport
         {
             Targets = [name],
@@ -121,6 +162,8 @@ public static class CliApp
                 ItemsSeen = 1,
                 FilesScanned = scanned ? 1 : 0,
                 Detected = item.Status == ScanStatus.Detected ? 1 : 0,
+                Suspicious = item.Status == ScanStatus.Suspicious ? 1 : 0,
+                Partial = item.IsIncomplete && item.Status != ScanStatus.NotScanned ? 1 : 0,
                 Skipped = item.Status == ScanStatus.Skipped ? 1 : 0,
                 NotScanned = item.Status == ScanStatus.NotScanned ? 1 : 0,
                 BytesScanned = scanned ? item.SizeBytes ?? 0 : 0,

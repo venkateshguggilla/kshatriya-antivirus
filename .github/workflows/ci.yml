@@ -21,6 +21,10 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Fetch YARA-X (hash-pinned)
+        shell: pwsh
+        run: ./scripts/Get-YaraX.ps1
+
       - name: Restore
         run: dotnet restore Sentinel.slnx
 
@@ -29,6 +33,9 @@ jobs:
 
       - name: Test
         run: dotnet test Sentinel.slnx --no-build -c Release --logger trx --results-directory TestResults
+
+      - name: Fuzz smoke (100k iterations per parser)
+        run: dotnet run -c Release --no-build --project tools/Sentinel.Fuzz -- all 100000
 
       - name: Upload test results
         if: always()

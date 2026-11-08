@@ -11,10 +11,14 @@
 
 ## Engineering rules
 
+- Setup: run `./scripts/Get-YaraX.ps1` once (downloads the hash-pinned YARA-X DLL into the git-ignored `native/` folder).
 - Build: `dotnet build Sentinel.slnx` must have **zero warnings** (warnings are errors). Test: `dotnet test Sentinel.slnx`.
+- Fuzz: `dotnet run -c Release --project tools/Sentinel.Fuzz -- all 1000000` before changing a parser.
 - Package versions live only in `Directory.Packages.props`.
 - Code that handles files must open them through `SafeFileOpener` / `SafeFileEnumerator`: never follow reparse points, never read cloud placeholders, always enforce size and time limits, and report every item that was not scanned.
 - Scanning code is read-only. Anything that changes user files belongs in the (future) response/quarantine component, must act on the same handle it verified, and must be reversible.
 - Engines implement `IDetectionEngine` and must be pure: no file system, network, or global state access.
+- Heuristic engines report `DetectionCategory.Suspicious` only. Confirmed categories (`malware`, `pua`) come from exact signatures or rules with explicit metadata.
+- Synthetic test executables come from `tests/Shared/PeBuilder.cs`; never commit real binaries.
 - Public report formats are versioned (`docs/schemas`). Map enum values to wire names explicitly; never serialize enum member names directly.
 - Record significant design decisions as ADRs in `docs/adr`.

@@ -1,6 +1,6 @@
-# Threat model (draft, M1)
+# Threat model (draft, M2)
 
-Scope: the M1 command-line scanner, plus threats that later milestones must design for. Reviewed at every milestone.
+Scope: the M1–M2 command-line scanner, plus threats that later milestones must design for. Reviewed at every milestone.
 
 ## Assets
 
@@ -30,8 +30,11 @@ Scope: the M1 command-line scanner, plus threats that later milestones must desi
 | T6 | Malformed signature database half-loads or misbehaves | Strict v1 parser; any malformed line rejects the whole file | M1 ✔ (signing in M6) |
 | T7 | Faulty engine crashes or hangs the scan (DoS) | Exceptions are contained per item; cancellation-based timeouts | M1 ✔ (process isolation in M3) |
 | T8 | Silent incompleteness gives false assurance (Repudiation) | Every unscanned item is reported with a reason; exit code 2; `complete` flag in JSON | M1 ✔ |
-| T9 | Malicious content exploits a parser (Elevation) | Memory-safe parsers now; sandboxed low-integrity workers with Job Object limits and fuzzing later | M2–M3 |
-| T10 | Archive bombs and path traversal from archive entry names | Depth/size/ratio/entry limits; in-memory extraction; entry names never used as paths | M2 |
+| T9 | Malicious content exploits a parser (Elevation) | PE, ZIP and hash-database parsers are memory-safe C# with explicit bounds checks; 1M-iteration mutation fuzzing per parser; YARA-X (Rust) runs in-process for now; sandboxed low-integrity workers with Job Object limits in M3 | M2 partial, M3 |
+| T10 | Archive bombs and path traversal from archive entry names | Per-item depth (3), entry (10,000), entry-size (64 MiB), total-size (256 MiB) and ratio (200:1) limits; decompression is metered, declared sizes are not trusted; extraction is in memory only; entry names are display-only and sanitised | M2 ✔ |
+| T16 | Compromised third-party native library (supply chain) | YARA-X DLL fetched from the official release and verified against a pinned SHA-256; not committed; to be signed or built from source before release | M2 ✔ (signing M11) |
+| T17 | Signed malware abuses the "skip heuristics for signed files" rule | Hash and YARA engines still scan signed files; trust is verified offline through the scanned handle; invalid signatures are not trusted; the trade-off is documented | Accepted trade-off |
+| T18 | Trust verification triggers network access (privacy, hangs) | WinVerifyTrust runs with revocation checks off and cache-only URL retrieval | M2 ✔ |
 | T11 | Local malware spoofs the UI or service over IPC (Spoofing/Elevation) | Pipe access list, verification of both ends, admin-only weakening operations, audit | M3 |
 | T12 | Quarantine or restore abused to move or delete arbitrary files | Act on the verified handle only; re-validate restore paths; SYSTEM-only vault | M4 |
 | T13 | Update tampering, rollback or freeze attacks | Ed25519-signed manifests, monotonic versions, expiry, offline root key | M6 |
@@ -42,4 +45,7 @@ Scope: the M1 command-line scanner, plus threats that later milestones must desi
 
 - Reading a file may update its last-access time if the volume has last-access updates enabled. Content, size, attributes and write times are never changed.
 - Directory-cycle detection by identity is defence in depth: because links are never followed, M1 cannot be led into a cycle. No test constructs a true cycle (NTFS does not allow directory hard links).
-- Hash databases are not yet signed.
+- Hash databases and rule files are not yet signed.
+- The ZIP central directory is read by `System.IO.Compression` before entry limits apply; its size is bounded by the per-file size limit (256 MiB) but not otherwise capped.
+- YARA scans hold the whole file in memory (up to the size limit); many large files in parallel can use significant memory.
+- Mutation fuzzing is unguided; coverage-guided fuzzing is future work.

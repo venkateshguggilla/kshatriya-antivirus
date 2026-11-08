@@ -8,5 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Sentinel.Scanning\Sentinel.Scanning.csproj" />
     <ProjectReference Include="..\Sentinel.Engines.Hash\Sentinel.Engines.Hash.csproj" />
+    <ProjectReference Include="..\Sentinel.Engines.Pe\Sentinel.Engines.Pe.csproj" />
+    <ProjectReference Include="..\Sentinel.Engines.Yara\Sentinel.Engines.Yara.csproj" />
   </ItemGroup>
 </Project>

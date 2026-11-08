@@ -14,7 +14,7 @@ public sealed record EngineDescriptor(string Id, string Version, string ContentV
 /// </summary>
 public sealed class ScanSubject
 {
-    public ScanSubject(string displayPath, long length, string sha256, Stream content)
+    public ScanSubject(string displayPath, long length, string sha256, Stream content, FileTrust? trust = null, string? location = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(displayPath);
         ArgumentException.ThrowIfNullOrEmpty(sha256);
@@ -28,6 +28,8 @@ public sealed class ScanSubject
         Length = length;
         Sha256 = sha256;
         Content = content;
+        Trust = trust;
+        Location = location;
     }
 
     /// <summary>Path or name used only for reporting. Engines must not open this path themselves.</summary>
@@ -40,6 +42,33 @@ public sealed class ScanSubject
 
     /// <summary>Read-only, seekable view of the content. Engines must not write to or dispose it.</summary>
     public Stream Content { get; }
+
+    /// <summary>Authenticode result for the top-level file, when it was checked. Null for archive entries and streams.</summary>
+    public FileTrust? Trust { get; }
+
+    /// <summary>Path inside a container, or null for a top-level item.</summary>
+    public string? Location { get; }
+}
+
+/// <summary>
+/// Thrown by an engine when its own time budget elapsed. The pipeline reports the item as
+/// <see cref="ScanReason.Timeout"/> rather than as an engine failure.
+/// </summary>
+public sealed class EngineTimeoutException : Exception
+{
+    public EngineTimeoutException()
+    {
+    }
+
+    public EngineTimeoutException(string message)
+        : base(message)
+    {
+    }
+
+    public EngineTimeoutException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }
 
 /// <summary>

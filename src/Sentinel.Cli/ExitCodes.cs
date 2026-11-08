@@ -17,4 +17,7 @@ public static class ExitCodes
 
     /// <summary>The scan could not run (for example an invalid signature database or unwritable output file).</summary>
     public const int Fatal = 4;
+
+    /// <summary>No confirmed detections, but at least one heuristic (suspicious) finding. Takes precedence over 2.</summary>
+    public const int Suspicious = 5;
 }

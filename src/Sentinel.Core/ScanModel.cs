@@ -14,8 +14,11 @@ public enum ScanStatus
     /// <summary>Fully scanned by every engine; nothing found.</summary>
     Clean,
 
-    /// <summary>At least one engine reported a detection.</summary>
+    /// <summary>At least one engine reported a detection other than <see cref="DetectionCategory.Suspicious"/>.</summary>
     Detected,
+
+    /// <summary>Only heuristic (suspicious) findings; never treated as confirmed malware.</summary>
+    Suspicious,
 
     /// <summary>Intentionally not scanned because of policy (for example a reparse point or cloud placeholder).</summary>
     Skipped,
@@ -38,6 +41,44 @@ public enum ScanReason
     NotFound,
     IoError,
     EngineError,
+
+    /// <summary>An archive limit (depth, entries, size, compression ratio) stopped expansion.</summary>
+    ArchiveLimit,
+
+    /// <summary>The archive contains encrypted entries that cannot be inspected.</summary>
+    ArchiveEncrypted,
+
+    /// <summary>The archive is corrupt or uses an unsupported feature.</summary>
+    ArchiveError,
+}
+
+/// <summary>Result of an Authenticode signature check.</summary>
+public enum TrustStatus
+{
+    /// <summary>No embedded or catalog signature was found.</summary>
+    NotSigned,
+
+    /// <summary>A signature was found and chains to a trusted root; the content matches it.</summary>
+    Valid,
+
+    /// <summary>A signature was found but failed verification (tampered, untrusted root, distrusted, ...).</summary>
+    Invalid,
+}
+
+/// <summary>Where a valid signature came from.</summary>
+public enum TrustSource
+{
+    None,
+    Embedded,
+    Catalog,
+}
+
+/// <summary>Code-signing information for a file.</summary>
+public sealed record FileTrust(TrustStatus Status, TrustSource Source = TrustSource.None, string? Signer = null)
+{
+    public static FileTrust NotSigned { get; } = new(TrustStatus.NotSigned);
+
+    public bool IsValid => Status == TrustStatus.Valid;
 }
 
 /// <summary>Broad classification of a detection.</summary>
@@ -63,7 +104,11 @@ public sealed record Detection(
     string Name,
     DetectionCategory Category,
     DetectionConfidence Confidence,
-    string? Description = null);
+    string? Description = null)
+{
+    /// <summary>Path inside a container (for example <c>docs/a.zip&gt;payload.exe</c>), or null for the item itself.</summary>
+    public string? Location { get; init; }
+}
 
 /// <summary>The result for one scanned (or not scanned) item.</summary>
 public sealed record ScanItemResult
@@ -86,8 +131,15 @@ public sealed record ScanItemResult
     /// <summary>Optional human-readable detail, such as an OS error message.</summary>
     public string? Message { get; init; }
 
-    /// <summary>True when the item counts against scan completeness (see <see cref="ScanStatus.NotScanned"/>).</summary>
-    public bool IsIncomplete => Status == ScanStatus.NotScanned;
+    /// <summary>Signature information, when the item is a signed-capable executable that was checked.</summary>
+    public FileTrust? Trust { get; init; }
+
+    /// <summary>
+    /// True when the item counts against scan completeness: it was not scanned, or it has findings
+    /// but could only be partially scanned (a non-<see cref="ScanReason.None"/> reason).
+    /// </summary>
+    public bool IsIncomplete => Status == ScanStatus.NotScanned
+        || (Status is ScanStatus.Detected or ScanStatus.Suspicious && Reason != ScanReason.None);
 
     public static ScanItemResult Skip(string path, ScanItemKind kind, ScanReason reason, string? message = null) =>
         new() { Path = path, Kind = kind, Status = ScanStatus.Skipped, Reason = reason, Message = message };
@@ -107,6 +159,28 @@ public sealed record ScanLimits
 
     /// <summary>Number of items scanned concurrently.</summary>
     public int MaxDegreeOfParallelism { get; init; } = Math.Clamp(Environment.ProcessorCount, 1, 16);
+
+    /// <summary>Archive expansion limits.</summary>
+    public ArchiveLimits Archives { get; init; } = new();
+}
+
+/// <summary>Limits that protect against archive bombs. All limits apply per top-level item.</summary>
+public sealed record ArchiveLimits
+{
+    /// <summary>Maximum nesting depth. 0 disables archive expansion.</summary>
+    public int MaxDepth { get; init; } = 3;
+
+    /// <summary>Maximum number of entries inspected across all nested archives of one item.</summary>
+    public int MaxEntries { get; init; } = 10_000;
+
+    /// <summary>Maximum decompressed size of a single entry.</summary>
+    public long MaxEntryBytes { get; init; } = 64L * 1024 * 1024;
+
+    /// <summary>Maximum total decompressed bytes across all nested archives of one item.</summary>
+    public long MaxTotalBytes { get; init; } = 256L * 1024 * 1024;
+
+    /// <summary>Maximum decompressed-to-compressed ratio for entries larger than 1 MiB.</summary>
+    public int MaxCompressionRatio { get; init; } = 200;
 }
 
 /// <summary>Identity and content version of an engine that took part in a scan.</summary>
@@ -120,6 +194,11 @@ public sealed record ScanSummary
     public long FilesScanned { get; init; }
 
     public long Detected { get; init; }
+
+    public long Suspicious { get; init; }
+
+    /// <summary>Items with findings that could only be partially scanned.</summary>
+    public long Partial { get; init; }
 
     public long Skipped { get; init; }
 
@@ -150,5 +229,7 @@ public sealed record ScanReport
 
     public bool HasDetections => Summary.Detected > 0;
 
-    public bool IsComplete => Summary.NotScanned == 0;
+    public bool HasSuspicious => Summary.Suspicious > 0;
+
+    public bool IsComplete => Summary.NotScanned == 0 && Summary.Partial == 0;
 }

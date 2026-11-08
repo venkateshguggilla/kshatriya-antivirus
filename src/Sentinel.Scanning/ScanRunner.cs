@@ -5,6 +5,8 @@ using System.Threading.Channels;
 using Microsoft.Win32.SafeHandles;
 using Sentinel.Core;
 using Sentinel.Engines;
+using Sentinel.Scanning.Archives;
+using Sentinel.Scanning.Trust;
 
 namespace Sentinel.Scanning;
 
@@ -15,13 +17,16 @@ public sealed record ScanOptions
 
     /// <summary>When false (default) clean items are counted but not listed in the report.</summary>
     public bool IncludeCleanItems { get; init; }
+
+    /// <summary>Optional code-signing check for executables. Null disables trust evaluation.</summary>
+    public ITrustProvider? TrustProvider { get; init; }
 }
 
 /// <summary>Live progress counters.</summary>
 public readonly record struct ScanProgress(long ItemsCompleted, long Detected, long BytesScanned, string? CurrentPath);
 
 /// <summary>
-/// Read-only scan pipeline: enumerate → open safely → hash → run engines → report.
+/// Read-only scan pipeline: enumerate → open safely → hash → trust check → engines → archive expansion → report.
 /// It never modifies, moves or deletes any file; responding to detections is a separate, later component.
 /// </summary>
 public sealed class ScanRunner
@@ -96,12 +101,12 @@ public sealed class ScanRunner
             ScanItemResult result = entry.Result ?? await ScanFileAsync(entry.Path, entry.Length, ct);
             results.Add(result);
 
-            if (result.Status == ScanStatus.Detected)
+            if (result.Status is ScanStatus.Detected or ScanStatus.Suspicious)
             {
                 Interlocked.Increment(ref detected);
             }
 
-            if (result.Status is ScanStatus.Clean or ScanStatus.Detected && result.SizeBytes is long size)
+            if (result.Sha256 is not null && result.SizeBytes is long size)
             {
                 Interlocked.Add(ref bytes, size);
             }
@@ -124,6 +129,7 @@ public sealed class ScanRunner
         timeout.CancelAfter(_options.Limits.PerItemTimeout);
 
         using var buffer = new MemoryStream();
+        var collector = new ItemCollector();
         try
         {
             byte[] chunk = ArrayPool<byte>.Shared.Rent(BufferSize);
@@ -148,11 +154,16 @@ public sealed class ScanRunner
             buffer.Position = 0;
             string sha256 = Convert.ToHexStringLower(await SHA256.HashDataAsync(buffer, timeout.Token));
             buffer.Position = 0;
-            return await RunEnginesAsync(new ScanSubject(displayName, buffer.Length, sha256, buffer), ScanItemKind.Stream, timeout.Token);
+            var subject = new ScanSubject(displayName, buffer.Length, sha256, buffer);
+            collector.Size = buffer.Length;
+            collector.Sha256 = sha256;
+            await AnalyzeAsync(subject, depth: 0, new ArchiveBudget(_options.Limits.Archives), collector, timeout.Token);
+            return collector.ToResult(displayName, ScanItemKind.Stream);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return ScanItemResult.Fail(displayName, ScanItemKind.Stream, ScanReason.Timeout, "Per-item time limit exceeded.");
+            collector.SetFailure(ScanReason.Timeout, "Per-item time limit exceeded.");
+            return collector.ToResult(displayName, ScanItemKind.Stream);
         }
     }
 
@@ -175,34 +186,136 @@ public sealed class ScanRunner
                 : ScanItemResult.Fail(path, ScanItemKind.File, open.FailureReason, open.Message, enumeratedLength);
         }
 
+        var collector = new ItemCollector { Size = enumeratedLength };
         using SafeFileHandle handle = open.Handle!;
         try
         {
             await using var stream = new FileStream(handle, FileAccess.Read, bufferSize: 0);
             long length = stream.Length;
+            collector.Size = length;
             if (length > maxSize)
             {
                 return ScanItemResult.Fail(path, ScanItemKind.File, ScanReason.TooLarge, $"File is larger than the {maxSize}-byte limit.", length);
             }
 
             string sha256 = await HashAsync(stream, timeout.Token);
+            collector.Sha256 = sha256;
             stream.Position = 0;
-            return await RunEnginesAsync(new ScanSubject(path, length, sha256, stream), ScanItemKind.File, timeout.Token);
+
+            FileTrust? trust = EvaluateTrust(handle, stream, path);
+            collector.Trust = trust;
+            stream.Position = 0;
+
+            var subject = new ScanSubject(path, length, sha256, stream, trust);
+            await AnalyzeAsync(subject, depth: 0, new ArchiveBudget(_options.Limits.Archives), collector, timeout.Token);
+            return collector.ToResult(path, ScanItemKind.File);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return ScanItemResult.Fail(path, ScanItemKind.File, ScanReason.Timeout, "Per-item time limit exceeded.", enumeratedLength);
+            collector.SetFailure(ScanReason.Timeout, "Per-item time limit exceeded.");
+            return collector.ToResult(path, ScanItemKind.File);
         }
         catch (UnauthorizedAccessException ex)
         {
-            return ScanItemResult.Fail(path, ScanItemKind.File, ScanReason.AccessDenied, ex.Message, enumeratedLength);
+            collector.SetFailure(ScanReason.AccessDenied, ex.Message);
+            return collector.ToResult(path, ScanItemKind.File);
         }
         catch (IOException ex)
         {
             ScanReason reason = ex.HResult is unchecked((int)0x80070020) or unchecked((int)0x80070021) ? ScanReason.Locked : ScanReason.IoError;
-            return ScanItemResult.Fail(path, ScanItemKind.File, reason, ex.Message, enumeratedLength);
+            collector.SetFailure(reason, ex.Message);
+            return collector.ToResult(path, ScanItemKind.File);
         }
     }
+
+    /// <summary>Runs every engine on the subject, then recurses into archive entries within the shared budget.</summary>
+    private async Task AnalyzeAsync(ScanSubject subject, int depth, ArchiveBudget budget, ItemCollector collector, CancellationToken cancellationToken)
+    {
+        foreach (IDetectionEngine engine in _engines)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            subject.Content.Position = 0;
+            try
+            {
+                IReadOnlyList<Detection> found = await engine.ScanAsync(subject, cancellationToken);
+                foreach (Detection d in found)
+                {
+                    collector.Add(subject.Location is null ? d : d with { Location = subject.Location });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (EngineTimeoutException ex)
+            {
+                collector.SetFailure(ScanReason.Timeout, $"Engine '{engine.Descriptor.Id}' timed out{At(subject)}: {ex.Message}");
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // A faulty engine must not take down the scan; the item is reported as incomplete.
+                collector.SetFailure(ScanReason.EngineError, $"Engine '{engine.Descriptor.Id}' failed{At(subject)}: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        if (depth >= budget.Limits.MaxDepth || !ZipExpander.LooksLikeZip(subject.Content))
+        {
+            return;
+        }
+
+        (ScanReason reason, string? message) = await ZipExpander.ExpandAsync(
+            subject.Content,
+            subject.Location,
+            budget,
+            entry => AnalyzeAsync(
+                new ScanSubject(subject.DisplayPath, entry.Content.Length, entry.Sha256, entry.Content, trust: null, entry.Location),
+                depth + 1,
+                budget,
+                collector,
+                cancellationToken),
+            cancellationToken);
+
+        if (reason != ScanReason.None)
+        {
+            collector.SetFailure(reason, message);
+        }
+
+        subject.Content.Position = 0;
+    }
+
+    private FileTrust? EvaluateTrust(SafeFileHandle handle, Stream stream, string path)
+    {
+        if (_options.TrustProvider is null || !LooksLikePortableExecutable(stream))
+        {
+            return null;
+        }
+
+        try
+        {
+            return _options.TrustProvider.Evaluate(handle, path);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Trust is an input to heuristics only; failing to evaluate it must never hide the file.
+            return null;
+        }
+    }
+
+    private static bool LooksLikePortableExecutable(Stream stream)
+    {
+        if (stream.Length < 64)
+        {
+            return false;
+        }
+
+        Span<byte> magic = stackalloc byte[2];
+        stream.Position = 0;
+        int read = stream.ReadAtLeast(magic, 2, throwOnEndOfStream: false);
+        stream.Position = 0;
+        return read == 2 && magic[0] == (byte)'M' && magic[1] == (byte)'Z';
+    }
+
+    private static string At(ScanSubject subject) => subject.Location is null ? string.Empty : $" on '{subject.Location}'";
 
     private static async Task<string> HashAsync(Stream stream, CancellationToken cancellationToken)
     {
@@ -224,52 +337,9 @@ public sealed class ScanRunner
         return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 
-    private async Task<ScanItemResult> RunEnginesAsync(ScanSubject subject, ScanItemKind kind, CancellationToken cancellationToken)
-    {
-        var detections = new List<Detection>();
-        foreach (IDetectionEngine engine in _engines)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            subject.Content.Position = 0;
-            try
-            {
-                detections.AddRange(await engine.ScanAsync(subject, cancellationToken));
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                // A faulty engine must not take down the scan; the item is reported as incomplete.
-                return new ScanItemResult
-                {
-                    Path = subject.DisplayPath,
-                    Kind = kind,
-                    Status = ScanStatus.NotScanned,
-                    Reason = ScanReason.EngineError,
-                    SizeBytes = subject.Length,
-                    Sha256 = subject.Sha256,
-                    Detections = detections,
-                    Message = $"Engine '{engine.Descriptor.Id}' failed: {ex.GetType().Name}: {ex.Message}",
-                };
-            }
-        }
-
-        return new ScanItemResult
-        {
-            Path = subject.DisplayPath,
-            Kind = kind,
-            Status = detections.Count > 0 ? ScanStatus.Detected : ScanStatus.Clean,
-            SizeBytes = subject.Length,
-            Sha256 = subject.Sha256,
-            Detections = detections,
-        };
-    }
-
     private ScanReport BuildReport(IReadOnlyList<string> targets, DateTimeOffset started, IEnumerable<ScanItemResult> results)
     {
-        long seen = 0, scanned = 0, detected = 0, skipped = 0, notScanned = 0, bytes = 0;
+        long seen = 0, scanned = 0, detected = 0, suspicious = 0, skipped = 0, notScanned = 0, partial = 0, bytes = 0;
         var listed = new List<ScanItemResult>();
         foreach (ScanItemResult r in results)
         {
@@ -278,12 +348,14 @@ public sealed class ScanRunner
             {
                 case ScanStatus.Clean:
                     scanned++;
-                    bytes += r.SizeBytes ?? 0;
                     break;
                 case ScanStatus.Detected:
                     scanned++;
                     detected++;
-                    bytes += r.SizeBytes ?? 0;
+                    break;
+                case ScanStatus.Suspicious:
+                    scanned++;
+                    suspicious++;
                     break;
                 case ScanStatus.Skipped:
                     skipped++;
@@ -291,6 +363,16 @@ public sealed class ScanRunner
                 case ScanStatus.NotScanned:
                     notScanned++;
                     break;
+            }
+
+            if (r.Status is ScanStatus.Detected or ScanStatus.Suspicious && r.Reason != ScanReason.None)
+            {
+                partial++;
+            }
+
+            if (r.Status is ScanStatus.Clean or ScanStatus.Detected or ScanStatus.Suspicious)
+            {
+                bytes += r.SizeBytes ?? 0;
             }
 
             if (r.Status != ScanStatus.Clean || _options.IncludeCleanItems)
@@ -312,12 +394,80 @@ public sealed class ScanRunner
                 ItemsSeen = seen,
                 FilesScanned = scanned,
                 Detected = detected,
+                Suspicious = suspicious,
                 Skipped = skipped,
                 NotScanned = notScanned,
+                Partial = partial,
                 BytesScanned = bytes,
             },
             Items = listed,
             CleanItemsIncluded = _options.IncludeCleanItems,
         };
+    }
+
+    /// <summary>
+    /// Accumulates findings for one top-level item so that detections found before a timeout or
+    /// archive limit are still reported, together with the reason the scan was incomplete.
+    /// </summary>
+    private sealed class ItemCollector
+    {
+        private readonly List<Detection> _detections = [];
+        private readonly Lock _gate = new();
+
+        public long? Size { get; set; }
+
+        public string? Sha256 { get; set; }
+
+        public FileTrust? Trust { get; set; }
+
+        public ScanReason Reason { get; private set; }
+
+        public string? Message { get; private set; }
+
+        public void Add(Detection detection)
+        {
+            lock (_gate)
+            {
+                _detections.Add(detection);
+            }
+        }
+
+        /// <summary>Records why the item is incomplete. A timeout overrides other reasons; otherwise the first reason wins.</summary>
+        public void SetFailure(ScanReason reason, string? message)
+        {
+            lock (_gate)
+            {
+                if (Reason == ScanReason.None || (reason == ScanReason.Timeout && Reason != ScanReason.Timeout))
+                {
+                    Reason = reason;
+                    Message = message;
+                }
+            }
+        }
+
+        public ScanItemResult ToResult(string path, ScanItemKind kind)
+        {
+            lock (_gate)
+            {
+                bool confirmed = _detections.Exists(d => d.Category != DetectionCategory.Suspicious);
+                ScanStatus status = confirmed ? ScanStatus.Detected
+                    : _detections.Count > 0 ? ScanStatus.Suspicious
+                    : Reason != ScanReason.None ? ScanStatus.NotScanned
+                    : ScanStatus.Clean;
+
+                return new ScanItemResult
+                {
+                    Path = path,
+                    Kind = kind,
+                    Status = status,
+                    Reason = Reason,
+                    SizeBytes = Size,
+                    Sha256 = Sha256,
+                    Trust = Trust,
+                    Detections = [.. _detections],
+                    Message = Message,
+                };
+            }
+        }
     }
 }

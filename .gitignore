@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Third-party native binaries fetched by scripts/Get-YaraX.ps1 (hash-pinned, not committed)
+/native/
