@@ -256,6 +256,9 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
                 case MessageType.ExclusionsChange:
                     await ExclusionsChangeAsync(ProtocolJson.Deserialize<ExclusionChangeDto>(frame.Json), actor, canManage, cancellationToken);
                     break;
+                case MessageType.DetectionsQuery:
+                    await DetectionsAsync(ProtocolJson.Deserialize<DetectionsQueryDto>(frame.Json), caller, canManage, cancellationToken);
+                    break;
                 case MessageType.ContentImport:
                     await ContentImportAsync(ProtocolJson.Deserialize<ContentImportDto>(frame.Json), caller, actor, canManage, cancellationToken);
                     break;
@@ -485,6 +488,44 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
         }
 
         await SendAsync(MessageType.ExclusionsReply, ExclusionsReply(), cancellationToken);
+    }
+
+    private async Task DetectionsAsync(DetectionsQueryDto request, WindowsIdentity caller, bool canManage, CancellationToken cancellationToken)
+    {
+        if (request.Max is < 1 or > 500)
+        {
+            await SendErrorAsync(ErrorCodes.BadRequest, "max must be between 1 and 500.", cancellationToken);
+            return;
+        }
+
+        // Administrators see everything; other users see findings under their own profile folder.
+        string? profile = canManage ? null : ProfileDirectory(caller);
+        var items = core.History.Recent(request.Max, r => canManage
+            || (profile is not null && (r.Path.StartsWith(profile + "\\", StringComparison.OrdinalIgnoreCase) || r.Path.Equals(profile, StringComparison.OrdinalIgnoreCase))));
+        await SendAsync(MessageType.DetectionsReply, new DetectionsReplyDto
+        {
+            Items = [.. items.Select(r => new DetectionRecordDto
+            {
+                TimeUtc = r.TimeUtc.UtcDateTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                Source = r.Source,
+                Path = r.Path,
+                Status = WireNames.Of(r.Status),
+                Names = [.. r.Names],
+                Action = r.Action,
+            })],
+        }, cancellationToken);
+    }
+
+    private static string? ProfileDirectory(WindowsIdentity caller)
+    {
+        string? sid = caller.User?.Value;
+        if (sid is null)
+        {
+            return null;
+        }
+
+        using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey($@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\{sid}");
+        return key?.GetValue("ProfileImagePath") is string path ? Environment.ExpandEnvironmentVariables(path).TrimEnd('\\') : null;
     }
 
     private async Task ContentImportAsync(ContentImportDto request, WindowsIdentity caller, Actor actor, bool canManage, CancellationToken cancellationToken)

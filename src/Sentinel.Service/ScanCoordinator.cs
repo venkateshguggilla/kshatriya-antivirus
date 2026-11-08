@@ -35,6 +35,7 @@ public sealed class ScanCoordinator : IDisposable
     private readonly ITrustProvider _trust = new AuthenticodeTrustProvider();
     private readonly SemaphoreSlim _capacity;
     private readonly ExclusionStore _exclusions;
+    private readonly SemaphoreSlim _background = new(1, 1);
 
     public ScanCoordinator(WorkerPoolAnalyzer pool, ServiceSettings settings, ExclusionStore exclusions)
     {
@@ -90,6 +91,32 @@ public sealed class ScanCoordinator : IDisposable
     }
 
     /// <summary>
+    /// Scans on the service's own behalf (real-time monitoring): one batch at a time, sharing the pool and
+    /// cache but not taking a slot from user scans.
+    /// </summary>
+    public async Task<ScanReport> ScanBackgroundAsync(IReadOnlyList<string> paths, IItemResponder? responder, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        await _background.WaitAsync(cancellationToken);
+        try
+        {
+            var runner = new ScanRunner(Pool, new ScanOptions
+            {
+                Limits = new ScanLimits { MaxFileSizeBytes = _settings.MaxFileSizeBytes, MaxDegreeOfParallelism = Math.Min(2, _settings.Workers) },
+                TrustProvider = _trust,
+                Cache = Cache,
+                Exclusions = _exclusions.Current,
+                Responder = responder,
+            });
+            return await runner.ScanPathsAsync(paths, progress: null, cancellationToken);
+        }
+        finally
+        {
+            _background.Release();
+        }
+    }
+
+    /// <summary>
     /// Replaces the worker pool (new content) between scans: waits up to <paramref name="timeout"/> until no
     /// scan is running, swaps, then disposes the old pool. Throws <see cref="ScanCapacityException"/> if scans
     /// keep running.
@@ -98,8 +125,15 @@ public sealed class ScanCoordinator : IDisposable
     {
         ArgumentNullException.ThrowIfNull(next);
         int acquired = 0;
+        bool background = false;
         try
         {
+            if (!await _background.WaitAsync(timeout, cancellationToken))
+            {
+                throw new ScanCapacityException("Real-time scanning is busy; try the update again shortly.");
+            }
+
+            background = true;
             for (; acquired < _settings.MaxConcurrentScans; acquired++)
             {
                 if (!await _capacity.WaitAsync(timeout, cancellationToken))
@@ -117,6 +151,11 @@ public sealed class ScanCoordinator : IDisposable
             {
                 _capacity.Release(acquired);
             }
+
+            if (background)
+            {
+                _background.Release();
+            }
         }
     }
 
@@ -124,5 +163,6 @@ public sealed class ScanCoordinator : IDisposable
     {
         Pool.Dispose();
         _capacity.Dispose();
+        _background.Dispose();
     }
 }

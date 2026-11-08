@@ -71,6 +71,12 @@ internal static partial class Log
     [LoggerMessage(5004, LogLevel.Warning, "Denied {Action} for {User}: {Reason}")]
     public static partial void Denied(ILogger logger, string action, string user, string reason);
 
+    [LoggerMessage(7000, LogLevel.Warning, "{Problem}")]
+    public static partial void RealTimeProblem(ILogger logger, string problem);
+
+    [LoggerMessage(7001, LogLevel.Information, "Removable drive {Drive} attached; scanning it.")]
+    public static partial void RemovableDrive(ILogger logger, string drive);
+
     [LoggerMessage(6000, LogLevel.Information, "Content package {Sequence} (channel {Channel}, key {KeyId}) is now active.")]
     public static partial void ContentActivated(ILogger logger, long sequence, string channel, string keyId);
 

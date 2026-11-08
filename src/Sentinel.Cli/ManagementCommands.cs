@@ -75,6 +75,20 @@ internal static class ManagementCommands
         return ExitCodes.Clean;
     }
 
+    public static async Task<int> DetectionsAsync(CliOptions options, Func<Task<ServiceClient>> connect, TextWriter stdout, CancellationToken ct)
+    {
+        await using ServiceClient client = await connect();
+        DetectionsReplyDto reply = await client.GetDetectionsAsync(Math.Min(options.AuditLast, 500), ct);
+        var sb = new StringBuilder();
+        foreach (DetectionRecordDto d in reply.Items)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $"{d.TimeUtc}  {d.Status.ToUpperInvariant()}  {d.Path}  [{string.Join(", ", d.Names)}]  {d.Source}; {d.Action}").AppendLine();
+        }
+
+        await stdout.WriteAsync(sb.Length == 0 ? "No recent detections." + Environment.NewLine : sb.ToString());
+        return ExitCodes.Clean;
+    }
+
     public static async Task<int> UpdateAsync(CliOptions options, Func<Task<ServiceClient>> connect, TextWriter stdout, TextWriter stderr, CancellationToken ct)
     {
         await using ServiceClient client = await connect();

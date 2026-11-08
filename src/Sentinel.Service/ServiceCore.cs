@@ -6,6 +6,7 @@ using Sentinel.Protocol;
 using Sentinel.Response;
 using Sentinel.Runtime;
 using Sentinel.Runtime.Workers;
+using Sentinel.Service.RealTime;
 using Sentinel.Updates;
 
 namespace Sentinel.Service;
@@ -32,6 +33,12 @@ public sealed record ServiceCoreOptions
     /// only its own user.
     /// </summary>
     public bool? RequireAdministrator { get; init; }
+
+    /// <summary>Process-start source for real-time monitoring (tests); null uses WMI.</summary>
+    public IProcessStartSource? ProcessStartSource { get; init; }
+
+    /// <summary>Removable-drive enumerator for real-time monitoring (tests); null uses DriveInfo.</summary>
+    public Func<IEnumerable<string>>? RemovableDrives { get; init; }
 }
 
 /// <summary>
@@ -76,6 +83,12 @@ public sealed class ServiceCore : IDisposable
 
     /// <summary>True for the installed service; false for a development service that serves only its own user.</summary>
     public bool IsProduction => _options.Paths.Production;
+
+    /// <summary>Recent findings from user scans, schedules and real-time monitoring.</summary>
+    public DetectionHistory History { get; } = new();
+
+    /// <summary>The real-time monitor while the service runs with it enabled.</summary>
+    public RealTimeMonitor? RealTime { get; private set; }
 
     /// <summary>The verified content package in use, or null when only built-in content is loaded.</summary>
     public VerifiedContent? ActiveContent { get; private set; }
@@ -234,13 +247,20 @@ public sealed class ServiceCore : IDisposable
         _scheduleState = new ScheduleState(_options.Paths.StateDirectory);
         var scheduler = new Scheduler(this, _scheduleState, new ReportStore(_options.Paths.ReportsDirectory, Settings.ReportRetention), _options.Time, _options.TimeZone, _logger);
         var server = new PipeServer(_options.Pipe, this, _logger);
+        RealTime = Settings.RealTime.Enabled
+            ? new RealTimeMonitor(this, Settings.RealTime, _options.Paths.Root, _options.Time, _logger, _options.ProcessStartSource, _options.RemovableDrives)
+            : null;
         try
         {
-            await Task.WhenAll(server.RunAsync(cancellationToken), scheduler.RunAsync(cancellationToken));
+            await Task.WhenAll(server.RunAsync(cancellationToken), scheduler.RunAsync(cancellationToken), RealTime?.RunAsync(cancellationToken) ?? Task.CompletedTask);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // Normal shutdown.
+        }
+        finally
+        {
+            RealTime?.Dispose();
         }
     }
 
@@ -271,6 +291,9 @@ public sealed class ServiceCore : IDisposable
             QuarantineItems = Quarantine.List().Count,
             Exclusions = Exclusions.Current.Paths.Count + Exclusions.Current.Hashes.Count,
             AuditChainValid = Quarantine.Audit.Verify().Valid,
+            RealTime = RealTime?.Stats is { } rt
+                ? new RealTimeStatusDto { Enabled = true, Paths = [.. rt.WatchedPaths], Processes = rt.Processes, RemovableMedia = rt.RemovableMedia, Queued = rt.Queued, Scanned = rt.Scanned, Findings = rt.Findings, LostEvents = rt.Overflows }
+                : new RealTimeStatusDto { Enabled = false, Paths = [], Processes = "off", RemovableMedia = "off", Queued = 0, Scanned = 0, Findings = 0, LostEvents = 0 },
             Content = new ContentStatusDto
             {
                 Sequence = ActiveContent?.Manifest.Sequence ?? 0,
@@ -282,12 +305,24 @@ public sealed class ServiceCore : IDisposable
         };
     }
 
-    /// <summary>Writes one log entry per detection or suspicious item, including any action taken.</summary>
-    public void RecordDetections(ScanReport report, string requestedBy)
+    /// <summary>Logs each detection or suspicious item (with the action taken) and adds it to the history.</summary>
+    public void RecordDetections(ScanReport report, string requestedBy, string source = "scan")
     {
         ArgumentNullException.ThrowIfNull(report);
         foreach (ScanItemResult item in report.Items.Where(i => i.Status is ScanStatus.Detected or ScanStatus.Suspicious))
         {
+            History.Add(new DetectionRecord(
+                _options.Time.GetUtcNow(),
+                source,
+                item.Path,
+                item.Status,
+                [.. item.Detections.Select(d => d.Name).Distinct(StringComparer.Ordinal)],
+                item.Action switch
+                {
+                    null => "reported",
+                    { Succeeded: true } a => $"quarantined ({a.QuarantineId})",
+                    { } a => $"not quarantined ({WireNames.Of(a.Failure)})",
+                }));
             Log.Finding(
                 _logger,
                 WireNames.Of(item.Status),

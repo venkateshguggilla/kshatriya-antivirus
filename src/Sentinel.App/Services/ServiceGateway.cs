@@ -25,6 +25,8 @@ public interface IServiceGateway
     Task<ExclusionsReplyDto> ChangeExclusionAsync(bool add, string value, CancellationToken cancellationToken);
 
     Task<AuditReplyDto> GetAuditAsync(int max, CancellationToken cancellationToken);
+
+    Task<DetectionsReplyDto> GetDetectionsAsync(int max, CancellationToken cancellationToken);
 }
 
 /// <summary>Talks to the service over its authenticated pipe; one connection per operation.</summary>
@@ -63,6 +65,9 @@ public sealed class ServiceGateway(ServiceEndpoint endpoint, string description)
 
     public Task<AuditReplyDto> GetAuditAsync(int max, CancellationToken cancellationToken) =>
         WithClient(c => c.GetAuditAsync(max, cancellationToken), cancellationToken);
+
+    public Task<DetectionsReplyDto> GetDetectionsAsync(int max, CancellationToken cancellationToken) =>
+        WithClient(c => c.GetDetectionsAsync(max, cancellationToken), cancellationToken);
 
     private Task<ServiceClient> ConnectAsync(CancellationToken cancellationToken) =>
         ServiceClient.ConnectAsync(endpoint, $"sentinel-app/{AppInfo.Version}", s_connectTimeout, cancellationToken);

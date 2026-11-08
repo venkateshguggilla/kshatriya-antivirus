@@ -183,6 +183,10 @@ public sealed class ServiceClient : IAsyncDisposable
     public Task<AuditReplyDto> GetAuditAsync(int max, CancellationToken cancellationToken = default) =>
         RequestAsync<AuditQueryDto, AuditReplyDto>(MessageType.AuditQuery, new AuditQueryDto { Max = max }, MessageType.AuditReply, cancellationToken);
 
+    /// <summary>Recent findings visible to the caller (administrators: all; others: under their profile).</summary>
+    public Task<DetectionsReplyDto> GetDetectionsAsync(int max, CancellationToken cancellationToken = default) =>
+        RequestAsync<DetectionsQueryDto, DetectionsReplyDto>(MessageType.DetectionsQuery, new DetectionsQueryDto { Max = max }, MessageType.DetectionsReply, cancellationToken);
+
     /// <summary>Asks the service to verify and install a signed content package (administrator only).</summary>
     public Task<ContentImportReplyDto> ImportContentAsync(string packagePath, CancellationToken cancellationToken = default) =>
         RequestAsync<ContentImportDto, ContentImportReplyDto>(MessageType.ContentImport, new ContentImportDto { Path = packagePath }, MessageType.ContentImportReply, cancellationToken);

@@ -1,10 +1,10 @@
 # Sentinel
 
-> **Status: Milestone 6 prototype.** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
+> **Status: Milestone 7 prototype.** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
 
 "Sentinel" is a working name and will change before any release.
 
-## What works today (M1–M6)
+## What works today (M1–M7)
 
 - `sentinel scan <path>...`: on-demand, **read-only** scan of files and folders
   - **Sandboxed parsing (M3):** file contents are analysed in separate worker processes. Each worker runs on a restricted token with the account SID deny-only and low integrity, inside a Job Object (one process, memory cap, killed with its parent) with process mitigations. Workers cannot write your files, start programs or read files private to your account. A crashed or hung worker is replaced and the item is reported as not scanned. `--no-sandbox` turns this off for development only.
@@ -36,6 +36,8 @@
 - **Desktop app (M5):** `Sentinel.App.exe` (WPF, Fluent theme, light/dark/high contrast) with Dashboard (service, engines, workers, schedules, quarantine count, audit status and the Windows antivirus state), Scan (folders, progress, results, opt-in quarantine), Quarantine (restore, restore to, delete), Exclusions, History (audit log with integrity check) and About. It talks only to the service (`Sentinel.App.exe --dev` for a development service) and offers "Restart as administrator" for admin-only actions. Keyboard and screen-reader friendly; no formal accessibility audit yet.
 
 - **Signed content updates (M6):** `sentinel update import <package.sntu> --service` (administrator) installs signature and rule updates. Packages are signed with ECDSA P-256; the service checks the signature before reading the manifest, verifies every file hash, refuses older packages (anti-rollback) and expired ones, and only switches once a fresh sandboxed worker pool has loaded the new content. `status` and the app show the active update and warn when it has expired. `tools/Sentinel.ContentTool` (`sentinel-content keygen|pack|verify`) creates keys and packages. **No production signing key exists yet:** add your own public key to `contentKeys` in `service.json`.
+
+- **Real-time monitoring (M7, opt-in, user mode):** with a `realTime` section in `service.json` the service watches folders for new and changed files, scans the image of every program that starts (WMI process-start events) and scans removable drives when they are attached. Findings appear in `sentinel detections --service`, the app's Detections page and the event log; with `"action": "quarantine"` high-confidence detections are quarantined. **It scans shortly after the fact and cannot block a file or program before it runs**, and it never terminates processes.
 
 Scans without `--quarantine` (and the service without quarantine requests or schedules) **never modify, move or delete files**.
 
@@ -76,6 +78,7 @@ Optional `%ProgramData%\Sentinel\config\service.json` (development: `%LOCALAPPDA
   "scheduledScans": [
     { "name": "weekly-users", "days": ["sunday"], "time": "03:00", "paths": ["C:\\Users"], "action": "report" }
   ],
+  "realTime": { "paths": ["C:\\Users"], "action": "report", "processes": true, "removableMedia": true, "debounceSeconds": 2 },
   "contentKeys": ["<base64 public key from sentinel-content keygen>"]
 }
 ```
@@ -94,6 +97,8 @@ sentinel status [--dev]
 sentinel quarantine list | add <file> | restore <id> [--to <path>] | delete <id>   [--service [--dev]]
 sentinel exclusions list | add <path|sha256:...> | remove <path|sha256:...>   --service [--dev]
 sentinel audit [--last <n>] [--service [--dev]]
+sentinel update import <package.sntu> --service [--dev]
+sentinel detections [--last <n>] --service [--dev]
 sentinel version | help
 ```
 
@@ -201,7 +206,7 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 
 ## Roadmap
 
-See [docs/architecture.md](docs/architecture.md#roadmap). Next: M7 adds user-mode real-time monitoring.
+See [docs/architecture.md](docs/architecture.md#roadmap). Next: M8 adds ransomware behaviour protection.
 
 ## Security
 

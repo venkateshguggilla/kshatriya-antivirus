@@ -54,7 +54,7 @@ public static class CliApp
                 return ExitCodes.Clean;
             case CliCommand.Status:
                 return await StatusAsync(options, stdout, stderr, cancellationToken);
-            case CliCommand.Quarantine or CliCommand.Exclusions or CliCommand.Audit or CliCommand.Update:
+            case CliCommand.Quarantine or CliCommand.Exclusions or CliCommand.Audit or CliCommand.Update or CliCommand.Detections:
                 return await ManageAsync(options, stdout, stderr, cancellationToken);
         }
 
@@ -221,6 +221,7 @@ public static class CliApp
             {
                 CliCommand.Quarantine => await ManagementCommands.QuarantineAsync(options, () => ConnectAsync(options, cancellationToken), stdout, stderr, cancellationToken),
                 CliCommand.Exclusions => await ManagementCommands.ExclusionsAsync(options, () => ConnectAsync(options, cancellationToken), stdout, cancellationToken),
+                CliCommand.Detections => await ManagementCommands.DetectionsAsync(options, () => ConnectAsync(options, cancellationToken), stdout, cancellationToken),
                 CliCommand.Update => await ManagementCommands.UpdateAsync(options, () => ConnectAsync(options, cancellationToken), stdout, stderr, cancellationToken),
                 _ => await ManagementCommands.AuditAsync(options, () => ConnectAsync(options, cancellationToken), stdout, stderr, cancellationToken),
             };
@@ -251,6 +252,10 @@ public static class CliApp
         sb.Append(CultureInfo.InvariantCulture, $"Sandboxed workers: {w.Configured} configured, {w.Running} running, {w.Started} started, {w.Crashed} crashed, {w.TimedOut} stopped at time limit").AppendLine();
         sb.Append(CultureInfo.InvariantCulture, $"Verdict cache: {status.Cache.Entries} entries, {status.Cache.Hits} hits, {status.Cache.Misses} misses").AppendLine();
         sb.Append(CultureInfo.InvariantCulture, $"Active scans: {status.ActiveScans}").AppendLine();
+        RealTimeStatusDto rt = status.RealTime;
+        sb.Append("Real-time monitoring: ").AppendLine(rt.Enabled
+            ? $"on ({string.Join(", ", rt.Paths)}); processes: {rt.Processes}; removable media: {rt.RemovableMedia}; {rt.Scanned} file(s) scanned, {rt.Findings} finding(s), {rt.Queued} queued, {rt.LostEvents} lost-event rescan(s)"
+            : "off (not configured)");
         ContentStatusDto content = status.Content;
         sb.Append("Content: ").Append(content.Sequence == 0
             ? "built-in only (no signed update installed)"

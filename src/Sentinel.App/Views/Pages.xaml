@@ -60,6 +60,7 @@
           <TextBlock Text="{Binding Quarantine}" TextWrapping="Wrap" Margin="0,4,0,0" />
           <TextBlock Text="{Binding AuditState}" TextWrapping="Wrap" Margin="0,4,0,0" />
           <TextBlock Text="{Binding Content}" TextWrapping="Wrap" Margin="0,4,0,0" />
+          <TextBlock Text="{Binding RealTime}" TextWrapping="Wrap" Margin="0,4,0,0" />
         </StackPanel>
       </Border>
 
@@ -129,6 +130,27 @@
           <DataGridTextColumn Header="Details" Binding="{Binding Detail}" Width="2*" />
         </DataGrid.Columns>
       </DataGrid>
+    </StackPanel>
+  </DataTemplate>
+
+  <!-- ===================== Detections ===================== -->
+  <DataTemplate DataType="{x:Type vm:DetectionsViewModel}">
+    <StackPanel>
+      <TextBlock Text="Detections" Style="{StaticResource PageTitle}" />
+      <TextBlock Text="Recent findings from your scans, scheduled scans and real-time monitoring. Administrators see all; other users see findings in their own profile." TextWrapping="Wrap" Opacity="0.8" />
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
+      <DataGrid ItemsSource="{Binding Items}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                Margin="0,8,0,0" AutomationProperties.Name="Recent detections" MaxHeight="460">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Time" Binding="{Binding TimeLocal}" Width="140" />
+          <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90" />
+          <DataGridTextColumn Header="Path" Binding="{Binding Path}" Width="3*" />
+          <DataGridTextColumn Header="Names" Binding="{Binding Names}" Width="2*" />
+          <DataGridTextColumn Header="Found by" Binding="{Binding Source}" Width="*" />
+          <DataGridTextColumn Header="Action" Binding="{Binding Action}" Width="*" />
+        </DataGrid.Columns>
+      </DataGrid>
+      <Button Content="Refresh" Command="{Binding RefreshCommand}" Padding="14,6" Margin="0,12,0,0" HorizontalAlignment="Left" />
     </StackPanel>
   </DataTemplate>
 

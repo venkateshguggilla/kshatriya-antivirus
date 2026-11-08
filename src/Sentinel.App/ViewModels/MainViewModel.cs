@@ -13,11 +13,12 @@ public sealed class MainViewModel : ObservableObject
     {
         Dashboard = new DashboardViewModel(gateway, host);
         Scan = new ScanViewModel(gateway, dialogs);
+        Detections = new DetectionsViewModel(gateway);
         Quarantine = new QuarantineViewModel(gateway, dialogs);
         Exclusions = new ExclusionsViewModel(gateway, dialogs);
         History = new HistoryViewModel(gateway);
         About = new AboutViewModel(gateway);
-        Pages = [Dashboard, Scan, Quarantine, Exclusions, History, About];
+        Pages = [Dashboard, Scan, Detections, Quarantine, Exclusions, History, About];
         _current = Dashboard;
         Title = $"Sentinel {AppInfo.Version} (prototype)" + (host.IsElevated ? " - Administrator" : string.Empty);
     }
@@ -29,6 +30,8 @@ public sealed class MainViewModel : ObservableObject
     public DashboardViewModel Dashboard { get; }
 
     public ScanViewModel Scan { get; }
+
+    public DetectionsViewModel Detections { get; }
 
     public QuarantineViewModel Quarantine { get; }
 

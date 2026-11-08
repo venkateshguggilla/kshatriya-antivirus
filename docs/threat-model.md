@@ -1,4 +1,4 @@
-# Threat model (draft, M6)
+# Threat model (draft, M7)
 
 Scope: the M1–M4 scanner, service, workers and response component, plus threats that later milestones must design for. Reviewed at every milestone.
 
@@ -62,6 +62,9 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 | T34 | An old package is replayed to undo protection (rollback) | Sequence must exceed the highest ever installed (protected state file) | M6 ✔ |
 | T35 | Updates are blocked to keep stale content (freeze) | Expired packages refused at import; expired active content flagged in status and the app | M6 ✔ (detection, not prevention) |
 | T36 | A malformed package crashes or exhausts the service | Bounded framing, lengths checked before allocation, strict JSON, fuzzed (1M iterations); engines validate content in sandboxed workers before the swap | M6 ✔ |
+| T37 | Malware runs from a new file before any scan (no on-access blocking) | User-mode monitoring scans new/changed files, started programs and new removable drives soon after; stated as detection, not prevention | M7 ✔ (residual: cannot block) |
+| T38 | Floods of file events hide a malicious file or exhaust the service | Debounce, bounded queue, overflow triggers a rescan of the watched root, background scans limited to one batch at a time | M7 ✔ |
+| T39 | Monitoring feedback loop (quarantine or reports trigger new scans) | The service data folder is never monitored | M7 ✔ |
 | T32 | Audit records are edited or removed to hide actions (Repudiation) | Hash-chained, flushed per record, ACL SYSTEM + Administrators; verified by `sentinel audit` and `status` | M4 ✔ (tamper-evident only) |
 
 ## Residual risks (M3–M4)
@@ -72,6 +75,7 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 - The service authorizes per user, not per client binary. Since M4 an elevated administrator can restore files and add exclusions through any local client; malware already running elevated can do the same (it could also simply stop the service). Client binary verification is planned with signing (M11).
 - **Running malware is not stopped.** Quarantine of a running program fails with `inUse` and the file stays; process termination and reboot-time removal need a later design (M7/M8).
 - **The audit log is tamper-evident, not tamper-proof.** An administrator can rewrite the whole chain consistently. Off-machine forwarding is future work.
+- **Real-time monitoring cannot block.** A program can run, or a file can be opened, before its scan completes; short-lived processes may exit before their image path is read. Blocking needs a minifilter (optional, M13+).
 - **No production content signing key exists yet**; installed services accept only administrator-configured keys. Key rotation and revocation are manual.
 - **Restored files lose their original ACL and alternate data streams** (they inherit the folder's ACL and get a fresh internet-zone mark).
 

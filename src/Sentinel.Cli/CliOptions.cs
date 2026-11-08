@@ -13,6 +13,7 @@ public enum CliCommand
     Exclusions,
     Audit,
     Update,
+    Detections,
 }
 
 /// <summary>Parsed command line. Hand-written parser: tiny surface, no third-party dependency.</summary>
@@ -78,7 +79,7 @@ public sealed record CliOptions
     public int AuditLast { get; init; } = 50;
 
     public const string HelpText = """
-        Sentinel scanner (milestone 6 prototype)
+        Sentinel scanner (milestone 7 prototype)
 
         Usage:
           sentinel scan <path>... [options]
@@ -89,6 +90,7 @@ public sealed record CliOptions
           sentinel exclusions list | add <path|sha256:...> | remove <path|sha256:...>   --service [--dev]
           sentinel audit [--last <n>] [--service [--dev]]
           sentinel update import <package.sntu> --service [--dev]
+          sentinel detections [--last <n>] --service [--dev]
           sentinel version
           sentinel help
 
@@ -152,6 +154,8 @@ public sealed record CliOptions
                 return ParseManagement(args, CliCommand.Exclusions, ["list", "add", "remove"]);
             case "audit":
                 return ParseManagement(args, CliCommand.Audit, []);
+            case "detections":
+                return ParseManagement(args, CliCommand.Detections, []);
             case "update":
                 return ParseManagement(args, CliCommand.Update, ["import"]);
             default:
@@ -305,7 +309,7 @@ public sealed record CliOptions
                 case "--to" when command == CliCommand.Quarantine:
                     options = options with { RestoreTo = Next(args, ref i, arg) };
                     break;
-                case "--last" when command == CliCommand.Audit:
+                case "--last" when command is CliCommand.Audit or CliCommand.Detections:
                     options = options with { AuditLast = (int)ParseRange(Next(args, ref i, arg), arg, 1, 1000) };
                     break;
                 default:
@@ -324,9 +328,14 @@ public sealed record CliOptions
             throw new CliUsageException("--dev is only valid together with --service.");
         }
 
-        if (command == CliCommand.Audit)
+        if (command == CliCommand.Detections && !options.UseService)
         {
-            return positional.Count == 0 ? options : throw new CliUsageException("audit takes no arguments.");
+            throw new CliUsageException("The detections history is kept by the service: add --service.");
+        }
+
+        if (command is CliCommand.Audit or CliCommand.Detections)
+        {
+            return positional.Count == 0 ? options : throw new CliUsageException($"{args[0]} takes no arguments.");
         }
 
         if (positional.Count == 0 || !actions.Contains(positional[0]))

@@ -40,6 +40,7 @@ internal sealed class FakeGateway : IServiceGateway
                 QuarantineItems = Quarantine.Count,
                 Exclusions = Exclusions.Count,
                 AuditChainValid = true,
+                RealTime = new RealTimeStatusDto { Enabled = true, Paths = [@"C:\Users"], Processes = "scanning started programs", RemovableMedia = "watching for removable drives", Queued = 0, Scanned = 12, Findings = 1, LostEvents = 0 },
                 Content = new ContentStatusDto { Sequence = 7, Channel = "stable", ExpiresUtc = "2020-01-01T00:00:00Z", Expired = true },
             }));
     }
@@ -104,6 +105,15 @@ internal sealed class FakeGateway : IServiceGateway
             Records = [new AuditRecordDto { Seq = 1, TimeUtc = "2026-11-08T10:00:00Z", User = "alice", Sid = "S-1", Action = "quarantine", Target = @"C:\x", Outcome = "succeeded" }],
             ChainValid = false,
             Problem = "Line 3 does not match its hash (modified).",
+        });
+    }
+
+    public Task<DetectionsReplyDto> GetDetectionsAsync(int max, CancellationToken cancellationToken)
+    {
+        ThrowIfFailing();
+        return Task.FromResult(new DetectionsReplyDto
+        {
+            Items = [new DetectionRecordDto { TimeUtc = "2026-11-08T10:00:00Z", Source = "real-time (file)", Path = @"C:\Users\alice\Downloads\x.exe", Status = "detected", Names = ["Test.Sample"], Action = "reported" }],
         });
     }
 
@@ -320,8 +330,30 @@ public class ViewModelTests
         main.Current = main.Quarantine;
 
         Assert.Single(main.Quarantine.Items);
-        Assert.Equal(6, main.Pages.Count);
+        Assert.Equal(7, main.Pages.Count);
         Assert.Contains("prototype", main.Title, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Detections_page_lists_recent_findings()
+    {
+        var vm = new DetectionsViewModel(new FakeGateway());
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        DetectionRow row = Assert.Single(vm.Items);
+        Assert.Equal("Detected", row.Status);
+        Assert.Equal("real-time (file)", row.Source);
+    }
+
+    [Fact]
+    public async Task Dashboard_explains_that_real_time_monitoring_cannot_block()
+    {
+        var vm = new DashboardViewModel(new FakeGateway(), new FakeHost()) { AntivirusSource = () => AntivirusHealth.Good };
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Contains("cannot block", vm.RealTime, StringComparison.Ordinal);
     }
 
     [Fact]

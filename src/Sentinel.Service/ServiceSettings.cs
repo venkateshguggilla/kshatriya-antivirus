@@ -35,6 +35,9 @@ public sealed record ServiceSettings
 
     public IReadOnlyList<ScheduledScan> ScheduledScans { get; init; } = [];
 
+    /// <summary>Real-time monitoring (disabled unless configured).</summary>
+    public RealTime.RealTimeOptions RealTime { get; init; } = new();
+
     /// <summary>Additional content signing public keys (base64 SubjectPublicKeyInfo, ECDSA P-256).</summary>
     public IReadOnlyList<string> ContentKeys { get; init; } = [];
 
@@ -99,6 +102,52 @@ public sealed record ServiceSettings
             MaxConcurrentScans = Range(dto.MaxConcurrentScans, defaults.MaxConcurrentScans, 1, 8, "maxConcurrentScans"),
             ScheduledScans = schedules,
             ContentKeys = ValidateKeys(dto.ContentKeys),
+            RealTime = ParseRealTime(dto.RealTime),
+        };
+    }
+
+    private static RealTime.RealTimeOptions ParseRealTime(RealTimeDto? dto)
+    {
+        if (dto is null)
+        {
+            return new RealTime.RealTimeOptions();
+        }
+
+        string systemDrive = Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\";
+        List<string> paths = dto.Paths is { Count: > 0 } p ? p : [Path.Combine(systemDrive, "Users")];
+        if (paths.Count > 32)
+        {
+            throw new FormatException("'realTime.paths' may list at most 32 folders.");
+        }
+
+        foreach (string path in paths)
+        {
+            if (!ScanPathPolicy.IsLocalAbsolutePath(path))
+            {
+                throw new FormatException($"'realTime.paths' entry '{path}' must be a fully qualified local path.");
+            }
+        }
+
+        bool quarantine = dto.Action switch
+        {
+            null or "report" => false,
+            "quarantine" => true,
+            _ => throw new FormatException($"'realTime.action' must be \"report\" or \"quarantine\"."),
+        };
+        int debounce = dto.DebounceSeconds ?? 2;
+        if (debounce is < 0 or > 60)
+        {
+            throw new FormatException("'realTime.debounceSeconds' must be between 0 and 60.");
+        }
+
+        return new RealTime.RealTimeOptions
+        {
+            Enabled = dto.Enabled ?? true,
+            Paths = [.. paths],
+            Quarantine = quarantine,
+            Processes = dto.Processes ?? true,
+            RemovableMedia = dto.RemovableMedia ?? true,
+            Debounce = TimeSpan.FromSeconds(debounce),
         };
     }
 
@@ -210,6 +259,23 @@ internal sealed class ServiceSettingsDto
     public List<ScheduleDto>? ScheduledScans { get; init; }
 
     public List<string>? ContentKeys { get; init; }
+
+    public RealTimeDto? RealTime { get; init; }
+}
+
+internal sealed class RealTimeDto
+{
+    public bool? Enabled { get; init; }
+
+    public List<string>? Paths { get; init; }
+
+    public string? Action { get; init; }
+
+    public bool? Processes { get; init; }
+
+    public bool? RemovableMedia { get; init; }
+
+    public int? DebounceSeconds { get; init; }
 }
 
 internal sealed class ScheduleDto

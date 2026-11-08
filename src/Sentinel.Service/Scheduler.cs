@@ -230,7 +230,7 @@ public sealed class Scheduler(ServiceCore core, ScheduleState state, ReportStore
                 IItemResponder? responder = scan.Quarantine ? new QuarantineResponder(core.Quarantine, Actor.System($"schedule '{scan.Name}'")) : null;
                 ScanReport report = await core.Coordinator.ScanAsync(scan.Paths, includeClean: false, useCache: false, responder, progress: null, cancellationToken);
                 string file = reports.Save(report, scan.Name, ServiceCore.Version);
-                core.RecordDetections(report, $"schedule '{scan.Name}'");
+                core.RecordDetections(report, $"schedule '{scan.Name}'", $"schedule '{scan.Name}'");
                 outcome = report.HasDetections ? "detections" : report.HasSuspicious ? "suspicious" : report.IsComplete ? "clean" : "incomplete";
                 Log.ScheduleFinished(logger, scan.Name, outcome, file);
             }

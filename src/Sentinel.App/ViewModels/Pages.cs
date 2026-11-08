@@ -102,6 +102,7 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
     private string _quarantine = string.Empty;
     private string _auditState = string.Empty;
     private string _content = string.Empty;
+    private string _realTime = string.Empty;
     private AntivirusHealth _antivirus = AntivirusHealth.Unknown;
 
     public string ServiceState { get => _serviceState; private set => Set(ref _serviceState, value); }
@@ -121,6 +122,8 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
     public string AuditState { get => _auditState; private set => Set(ref _auditState, value); }
 
     public string Content { get => _content; private set => Set(ref _content, value); }
+
+    public string RealTime { get => _realTime; private set => Set(ref _realTime, value); }
 
     public AntivirusHealth Antivirus
     {
@@ -163,6 +166,10 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
             Engines = string.Join(Environment.NewLine, status.Engines.Select(e => $"{e.Id} {e.Version}  [{e.ContentVersion}]"));
             Workers = $"{status.Workers.Running} of {status.Workers.Configured} sandboxed workers running; {status.Workers.Crashed} crashed, {status.Workers.TimedOut} stopped at the time limit. Active scans: {status.ActiveScans}.";
             Quarantine = $"{status.QuarantineItems} item(s) in quarantine. {status.Exclusions} exclusion(s).";
+            RealTimeStatusDto rt = status.RealTime;
+            RealTime = rt.Enabled
+                ? $"Real-time monitoring is on for {string.Join(", ", rt.Paths)}. Programs: {rt.Processes}. Removable drives: {rt.RemovableMedia}. It scans files after they are written; it cannot block them."
+                : "Real-time monitoring is off (it can be enabled in the service settings).";
             ContentStatusDto c = status.Content;
             Content = c.Sequence == 0
                 ? "Content: built-in signatures only (no signed update installed)." + (c.Problem is null ? string.Empty : $" {c.Problem}")
@@ -505,6 +512,26 @@ public sealed class ExclusionsViewModel : PageViewModel
     }
 }
 
+/// <summary>One finding in the detections history.</summary>
+public sealed record DetectionRow(string TimeLocal, string Status, string Path, string Names, string Source, string Action);
+
+public sealed class DetectionsViewModel(IServiceGateway gateway) : PageViewModel("Detections", "Recent findings from scans and real-time monitoring")
+{
+    public ObservableCollection<DetectionRow> Items { get; } = [];
+
+    protected override async Task RefreshCoreAsync()
+    {
+        DetectionsReplyDto reply = await gateway.GetDetectionsAsync(200, CancellationToken.None);
+        Items.Clear();
+        foreach (DetectionRecordDto d in reply.Items)
+        {
+            Items.Add(new DetectionRow(DashboardViewModel.Local(d.TimeUtc), d.Status == "detected" ? "Detected" : "Suspicious", d.Path, string.Join(", ", d.Names), d.Source, d.Action));
+        }
+
+        ShowInfo(Items.Count == 0 ? "No recent detections. (The history is kept in memory by the service and starts empty after a restart.)" : null);
+    }
+}
+
 /// <summary>One audit record.</summary>
 public sealed record AuditRow(long Seq, string TimeLocal, string User, string Action, string Outcome, string Target, string Detail);
 
@@ -542,7 +569,7 @@ public sealed class AboutViewModel(IServiceGateway gateway) : PageViewModel("Abo
         "Prototype. Sentinel is an early-stage, defensive security project. It is not a replacement for Microsoft Defender or any commercial antivirus and makes no claim of equivalent protection. Keep Microsoft Defender turned on.";
 
     public string Limitations { get; } =
-        "Scans run on demand or on a schedule; there is no real-time protection yet. Quarantine removes only confirmed, high-confidence detections and only when you ask for it. Running programs are not stopped.";
+        "Scans run on demand, on a schedule, and (when enabled) shortly after files are written or programs start. This user-mode monitoring cannot block a file or program before it runs; there is no real-time protection yet in that sense. Quarantine removes only confirmed, high-confidence detections and only when you ask for it. Running programs are not stopped.";
 
     protected override Task RefreshCoreAsync() => Task.CompletedTask;
 }

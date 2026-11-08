@@ -34,6 +34,8 @@ sentinel.exe (Sentinel.Cli) ─────────────┐        Se
   status, quarantine, client checks server PID = SCM│  ├─ ScanCoordinator (shared worker pool, verdict cache, exclusions, scan cap)
   exclusions, audit                                 │  ├─ Scheduler (local-time schedules, reports, catch-up, optional quarantine)
                                                     │  ├─ Response: QuarantineManager · encrypted vault · audit log · ExclusionStore
+                                                    │  ├─ RealTimeMonitor (opt-in): FileSystemWatcher · WMI process start · removable
+                                                    │       drives → debounced background scans (shared pool, cache, exclusions)
                                                     │  └─ ContentStore: signed .sntu packages (ECDSA P-256), anti-rollback, expiry;
                                                     │       new content → new sandboxed pool → swapped between scans
         broker (CLI or service)
@@ -124,7 +126,7 @@ Labels: **P** prototype/educational · **B** beta for trusted testers. Nothing h
 | M4 | Encrypted quarantine, handle-based removal, restore, exclusions, audit log ✔ | P |
 | M5 | Desktop app (WPF + Fluent, [ADR 0007](adr/0007-desktop-app-wpf.md)): dashboard, scan, quarantine, exclusions, history; accessibility ✔ (updates page with M6) | P |
 | M6 | Signed content updates with rollback/freeze protection, offline import ✔ ([ADR 0008](adr/0008-signed-content-updates.md)) | P |
-| M7 | User-mode real-time monitoring (file activity, ETW process start, removable media) | B |
+| M7 | User-mode real-time monitoring (file activity, process start, removable media) ✔ ([ADR 0009](adr/0009-user-mode-real-time-monitoring.md)); detects after the fact, cannot block | P |
 | M8 | Ransomware behaviour protection | B |
 | M9 | Optional local ML (EMBER-style features, ONNX), off by default | P |
 | M10 | Web/network protection via WFP user-mode filters | B |

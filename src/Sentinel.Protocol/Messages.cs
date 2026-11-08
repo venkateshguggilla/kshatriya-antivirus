@@ -37,13 +37,15 @@ public static class MessageType
     public const byte AuditReply = 0x3A;
     public const byte ContentImport = 0x3B;
     public const byte ContentImportReply = 0x3C;
+    public const byte DetectionsQuery = 0x3D;
+    public const byte DetectionsReply = 0x3E;
 }
 
 /// <summary>Protocol versions. A peer that sees a different version refuses to continue.</summary>
 public static class ProtocolVersion
 {
     public const int Worker = 1;
-    public const int Service = 3;
+    public const int Service = 4;
 }
 
 // ---- Shared ----
@@ -268,6 +270,56 @@ public sealed class StatusReplyDto
     public required bool AuditChainValid { get; init; }
 
     public required ContentStatusDto Content { get; init; }
+
+    public required RealTimeStatusDto RealTime { get; init; }
+}
+
+public sealed class RealTimeStatusDto
+{
+    public required bool Enabled { get; init; }
+
+    public required List<string> Paths { get; init; }
+
+    /// <summary>State of process-start monitoring (for example "off" or "unavailable: ...").</summary>
+    public required string Processes { get; init; }
+
+    public required string RemovableMedia { get; init; }
+
+    public required int Queued { get; init; }
+
+    public required long Scanned { get; init; }
+
+    public required long Findings { get; init; }
+
+    /// <summary>How often change notifications were lost and a folder had to be rescanned.</summary>
+    public required long LostEvents { get; init; }
+}
+
+public sealed class DetectionsQueryDto
+{
+    public required int Max { get; init; }
+}
+
+public sealed class DetectionRecordDto
+{
+    public required string TimeUtc { get; init; }
+
+    /// <summary>Where it was found: "scan", "schedule '...'" or "real-time (file|process|removable)".</summary>
+    public required string Source { get; init; }
+
+    public required string Path { get; init; }
+
+    /// <summary>"detected" or "suspicious".</summary>
+    public required string Status { get; init; }
+
+    public required List<string> Names { get; init; }
+
+    public required string Action { get; init; }
+}
+
+public sealed class DetectionsReplyDto
+{
+    public required List<DetectionRecordDto> Items { get; init; }
 }
 
 public sealed class ContentStatusDto
@@ -498,6 +550,8 @@ public static class ErrorCodes
 [JsonSerializable(typeof(AuditReplyDto))]
 [JsonSerializable(typeof(ContentImportDto))]
 [JsonSerializable(typeof(ContentImportReplyDto))]
+[JsonSerializable(typeof(DetectionsQueryDto))]
+[JsonSerializable(typeof(DetectionsReplyDto))]
 internal sealed partial class ProtocolJsonContext : JsonSerializerContext
 {
 }
