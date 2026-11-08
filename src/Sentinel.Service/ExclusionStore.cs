@@ -13,12 +13,14 @@ public sealed class ExclusionStore
 {
     public const int MaxEntries = 1000;
     private readonly string _file;
+    private readonly bool _production;
     private readonly Lock _gate = new();
     private ExclusionSet _current;
 
-    private ExclusionStore(string file, ExclusionSet current)
+    private ExclusionStore(string file, bool production, ExclusionSet current)
     {
         _file = file;
+        _production = production;
         _current = current;
     }
 
@@ -39,7 +41,7 @@ public sealed class ExclusionStore
         ArgumentException.ThrowIfNullOrEmpty(file);
         if (!File.Exists(file))
         {
-            return new ExclusionStore(file, ExclusionSet.Empty);
+            return new ExclusionStore(file, production, ExclusionSet.Empty);
         }
 
         string? problem = SecureStorage.CheckTrustedFile(file, production);
@@ -48,7 +50,7 @@ public sealed class ExclusionStore
             throw new InvalidOperationException($"Refusing to use the exclusions file: {problem}");
         }
 
-        return new ExclusionStore(file, Parse(File.ReadAllText(file)));
+        return new ExclusionStore(file, production, Parse(File.ReadAllText(file)));
     }
 
     public static ExclusionSet Parse(string json)
@@ -143,11 +145,8 @@ public sealed class ExclusionStore
 
     private void Save(ExclusionSet set)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
         var dto = new ExclusionsFileDto { SchemaVersion = 1, Paths = [.. set.Paths], Sha256 = [.. set.Hashes.Order(StringComparer.Ordinal)] };
-        string temp = _file + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(dto, ExclusionsJsonContext.Default.ExclusionsFileDto));
-        File.Move(temp, _file, overwrite: true);
+        SecureStorage.WriteProtectedFile(_file, JsonSerializer.Serialize(dto, ExclusionsJsonContext.Default.ExclusionsFileDto), _production);
     }
 }
 

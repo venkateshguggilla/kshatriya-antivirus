@@ -110,6 +110,20 @@ public class QuarantineServiceTests
     }
 
     [Fact]
+    public void A_saved_exclusions_file_passes_the_trust_check_when_reloaded()
+    {
+        // The folder's inherited ACL may grant other accounts write access (as %TEMP% and %LOCALAPPDATA%
+        // can); the store must protect the file it writes so the service can start again.
+        using var temp = new TempDirectory();
+        string file = Path.Combine(temp.Path, "config", "exclusions.json");
+        ExclusionStore store = ExclusionStore.Load(file, production: false);
+
+        Assert.Null(store.Add(temp.Path));
+        Assert.Null(SecureStorage.CheckTrustedFile(file, production: false));
+        Assert.Equal([temp.Path], ExclusionStore.Load(file, production: false).Current.Paths);
+    }
+
+    [Fact]
     public async Task Management_requires_an_elevated_administrator_when_enforced()
     {
         await using RunningService service = await RunningService.StartAsync(requireAdministrator: true);

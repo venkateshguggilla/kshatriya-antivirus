@@ -1,4 +1,4 @@
-# Threat model (draft, M4)
+# Threat model (draft, M5)
 
 Scope: the M1–M4 scanner, service, workers and response component, plus threats that later milestones must design for. Reviewed at every milestone.
 
@@ -19,7 +19,7 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 | File system namespace → broker | Untrusted (links, placeholders, races); opened with the caller's own rights | Same |
 | Client process → service (pipe) | Caller identified by impersonation; scans, quarantine and restore run impersonated; local paths only; restore, exclusions and audit need an elevated administrator (M4) | Client binary verification (M11) |
 | Service → quarantine vault and audit log | Explicit ACL (SYSTEM + Administrators); vault key DPAPI-protected for SYSTEM | Off-machine audit forwarding |
-| Service → client (pipe) | Client checks the server PID against the SCM before sending anything | Signed binaries checked too (M11) |
+| Service → client (pipe) (CLI and desktop app) | Client checks the server PID against the SCM before sending anything; the app runs asInvoker and elevates only on request | Signed binaries checked too (M11) |
 | Configuration and signature files → service | Refused unless owned and writable only by SYSTEM/Administrators/TrustedInstaller | Signed manifests with rollback protection (M6) |
 
 ## Threats and mitigations

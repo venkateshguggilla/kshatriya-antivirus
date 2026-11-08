@@ -1,0 +1,218 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:Sentinel.App.ViewModels">
+
+  <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+  <Style x:Key="PageTitle" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="26" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Margin" Value="0,0,0,4" />
+    <Setter Property="AutomationProperties.HeadingLevel" Value="Level1" />
+  </Style>
+
+  <Style x:Key="SectionTitle" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="17" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Margin" Value="0,16,0,6" />
+    <Setter Property="AutomationProperties.HeadingLevel" Value="Level2" />
+  </Style>
+
+  <Style x:Key="Card" TargetType="Border">
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+    <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="14" />
+    <Setter Property="Margin" Value="0,4" />
+  </Style>
+
+  <!-- Status/error line shared by all pages. Errors are labelled in text, not only by colour. -->
+  <DataTemplate x:Key="MessageLine">
+    <Border Style="{StaticResource Card}" Visibility="{Binding Message, Converter={x:Static vm:Converters.NotEmptyToVisibility}}">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock Text="Problem: " FontWeight="SemiBold" Visibility="{Binding IsError, Converter={StaticResource BoolToVisibility}}" />
+        <TextBlock Text="{Binding Message}" TextWrapping="Wrap" MaxWidth="760" AutomationProperties.LiveSetting="Polite" />
+      </StackPanel>
+    </Border>
+  </DataTemplate>
+
+  <!-- ===================== Dashboard ===================== -->
+  <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+    <StackPanel>
+      <TextBlock Text="Dashboard" Style="{StaticResource PageTitle}" />
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
+
+      <TextBlock Text="Windows antivirus" Style="{StaticResource SectionTitle}" />
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="ACTION NEEDED" FontWeight="Bold" Visibility="{Binding AntivirusNeedsAttention, Converter={StaticResource BoolToVisibility}}" />
+          <TextBlock Text="{Binding AntivirusText}" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="Sentinel service" Style="{StaticResource SectionTitle}" />
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="{Binding ServiceState}" TextWrapping="Wrap" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding ConnectedAs}" TextWrapping="Wrap" Margin="0,4,0,0" />
+          <TextBlock Text="{Binding Workers}" TextWrapping="Wrap" Margin="0,4,0,0" />
+          <TextBlock Text="{Binding Quarantine}" TextWrapping="Wrap" Margin="0,4,0,0" />
+          <TextBlock Text="{Binding AuditState}" TextWrapping="Wrap" Margin="0,4,0,0" />
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="Engines" Style="{StaticResource SectionTitle}" />
+      <Border Style="{StaticResource Card}">
+        <TextBlock Text="{Binding Engines}" FontFamily="Consolas" TextWrapping="Wrap" />
+      </Border>
+
+      <TextBlock Text="Scheduled scans" Style="{StaticResource SectionTitle}" />
+      <Border Style="{StaticResource Card}">
+        <ItemsControl ItemsSource="{Binding Schedules}" />
+      </Border>
+
+      <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+        <Button Content="Refresh" Command="{Binding RefreshCommand}" Padding="16,6" />
+        <Button Content="Restart as administrator" Command="{Binding RestartElevatedCommand}" Padding="16,6" Margin="8,0,0,0"
+                Visibility="{Binding CanRestartElevated, Converter={StaticResource BoolToVisibility}}"
+                AutomationProperties.HelpText="Restarts Sentinel with administrator rights, which restore, exclusions and history require." />
+      </StackPanel>
+    </StackPanel>
+  </DataTemplate>
+
+  <!-- ===================== Scan ===================== -->
+  <DataTemplate DataType="{x:Type vm:ScanViewModel}">
+    <StackPanel>
+      <TextBlock Text="Scan" Style="{StaticResource PageTitle}" />
+      <TextBlock Text="The service scans with your own access rights. Files are parsed only inside sandboxed workers." TextWrapping="Wrap" Opacity="0.8" />
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
+
+      <TextBlock Text="What to scan" Style="{StaticResource SectionTitle}" />
+      <WrapPanel>
+        <Button Content="Add folders…" Command="{Binding AddFoldersCommand}" Padding="12,6" Margin="0,0,8,8" />
+        <Button Content="Downloads" Command="{Binding AddKnownFolderCommand}" CommandParameter="Downloads" Padding="12,6" Margin="0,0,8,8" AutomationProperties.Name="Add Downloads folder" />
+        <Button Content="Desktop" Command="{Binding AddKnownFolderCommand}" CommandParameter="Desktop" Padding="12,6" Margin="0,0,8,8" AutomationProperties.Name="Add Desktop folder" />
+        <Button Content="Documents" Command="{Binding AddKnownFolderCommand}" CommandParameter="Documents" Padding="12,6" Margin="0,0,8,8" AutomationProperties.Name="Add Documents folder" />
+      </WrapPanel>
+      <ItemsControl ItemsSource="{Binding Targets}" AutomationProperties.Name="Scan targets">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <DockPanel Margin="0,2">
+              <Button DockPanel.Dock="Right" Content="Remove" Padding="10,2"
+                      Command="{Binding DataContext.RemoveTargetCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                      CommandParameter="{Binding}" AutomationProperties.Name="{Binding StringFormat=Remove {0}}" />
+              <TextBlock Text="{Binding}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" />
+            </DockPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <CheckBox IsChecked="{Binding Quarantine}" Margin="0,12,0,0"
+                Content="Quarantine confirmed threats (high-confidence malware and test files). Suspicious findings are only reported." />
+
+      <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+        <Button Content="Start scan" Command="{Binding StartCommand}" Padding="16,6" IsDefault="True" />
+        <Button Content="Cancel" Command="{Binding CancelCommand}" Padding="16,6" Margin="8,0,0,0" />
+      </StackPanel>
+      <ProgressBar IsIndeterminate="True" Height="4" Margin="0,12,0,0" Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibility}}" AutomationProperties.Name="Scan in progress" />
+      <TextBlock Text="{Binding Progress}" Margin="0,6,0,0" AutomationProperties.LiveSetting="Polite" />
+      <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,8,0,0" AutomationProperties.LiveSetting="Assertive" />
+
+      <DataGrid ItemsSource="{Binding Results}" AutoGenerateColumns="False" IsReadOnly="True" Margin="0,8,0,0"
+                HeadersVisibility="Column" AutomationProperties.Name="Scan results" MaxHeight="420">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
+          <DataGridTextColumn Header="Action" Binding="{Binding Action}" Width="150" />
+          <DataGridTextColumn Header="Path" Binding="{Binding Path}" Width="2*" />
+          <DataGridTextColumn Header="Details" Binding="{Binding Detail}" Width="2*" />
+        </DataGrid.Columns>
+      </DataGrid>
+    </StackPanel>
+  </DataTemplate>
+
+  <!-- ===================== Quarantine ===================== -->
+  <DataTemplate DataType="{x:Type vm:QuarantineViewModel}">
+    <StackPanel>
+      <TextBlock Text="Quarantine" Style="{StaticResource PageTitle}" />
+      <TextBlock Text="Quarantined files are stored encrypted and cannot run. Restoring requires an administrator and never overwrites an existing file." TextWrapping="Wrap" Opacity="0.8" />
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
+      <DataGrid ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" AutoGenerateColumns="False" IsReadOnly="True"
+                SelectionMode="Single" HeadersVisibility="Column" Margin="0,8,0,0" AutomationProperties.Name="Quarantined items" MaxHeight="420">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Quarantined" Binding="{Binding QuarantinedLocal}" Width="140" />
+          <DataGridTextColumn Header="Original location" Binding="{Binding OriginalPath}" Width="3*" />
+          <DataGridTextColumn Header="Reason" Binding="{Binding Detections}" Width="2*" />
+          <DataGridTextColumn Header="For" Binding="{Binding User}" Width="*" />
+        </DataGrid.Columns>
+      </DataGrid>
+      <WrapPanel Margin="0,12,0,0">
+        <Button Content="Refresh" Command="{Binding RefreshCommand}" Padding="14,6" Margin="0,0,8,8" />
+        <Button Content="Restore" Command="{Binding RestoreCommand}" Padding="14,6" Margin="0,0,8,8" AutomationProperties.HelpText="Restores the selected file to its original location" />
+        <Button Content="Restore to…" Command="{Binding RestoreToCommand}" Padding="14,6" Margin="0,0,8,8" />
+        <Button Content="Delete permanently" Command="{Binding DeleteCommand}" Padding="14,6" Margin="0,0,8,8" />
+      </WrapPanel>
+    </StackPanel>
+  </DataTemplate>
+
+  <!-- ===================== Exclusions ===================== -->
+  <DataTemplate DataType="{x:Type vm:ExclusionsViewModel}">
+    <StackPanel>
+      <TextBlock Text="Exclusions" Style="{StaticResource PageTitle}" />
+      <TextBlock Text="Items Sentinel does not scan. They are still listed as skipped in every report. Changing exclusions requires an administrator. This never changes Microsoft Defender." TextWrapping="Wrap" Opacity="0.8" />
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
+      <DataGrid ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" AutoGenerateColumns="False" IsReadOnly="True"
+                SelectionMode="Single" HeadersVisibility="Column" Margin="0,8,0,0" AutomationProperties.Name="Exclusions" MaxHeight="360">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="90" />
+          <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*" />
+        </DataGrid.Columns>
+      </DataGrid>
+      <DockPanel Margin="0,12,0,0">
+        <Button DockPanel.Dock="Right" Content="Add" Command="{Binding AddValueCommand}" Padding="14,6" Margin="8,0,0,0" />
+        <TextBox Text="{Binding NewValue, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Path or SHA-256 to exclude"
+                 ToolTip="A full path such as C:\Tools\build, or a SHA-256 value" />
+      </DockPanel>
+      <WrapPanel Margin="0,8,0,0">
+        <Button Content="Add folder…" Command="{Binding AddFolderCommand}" Padding="14,6" Margin="0,0,8,8" />
+        <Button Content="Remove selected" Command="{Binding RemoveCommand}" Padding="14,6" Margin="0,0,8,8" />
+        <Button Content="Refresh" Command="{Binding RefreshCommand}" Padding="14,6" Margin="0,0,8,8" />
+      </WrapPanel>
+    </StackPanel>
+  </DataTemplate>
+
+  <!-- ===================== History ===================== -->
+  <DataTemplate DataType="{x:Type vm:HistoryViewModel}">
+    <StackPanel>
+      <TextBlock Text="History" Style="{StaticResource PageTitle}" />
+      <TextBlock Text="{Binding ChainState}" TextWrapping="Wrap" FontWeight="SemiBold" />
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
+      <DataGrid ItemsSource="{Binding Records}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                Margin="0,8,0,0" AutomationProperties.Name="Audit records" MaxHeight="460">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="#" Binding="{Binding Seq}" Width="50" />
+          <DataGridTextColumn Header="Time" Binding="{Binding TimeLocal}" Width="140" />
+          <DataGridTextColumn Header="User" Binding="{Binding User}" Width="*" />
+          <DataGridTextColumn Header="Action" Binding="{Binding Action}" Width="110" />
+          <DataGridTextColumn Header="Outcome" Binding="{Binding Outcome}" Width="90" />
+          <DataGridTextColumn Header="Target" Binding="{Binding Target}" Width="2*" />
+          <DataGridTextColumn Header="Details" Binding="{Binding Detail}" Width="2*" />
+        </DataGrid.Columns>
+      </DataGrid>
+      <Button Content="Refresh" Command="{Binding RefreshCommand}" Padding="14,6" Margin="0,12,0,0" HorizontalAlignment="Left" />
+    </StackPanel>
+  </DataTemplate>
+
+  <!-- ===================== About ===================== -->
+  <DataTemplate DataType="{x:Type vm:AboutViewModel}">
+    <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+      <TextBlock Text="About" Style="{StaticResource PageTitle}" />
+      <TextBlock Text="{Binding Version}" FontWeight="SemiBold" />
+      <TextBlock Text="{Binding Endpoint}" Margin="0,4,0,0" />
+      <TextBlock Text="Status" Style="{StaticResource SectionTitle}" />
+      <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
+      <TextBlock Text="Limitations" Style="{StaticResource SectionTitle}" />
+      <TextBlock Text="{Binding Limitations}" TextWrapping="Wrap" />
+    </StackPanel>
+  </DataTemplate>
+</ResourceDictionary>

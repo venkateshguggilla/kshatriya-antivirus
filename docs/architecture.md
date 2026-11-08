@@ -14,7 +14,7 @@ This document describes the target architecture and what exists today. Planned p
 ## Target component diagram
 
 ```
- UI (WinUI 3, user) ──named pipe, both ends verified──► Service (LocalSystem)               (UI planned M5)
+ UI (WPF app, user) ──named pipe, both ends verified──► Service (LocalSystem)
                                                               ├─ Scan Coordinator ─► Sandboxed scan workers
                                                               │                      └─ Engines: Hash · YARA-X · PE · Archive · ML
                                                               ├─ Monitors: file activity · ETW process start · ransomware · WFP
@@ -23,7 +23,9 @@ This document describes the target architecture and what exists today. Planned p
  Defender stays ON · optional minifilter driver = final phase
 ```
 
-## What exists (M1–M4)
+## What exists (M1–M5)
+
+`Sentinel.App.exe` (M5) is a WPF client of the same pipe: it never touches scanned files itself.
 
 ```
 sentinel.exe (Sentinel.Cli) ─────────────┐        Sentinel.Service.exe (LocalSystem, or --dev as the user)
@@ -118,7 +120,7 @@ Labels: **P** prototype/educational · **B** beta for trusted testers. Nothing h
 | M2 | YARA-X rules, PE heuristics, Authenticode checks, archive scanning with limits ✔ | P |
 | M3 | Windows service, sandboxed scan workers, authenticated IPC, scheduler, verdict cache ✔ | P |
 | M4 | Encrypted quarantine, handle-based removal, restore, exclusions, audit log ✔ | P |
-| M5 | WinUI 3 app: dashboard, scan, detections, quarantine, protection, updates, settings; accessibility | P→B |
+| M5 | Desktop app (WPF + Fluent, [ADR 0007](adr/0007-desktop-app-wpf.md)): dashboard, scan, quarantine, exclusions, history; accessibility ✔ (updates page with M6) | P |
 | M6 | Signed content updates with rollback/freeze protection, offline import | B |
 | M7 | User-mode real-time monitoring (file activity, ETW process start, removable media) | B |
 | M8 | Ransomware behaviour protection | B |

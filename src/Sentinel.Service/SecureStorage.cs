@@ -73,6 +73,39 @@ public static class SecureStorage
     }
 
     /// <summary>
+    /// Writes a file the service itself owns (for example exclusions) with an explicit, non-inherited ACL:
+    /// SYSTEM and Administrators (production) or SYSTEM and the current user (development), so that it
+    /// passes <see cref="CheckTrustedFile"/> regardless of the folder's inherited permissions. The file is
+    /// written to a temporary name, protected, then moved into place.
+    /// </summary>
+    public static void WriteProtectedFile(string path, string contents, bool production)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        ArgumentNullException.ThrowIfNull(contents);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        string temp = path + ".tmp";
+        File.WriteAllText(temp, contents);
+
+        var security = new FileSecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        security.AddAccessRule(new FileSystemAccessRule(s_system, FileSystemRights.FullControl, AccessControlType.Allow));
+        if (production)
+        {
+            security.SetOwner(s_admins);
+            security.AddAccessRule(new FileSystemAccessRule(s_admins, FileSystemRights.FullControl, AccessControlType.Allow));
+        }
+        else
+        {
+            using WindowsIdentity me = WindowsIdentity.GetCurrent();
+            security.SetOwner(me.User!);
+            security.AddAccessRule(new FileSystemAccessRule(me.User!, FileSystemRights.FullControl, AccessControlType.Allow));
+        }
+
+        new FileInfo(temp).SetAccessControl(security);
+        File.Move(temp, path, overwrite: true);
+    }
+
+    /// <summary>
     /// Returns null if the file may be trusted to configure a privileged scan, or the reason it may not.
     /// In development mode the current user may also own and write the file.
     /// </summary>

@@ -16,7 +16,7 @@
     <Product>Sentinel</Product>
     <Company>Sentinel project</Company>
     <Copyright>Copyright (c) 2026 Sentinel project contributors. All rights reserved.</Copyright>
-    <Version>0.4.0</Version>
-    <InformationalVersion>0.4.0-m4</InformationalVersion>
+    <Version>0.5.0</Version>
+    <InformationalVersion>0.5.0-m5</InformationalVersion>
   </PropertyGroup>
 </Project>

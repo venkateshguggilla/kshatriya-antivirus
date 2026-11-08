@@ -1,10 +1,10 @@
 # Sentinel
 
-> **Status: Milestone 4 prototype.** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
+> **Status: Milestone 5 prototype.** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
 
 "Sentinel" is a working name and will change before any release.
 
-## What works today (M1–M4)
+## What works today (M1–M5)
 
 - `sentinel scan <path>...`: on-demand, **read-only** scan of files and folders
   - **Sandboxed parsing (M3):** file contents are analysed in separate worker processes. Each worker runs on a restricted token with the account SID deny-only and low integrity, inside a Job Object (one process, memory cap, killed with its parent) with process mitigations. Workers cannot write your files, start programs or read files private to your account. A crashed or hung worker is replaced and the item is reported as not scanned. `--no-sandbox` turns this off for development only.
@@ -32,6 +32,8 @@
 - **Exclusions (M4):** folders, files or SHA-256 values that Sentinel does not scan. Excluded items still appear in every report (`skipped`, reason `excluded`). Drive roots and the Windows directory cannot be excluded. Exclusions apply to Sentinel only and never to Microsoft Defender.
 - **Audit log (M4):** every quarantine, restore, delete and exclusion change (including refused attempts) is recorded in a hash-chained log; `sentinel audit` shows it and checks the chain. This makes edits detectable but cannot stop an administrator from rewriting the whole file.
 - With the **service**, quarantine and restore act with your own access rights (you can only quarantine files you could delete). Restoring files, managing exclusions and reading the audit log require an elevated administrator.
+
+- **Desktop app (M5):** `Sentinel.App.exe` (WPF, Fluent theme, light/dark/high contrast) with Dashboard (service, engines, workers, schedules, quarantine count, audit status and the Windows antivirus state), Scan (folders, progress, results, opt-in quarantine), Quarantine (restore, restore to, delete), Exclusions, History (audit log with integrity check) and About. It talks only to the service (`Sentinel.App.exe --dev` for a development service) and offers "Restart as administrator" for admin-only actions. Keyboard and screen-reader friendly; no formal accessibility audit yet.
 
 Scans without `--quarantine` (and the service without quarantine requests or schedules) **never modify, move or delete files**.
 
@@ -184,6 +186,7 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 | `src/Sentinel.Worker` | Sandboxed scan worker process |
 | `src/Sentinel.Response` | Quarantine manager, encrypted vault, hash-chained audit log, quarantine responder |
 | `src/Sentinel.Service` | Windows service: pipe server, scan coordinator, scheduler, exclusion store |
+| `src/Sentinel.App` | WPF desktop app (client of the service) |
 | `src/Sentinel.Cli` | `sentinel` command-line tool |
 | `tests/` | xUnit tests (shared helpers in `tests/Shared`) |
 | `docs/` | [Architecture](docs/architecture.md), [threat model](docs/threat-model.md), [ADRs](docs/adr), [schemas](docs/schemas) |
@@ -192,7 +195,7 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 
 ## Roadmap
 
-See [docs/architecture.md](docs/architecture.md#roadmap). Next: M5 adds a desktop app (dashboard, scans, detections, quarantine, settings).
+See [docs/architecture.md](docs/architecture.md#roadmap). Next: M6 adds signed content updates with rollback protection.
 
 ## Security
 
