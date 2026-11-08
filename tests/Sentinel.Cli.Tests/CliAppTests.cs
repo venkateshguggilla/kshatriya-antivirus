@@ -9,7 +9,7 @@ namespace Sentinel.Cli.Tests;
 public class CliAppTests
 {
     private static readonly Lazy<JsonSchema> s_schema = new(() =>
-        JsonSchema.FromFileAsync(Path.Combine(AppContext.BaseDirectory, "schemas", "scan-report.v2.schema.json")).GetAwaiter().GetResult());
+        JsonSchema.FromFileAsync(Path.Combine(AppContext.BaseDirectory, "schemas", "scan-report.v3.schema.json")).GetAwaiter().GetResult());
 
     private static async Task<(int Code, string Out, string Err)> Run(byte[]? stdin, params string[] args)
     {
@@ -46,7 +46,7 @@ public class CliAppTests
     {
         var (code, output, _) = await Run(null, "version");
         Assert.Equal(ExitCodes.Clean, code);
-        Assert.StartsWith("sentinel 0.3.0", output, StringComparison.Ordinal);
+        Assert.StartsWith("sentinel 0.4.0", output, StringComparison.Ordinal);
     }
 
     [Theory]

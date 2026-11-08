@@ -35,7 +35,7 @@ internal sealed class RunningService : IAsyncDisposable
     /// <summary>Benign bytes that the service's custom signature database flags as a test detection.</summary>
     public byte[] KnownBad { get; }
 
-    public static async Task<RunningService> StartAsync(ServiceSettings? settings = null, TimeProvider? time = null)
+    public static async Task<RunningService> StartAsync(ServiceSettings? settings = null, TimeProvider? time = null, bool requireAdministrator = false)
     {
         var temp = new TempDirectory();
         byte[] knownBad = TestData.BenignBytes(77, 4096);
@@ -52,6 +52,7 @@ internal sealed class RunningService : IAsyncDisposable
                 SettingsOverride = settings,
                 Time = time ?? TimeProvider.System,
                 TimeZone = TimeZoneInfo.Utc,
+                RequireAdministrator = requireAdministrator,
             },
             NullLogger.Instance,
             CancellationToken.None);

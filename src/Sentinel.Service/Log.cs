@@ -41,8 +41,8 @@ internal static partial class Log
     [LoggerMessage(3002, LogLevel.Information, "Scan for {User} was cancelled.")]
     public static partial void ScanCancelled(ILogger logger, string user);
 
-    [LoggerMessage(3003, LogLevel.Warning, "{Status} in {Path} (requested by {Requester}): {Names}. No files were changed.")]
-    public static partial void Finding(ILogger logger, string status, string path, string requester, string names);
+    [LoggerMessage(3003, LogLevel.Warning, "{Status} in {Path} (requested by {Requester}): {Names}. Action: {Action}.")]
+    public static partial void Finding(ILogger logger, string status, string path, string requester, string names, string action);
 
     [LoggerMessage(4000, LogLevel.Information, "Scheduled scan '{Name}' starting ({Count} path(s)).")]
     public static partial void ScheduleStarting(ILogger logger, string name, int count);
@@ -55,4 +55,22 @@ internal static partial class Log
 
     [LoggerMessage(4003, LogLevel.Error, "Scheduled scan '{Name}' failed.")]
     public static partial void ScheduleFailed(ILogger logger, Exception exception, string name);
+
+    [LoggerMessage(5000, LogLevel.Warning, "{User} quarantined {Path} (id {Id}).")]
+    public static partial void Quarantined(ILogger logger, string user, string path, string id);
+
+    [LoggerMessage(5001, LogLevel.Warning, "Quarantine of {Path} for {User} failed: {Failure}. The file was left in place.")]
+    public static partial void QuarantineFailed(ILogger logger, string path, string user, string failure);
+
+    [LoggerMessage(5002, LogLevel.Warning, "{User} restored quarantined item {Id} to {Path}: {Outcome}.")]
+    public static partial void Restored(ILogger logger, string user, string id, string path, string outcome);
+
+    [LoggerMessage(5003, LogLevel.Information, "{User} deleted quarantined item {Id}: {Deleted}.")]
+    public static partial void QuarantineDeleted(ILogger logger, string user, string id, bool deleted);
+
+    [LoggerMessage(5004, LogLevel.Warning, "Denied {Action} for {User}: {Reason}")]
+    public static partial void Denied(ILogger logger, string action, string user, string reason);
+
+    [LoggerMessage(5005, LogLevel.Warning, "{User} {Operation} exclusion '{Value}': {Outcome}.")]
+    public static partial void ExclusionChanged(ILogger logger, string user, string operation, string value, string outcome);
 }

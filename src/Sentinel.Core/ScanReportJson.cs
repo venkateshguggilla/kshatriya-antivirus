@@ -5,13 +5,16 @@ using System.Text.Json;
 namespace Sentinel.Core;
 
 /// <summary>
-/// Reads and writes the versioned JSON scan report (docs/schemas/scan-report.v2.schema.json).
+/// Reads and writes the versioned JSON scan report (docs/schemas/scan-report.v3.schema.json).
 /// Wire names come from <see cref="WireNames"/>; the reader is strict and throws
 /// <see cref="FormatException"/> for anything that does not match the schema's required shape.
 /// </summary>
 public static class ScanReportJson
 {
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
+
+    /// <summary>Oldest schema version <see cref="Read"/> accepts (v2 reports simply have no actions).</summary>
+    public const int MinReadableSchemaVersion = 2;
 
     public static string Write(ScanReport report, string toolVersion)
     {
@@ -62,6 +65,8 @@ public static class ScanReportJson
             json.WriteNumber("skipped", s.Skipped);
             json.WriteNumber("notScanned", s.NotScanned);
             json.WriteNumber("bytesScanned", s.BytesScanned);
+            json.WriteNumber("quarantined", s.Quarantined);
+            json.WriteNumber("quarantineFailed", s.QuarantineFailed);
             json.WriteEndObject();
 
             json.WriteStartArray("items");
@@ -108,10 +113,12 @@ public static class ScanReportJson
             using JsonDocument doc = JsonDocument.Parse(text, new JsonDocumentOptions { MaxDepth = 16 });
             JsonElement root = Object(doc.RootElement, "report");
             int version = Int(root, "schemaVersion");
-            if (version != SchemaVersion)
+            if (version < MinReadableSchemaVersion || version > SchemaVersion)
             {
-                throw new FormatException($"Unsupported report schema version {version}; expected {SchemaVersion}.");
+                throw new FormatException($"Unsupported report schema version {version}; expected {MinReadableSchemaVersion} to {SchemaVersion}.");
             }
+
+            bool v3 = version >= 3;
 
             JsonElement summary = Object(Required(root, "summary"), "summary");
             return new ScanReport
@@ -130,8 +137,10 @@ public static class ScanReportJson
                     Skipped = Long(summary, "skipped"),
                     NotScanned = Long(summary, "notScanned"),
                     BytesScanned = Long(summary, "bytesScanned"),
+                    Quarantined = v3 ? Long(summary, "quarantined") : 0,
+                    QuarantineFailed = v3 ? Long(summary, "quarantineFailed") : 0,
                 },
-                Items = [.. Array(root, "items").EnumerateArray().Select(ReadItem)],
+                Items = [.. Array(root, "items").EnumerateArray().Select(i => ReadItem(i, v3))],
                 CleanItemsIncluded = Bool(root, "cleanItemsIncluded"),
             };
         }
@@ -205,6 +214,29 @@ public static class ScanReportJson
             json.WriteEndObject();
         }
 
+        if (item.Action is ItemAction action)
+        {
+            json.WriteStartObject("action");
+            json.WriteString("kind", "quarantine");
+            json.WriteString("outcome", action.Succeeded ? "quarantined" : "failed");
+            if (action.QuarantineId is not null)
+            {
+                json.WriteString("quarantineId", action.QuarantineId);
+            }
+
+            if (action.Failure != ActionFailure.None)
+            {
+                json.WriteString("failure", WireNames.Of(action.Failure));
+            }
+
+            if (action.Message is not null)
+            {
+                json.WriteString("message", action.Message);
+            }
+
+            json.WriteEndObject();
+        }
+
         json.WriteStartArray("detections");
         foreach (Detection d in item.Detections)
         {
@@ -215,7 +247,28 @@ public static class ScanReportJson
         json.WriteEndObject();
     }
 
-    private static ScanItemResult ReadItem(JsonElement e)
+    private static ItemAction ReadAction(JsonElement a)
+    {
+        Object(a, "action");
+        if (Str(a, "kind") != "quarantine")
+        {
+            throw new FormatException("Unknown action kind.");
+        }
+
+        string? id = OptionalStr(a, "quarantineId");
+        string? failure = OptionalStr(a, "failure");
+        var action = new ItemAction(id, failure is null ? ActionFailure.None : WireNames.ParseActionFailure(failure), OptionalStr(a, "message"));
+        string outcome = Str(a, "outcome");
+        bool consistent = outcome switch
+        {
+            "quarantined" => id is not null && action.Failure == ActionFailure.None,
+            "failed" => id is null && action.Failure != ActionFailure.None,
+            _ => false,
+        };
+        return consistent ? action : throw new FormatException($"Inconsistent action outcome '{outcome}'.");
+    }
+
+    private static ScanItemResult ReadItem(JsonElement e, bool v3)
     {
         Object(e, "item");
         FileTrust? trust = null;
@@ -240,6 +293,7 @@ public static class ScanReportJson
             Sha256 = OptionalStr(e, "sha256"),
             Message = OptionalStr(e, "message"),
             Trust = trust,
+            Action = v3 && e.TryGetProperty("action", out JsonElement a) ? ReadAction(a) : null,
             Detections = [.. Array(e, "detections").EnumerateArray().Select(ReadDetection)],
         };
     }

@@ -30,6 +30,30 @@ public static class PathPolicy
     }
 
     /// <summary>
+    /// True for fully qualified local drive paths (<c>C:\...</c>) only: no UNC shares, no device or
+    /// <c>\\?\</c> namespaces, no alternate data streams, wildcards, quotes or relative paths.
+    /// </summary>
+    public static bool IsLocalAbsolutePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.Length > 32_000 || path.Length < 3)
+        {
+            return false;
+        }
+
+        if (!char.IsAsciiLetter(path[0]) || path[1] != ':' || path[2] != '\\')
+        {
+            return false;
+        }
+
+        if (path.AsSpan(2).Contains(':') || path.AsSpan().IndexOfAny('*', '?', '"') >= 0 || path.Contains('\0', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return Path.IsPathFullyQualified(path);
+    }
+
+    /// <summary>
     /// Converts a full path to the Win32 extended-length form (<c>\\?\</c>) so that paths longer than
     /// MAX_PATH can be opened through Win32 APIs directly.
     /// </summary>

@@ -34,13 +34,16 @@ public sealed class ScanCoordinator : IDisposable
     private readonly ServiceSettings _settings;
     private readonly ITrustProvider _trust = new AuthenticodeTrustProvider();
     private readonly SemaphoreSlim _capacity;
+    private readonly ExclusionStore _exclusions;
 
-    public ScanCoordinator(WorkerPoolAnalyzer pool, ServiceSettings settings)
+    public ScanCoordinator(WorkerPoolAnalyzer pool, ServiceSettings settings, ExclusionStore exclusions)
     {
         ArgumentNullException.ThrowIfNull(pool);
         ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(exclusions);
         _pool = pool;
         _settings = settings;
+        _exclusions = exclusions;
         _capacity = new SemaphoreSlim(settings.MaxConcurrentScans, settings.MaxConcurrentScans);
     }
 
@@ -50,8 +53,11 @@ public sealed class ScanCoordinator : IDisposable
 
     public int ActiveScans => _settings.MaxConcurrentScans - _capacity.CurrentCount;
 
-    /// <summary>Runs a scan. Throws <see cref="ScanCapacityException"/> immediately if the service is at capacity.</summary>
-    public async Task<ScanReport> ScanAsync(IReadOnlyList<string> paths, bool includeClean, bool useCache, IProgress<ScanProgress>? progress, CancellationToken cancellationToken)
+    /// <summary>
+    /// Runs a scan with the current exclusions. <paramref name="responder"/> (quarantine) is optional.
+    /// Throws <see cref="ScanCapacityException"/> immediately if the service is at capacity.
+    /// </summary>
+    public async Task<ScanReport> ScanAsync(IReadOnlyList<string> paths, bool includeClean, bool useCache, IItemResponder? responder, IProgress<ScanProgress>? progress, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(paths);
         if (!await _capacity.WaitAsync(TimeSpan.Zero, cancellationToken))
@@ -72,6 +78,8 @@ public sealed class ScanCoordinator : IDisposable
                 IncludeCleanItems = includeClean,
                 TrustProvider = _trust,
                 Cache = useCache ? Cache : null,
+                Exclusions = _exclusions.Current,
+                Responder = responder,
             });
             return await runner.ScanPathsAsync(paths, progress, cancellationToken);
         }

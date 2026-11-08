@@ -23,17 +23,18 @@ This document describes the target architecture and what exists today. Planned p
  Defender stays ON · optional minifilter driver = final phase
 ```
 
-## What exists (M1–M3)
+## What exists (M1–M4)
 
 ```
 sentinel.exe (Sentinel.Cli) ─────────────┐        Sentinel.Service.exe (LocalSystem, or --dev as the user)
   scan <paths>      local broker         │          ├─ PipeServer  \\.\pipe\Sentinel.Service.v1
   scan --service ───────────── named pipe ─────────►│    caller identified by impersonation; scans run AS the caller
-  status            client checks server PID = SCM  │  ├─ ScanCoordinator (shared worker pool, verdict cache, scan cap)
-                                                    │  └─ Scheduler (local-time schedules, reports, catch-up)
+  status, quarantine, client checks server PID = SCM│  ├─ ScanCoordinator (shared worker pool, verdict cache, exclusions, scan cap)
+  exclusions, audit                                 │  ├─ Scheduler (local-time schedules, reports, catch-up, optional quarantine)
+                                                    │  └─ Response: QuarantineManager · encrypted vault · audit log · ExclusionStore
         broker (CLI or service)
           └─ ScanRunner (Sentinel.Scanning)
-               ├─ SafeFileEnumerator  → never follows reparse points; skips cloud placeholders; long paths
+               ├─ SafeFileEnumerator  → never follows reparse points; skips cloud placeholders; long paths; exclusions
                ├─ SafeFileOpener      → read-only, share-all, OPEN_REPARSE_POINT; handle attributes re-checked
                ├─ VerdictCache        → unchanged clean files (file ID + size + write/change times + engine fingerprint)
                ├─ SHA-256 · AuthenticodeTrustProvider (WinVerifyTrust on the open handle, offline)
@@ -46,7 +47,12 @@ sentinel.exe (Sentinel.Cli) ─────────────┐        Se
                     └─ InProcessAnalyzer (--no-sandbox, development only)
                           ├─ HashEngine · YaraEngine · PeHeuristicEngine   (IDetectionEngine)
                           └─ ZipExpander (metered, per-item budget, every engine on every entry)
+               └─ IItemResponder (optional, Sentinel.Response) → QuarantineResponder for detected files
+                    open share-read + DELETE, no reparse → verify links/size → encrypt into vault while
+                    re-hashing → mark the same handle for deletion → audit
 ```
+
+See [ADR 0006](adr/0006-quarantine-and-response.md) for quarantine, restore, exclusions and the audit log.
 
 See [ADR 0005](adr/0005-service-sandbox-ipc.md) for the service, sandbox and IPC decisions.
 
@@ -79,9 +85,10 @@ Engines and (future) protection modules are compiled in and shipped signed. Thir
 | `detected` | At least one detection | no |
 | `skipped` | Not opened by policy: `reparsePoint`, `cloudPlaceholder`, `loopDetected` | no |
 | `suspicious` | Only heuristic findings | partial findings only |
+| `skipped` (`excluded`) | Matched a path or SHA-256 exclusion (M4) | no |
 | `notScanned` | Should have been scanned but wasn't: `tooLarge`, `timeout`, `accessDenied`, `locked`, `notFound`, `ioError`, `engineError`, `archiveLimit`, `archiveEncrypted`, `archiveError` | **yes** |
 
-Detections carry a category (`malware`, `pua`, `suspicious`, `test`) and a confidence (`low`, `medium`, `high`). Only high-confidence detections may ever drive automatic actions (from M4).
+Detections carry a category (`malware`, `pua`, `suspicious`, `test`) and a confidence (`low`, `medium`, `high`). Only `malware`/`test` detections with `high` confidence are quarantined automatically, and only when quarantine was requested (M4). Items carry the action taken (`quarantined` with a vault id, or `failed` with a reason).
 
 ## Communication between clients and the service (M3)
 
@@ -95,8 +102,9 @@ Detections carry a category (`malware`, `pua`, `suspicious`, `test`) and a confi
   impersonated, so a caller can scan only what it can read. Clients therefore connect at the
   Impersonation level; Identification-only clients are refused.
 - Accepted paths: fully qualified local drive paths only (no UNC, device, `\\?\`, ADS or wildcards).
-- Not yet built: operations that weaken protection (restore a detected file, exclusions, disabling
-  protection). They arrive with M4/M5 and will require an elevated administrator caller and an audit entry.
+- Operations that weaken protection (restore, exclusions) and reading the audit log or other users'
+  quarantine items require an elevated administrator (M4). Every attempt, including refusals, is audited.
+  Quarantine and restore touch files only while impersonating the caller.
 - Not yet built: verifying the *client binary* (image path and signer). Authorization is per user,
   because every operation today grants only what the caller already has.
 
@@ -109,7 +117,7 @@ Labels: **P** prototype/educational · **B** beta for trusted testers. Nothing h
 | M1 | Foundation + read-only scanner CLI ✔ | P |
 | M2 | YARA-X rules, PE heuristics, Authenticode checks, archive scanning with limits ✔ | P |
 | M3 | Windows service, sandboxed scan workers, authenticated IPC, scheduler, verdict cache ✔ | P |
-| M4 | Encrypted quarantine, handle-based removal, restore, exclusions, audit log | P |
+| M4 | Encrypted quarantine, handle-based removal, restore, exclusions, audit log ✔ | P |
 | M5 | WinUI 3 app: dashboard, scan, detections, quarantine, protection, updates, settings; accessibility | P→B |
 | M6 | Signed content updates with rollback/freeze protection, offline import | B |
 | M7 | User-mode real-time monitoring (file activity, ETW process start, removable media) | B |

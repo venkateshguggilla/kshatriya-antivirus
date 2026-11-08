@@ -9,7 +9,8 @@ namespace Sentinel.Service;
 /// <param name="Days">Days of the week it runs on.</param>
 /// <param name="Time">Local time of day.</param>
 /// <param name="Paths">Fully qualified local paths.</param>
-public sealed record ScheduledScan(string Name, IReadOnlySet<DayOfWeek> Days, TimeOnly Time, IReadOnlyList<string> Paths);
+/// <param name="Quarantine">True to quarantine high-confidence detections ("action": "quarantine"); false only reports.</param>
+public sealed record ScheduledScan(string Name, IReadOnlySet<DayOfWeek> Days, TimeOnly Time, IReadOnlyList<string> Paths, bool Quarantine = false);
 
 /// <summary>Validated service configuration (config/service.json, schema version 1).</summary>
 public sealed record ServiceSettings
@@ -74,7 +75,13 @@ public sealed record ServiceSettings
                 throw new FormatException($"Schedule '{s.Name}': time '{s.Time}' must be HH:mm (24-hour, local time).");
             }
 
-            schedules.Add(new ScheduledScan(s.Name, ParseDays(s.Name, s.Days), time, ValidatePaths(s.Name, s.Paths)));
+            bool quarantine = s.Action switch
+            {
+                null or "report" => false,
+                "quarantine" => true,
+                _ => throw new FormatException($"Schedule '{s.Name}': action '{s.Action}' must be \"report\" or \"quarantine\"."),
+            };
+            schedules.Add(new ScheduledScan(s.Name, ParseDays(s.Name, s.Days), time, ValidatePaths(s.Name, s.Paths), quarantine));
         }
 
         return new ServiceSettings
@@ -190,6 +197,8 @@ internal sealed class ScheduleDto
     public required string Time { get; init; }
 
     public required List<string> Paths { get; init; }
+
+    public string? Action { get; init; }
 }
 
 [JsonSourceGenerationOptions(

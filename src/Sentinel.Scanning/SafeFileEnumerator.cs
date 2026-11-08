@@ -30,10 +30,18 @@ public static class SafeFileEnumerator
         MatchType = MatchType.Simple,
     };
 
-    public static IEnumerable<WalkEntry> Walk(string target, CancellationToken cancellationToken = default)
+    public static IEnumerable<WalkEntry> Walk(string target, CancellationToken cancellationToken = default) =>
+        Walk(target, exclusions: null, cancellationToken);
+
+    /// <summary>
+    /// Walks <paramref name="target"/>. Excluded files and folders are reported as skipped
+    /// (<see cref="ScanReason.Excluded"/>) and excluded folders are not descended into.
+    /// </summary>
+    public static IEnumerable<WalkEntry> Walk(string target, ExclusionSet? exclusions, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(target);
         string full = Path.GetFullPath(target);
+        exclusions ??= ExclusionSet.Empty;
 
         FileAttributes attributes;
         try
@@ -55,7 +63,14 @@ public static class SafeFileEnumerator
 
         if ((attributes & FileAttributes.Directory) == 0)
         {
-            return [ClassifyFile(full, attributes, SafeLength(full))];
+            return exclusions.IsPathExcluded(full)
+                ? [WalkEntry.Report(ScanItemResult.Skip(full, ScanItemKind.File, ScanReason.Excluded) with { SizeBytes = SafeLength(full) })]
+                : [ClassifyFile(full, attributes, SafeLength(full))];
+        }
+
+        if (exclusions.IsPathExcluded(full))
+        {
+            return [WalkEntry.Report(ScanItemResult.Skip(full, ScanItemKind.Directory, ScanReason.Excluded))];
         }
 
         string root = full;
@@ -72,10 +87,10 @@ public static class SafeFileEnumerator
             root = dir.FullName;
         }
 
-        return WalkDirectoryTree(root, cancellationToken);
+        return WalkDirectoryTree(root, exclusions, cancellationToken);
     }
 
-    private static IEnumerable<WalkEntry> WalkDirectoryTree(string root, CancellationToken cancellationToken)
+    private static IEnumerable<WalkEntry> WalkDirectoryTree(string root, ExclusionSet exclusions, CancellationToken cancellationToken)
     {
         var visited = new HashSet<(uint, ulong)>();
         var pending = new Stack<string>();
@@ -95,7 +110,7 @@ public static class SafeFileEnumerator
 
             var entries = new List<WalkEntry>();
             var subdirectories = new List<string>();
-            ScanItemResult? failure = ReadDirectory(directory, entries, subdirectories);
+            ScanItemResult? failure = ReadDirectory(directory, exclusions, entries, subdirectories);
             if (failure is not null)
             {
                 yield return WalkEntry.Report(failure);
@@ -115,7 +130,7 @@ public static class SafeFileEnumerator
     }
 
     /// <summary>Reads one directory level. Returns a failure result if the directory could not be (fully) listed.</summary>
-    private static ScanItemResult? ReadDirectory(string directory, List<WalkEntry> entries, List<string> subdirectories)
+    private static ScanItemResult? ReadDirectory(string directory, ExclusionSet exclusions, List<WalkEntry> entries, List<string> subdirectories)
     {
         // The directory handle is opened when the enumerable is constructed, so construction can fail
         // (for example access denied) just like MoveNext; both are guarded.
@@ -134,7 +149,7 @@ public static class SafeFileEnumerator
 
         using (enumerator)
         {
-            return ReadEntries(directory, enumerator, entries, subdirectories);
+            return ReadEntries(directory, exclusions, enumerator, entries, subdirectories);
         }
     }
 
@@ -147,6 +162,7 @@ public static class SafeFileEnumerator
 
     private static ScanItemResult? ReadEntries(
         string directory,
+        ExclusionSet exclusions,
         IEnumerator<(string Path, FileAttributes Attributes, long Length)> enumerator,
         List<WalkEntry> entries,
         List<string> subdirectories)
@@ -168,7 +184,12 @@ public static class SafeFileEnumerator
             var (path, attributes, length) = enumerator.Current;
             bool isDirectory = (attributes & FileAttributes.Directory) != 0;
 
-            if (isDirectory)
+            if (exclusions.IsPathExcluded(path))
+            {
+                ScanItemResult skipped = ScanItemResult.Skip(path, isDirectory ? ScanItemKind.Directory : ScanItemKind.File, ScanReason.Excluded);
+                entries.Add(WalkEntry.Report(isDirectory ? skipped : skipped with { SizeBytes = length }));
+            }
+            else if (isDirectory)
             {
                 if ((attributes & FileAttributes.ReparsePoint) != 0)
                 {

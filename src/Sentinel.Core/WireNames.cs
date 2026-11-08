@@ -41,6 +41,7 @@ public static class WireNames
         ScanReason.ArchiveLimit => "archiveLimit",
         ScanReason.ArchiveEncrypted => "archiveEncrypted",
         ScanReason.ArchiveError => "archiveError",
+        ScanReason.Excluded => "excluded",
         _ => throw new ArgumentOutOfRangeException(nameof(reason)),
     };
 
@@ -111,6 +112,7 @@ public static class WireNames
         "archiveLimit" => ScanReason.ArchiveLimit,
         "archiveEncrypted" => ScanReason.ArchiveEncrypted,
         "archiveError" => ScanReason.ArchiveError,
+        "excluded" => ScanReason.Excluded,
         _ => throw Unknown("reason", value),
     };
 
@@ -145,6 +147,38 @@ public static class WireNames
         "embedded" => TrustSource.Embedded,
         "catalog" => TrustSource.Catalog,
         _ => throw Unknown("trust source", value),
+    };
+
+    public static string Of(ActionFailure failure) => failure switch
+    {
+        ActionFailure.None => "none",
+        ActionFailure.Changed => "changed",
+        ActionFailure.Locked => "locked",
+        ActionFailure.InUse => "inUse",
+        ActionFailure.AccessDenied => "accessDenied",
+        ActionFailure.NotFound => "notFound",
+        ActionFailure.HardLinked => "hardLinked",
+        ActionFailure.TooLarge => "tooLarge",
+        ActionFailure.NotRegularFile => "notRegularFile",
+        ActionFailure.VaultError => "vaultError",
+        ActionFailure.IoError => "ioError",
+        _ => throw new ArgumentOutOfRangeException(nameof(failure)),
+    };
+
+    public static ActionFailure ParseActionFailure(string value) => value switch
+    {
+        "none" => ActionFailure.None,
+        "changed" => ActionFailure.Changed,
+        "locked" => ActionFailure.Locked,
+        "inUse" => ActionFailure.InUse,
+        "accessDenied" => ActionFailure.AccessDenied,
+        "notFound" => ActionFailure.NotFound,
+        "hardLinked" => ActionFailure.HardLinked,
+        "tooLarge" => ActionFailure.TooLarge,
+        "notRegularFile" => ActionFailure.NotRegularFile,
+        "vaultError" => ActionFailure.VaultError,
+        "ioError" => ActionFailure.IoError,
+        _ => throw Unknown("action failure", value),
     };
 
     private static FormatException Unknown(string field, string value) => new($"Unknown {field} '{value}'.");

@@ -16,7 +16,9 @@
 - Fuzz: `dotnet run -c Release --project tools/Sentinel.Fuzz -- all 1000000` before changing a parser.
 - Package versions live only in `Directory.Packages.props`.
 - Code that handles files must open them through `SafeFileOpener` / `SafeFileEnumerator`: never follow reparse points, never read cloud placeholders, always enforce size and time limits, and report every item that was not scanned.
-- Scanning code is read-only. Anything that changes user files belongs in the (future) response/quarantine component, must act on the same handle it verified, and must be reversible.
+- Scanning code is read-only. Anything that changes user files belongs in `Sentinel.Response`, must act on the same handle it verified, must keep a verified copy before removing anything, and must be reversible ([ADR 0006](docs/adr/0006-quarantine-and-response.md)).
+- Only `malware`/`test` detections with `high` confidence may be actioned automatically, and only when the user asked for it. Never terminate processes or schedule reboot-time deletion without a reviewed design.
+- Service operations that weaken protection (restore, exclusions) or reveal other users' data (audit log, others' quarantine items) require an elevated administrator and must write an audit record, including on refusal.
 - Engines implement `IDetectionEngine` and must be pure: no file system, network, or global state access.
 - Untrusted content is parsed only inside `Sentinel.Worker` (sandboxed). The broker (CLI/service) opens files and streams bytes; never give a worker a path to open, and never weaken the worker token, job limits or mitigations ([ADR 0005](docs/adr/0005-service-sandbox-ipc.md)). Sandbox properties are covered by `SandboxTests`; keep them passing.
 - The service must act on a client's behalf only while impersonating that client, accept only local absolute paths, and identify clients only through the pipe, never from message contents.

@@ -50,6 +50,53 @@ public enum ScanReason
 
     /// <summary>The archive is corrupt or uses an unsupported feature.</summary>
     ArchiveError,
+
+    /// <summary>Matched a path or SHA-256 exclusion (status <see cref="ScanStatus.Skipped"/>).</summary>
+    Excluded,
+}
+
+/// <summary>Why a response action (quarantine) could not be completed.</summary>
+public enum ActionFailure
+{
+    None,
+
+    /// <summary>The file's content no longer matches what was scanned.</summary>
+    Changed,
+
+    /// <summary>Another process has the file open for writing or deleting.</summary>
+    Locked,
+
+    /// <summary>The file could be read but not removed (for example a running program).</summary>
+    InUse,
+
+    AccessDenied,
+    NotFound,
+
+    /// <summary>The file has more than one hard link; removing one name would leave the content reachable.</summary>
+    HardLinked,
+
+    TooLarge,
+
+    /// <summary>The path is a directory, link, cloud placeholder or other non-regular file.</summary>
+    NotRegularFile,
+
+    /// <summary>The quarantine vault could not store the file; nothing was removed.</summary>
+    VaultError,
+
+    IoError,
+}
+
+/// <summary>Outcome of the response action taken for an item (only present when an action was attempted).</summary>
+/// <param name="QuarantineId">Vault identifier when the file was quarantined; null when the action failed.</param>
+/// <param name="Failure">Why the action failed, or <see cref="ActionFailure.None"/>.</param>
+/// <param name="Message">Optional detail.</param>
+public sealed record ItemAction(string? QuarantineId, ActionFailure Failure = ActionFailure.None, string? Message = null)
+{
+    public bool Succeeded => QuarantineId is not null;
+
+    public static ItemAction Quarantined(string id) => new(id);
+
+    public static ItemAction Failed(ActionFailure failure, string? message = null) => new(null, failure, message);
 }
 
 /// <summary>Result of an Authenticode signature check.</summary>
@@ -134,6 +181,9 @@ public sealed record ScanItemResult
     /// <summary>Signature information, when the item is a signed-capable executable that was checked.</summary>
     public FileTrust? Trust { get; init; }
 
+    /// <summary>Response action taken for this item (quarantine), or null when none was attempted.</summary>
+    public ItemAction? Action { get; init; }
+
     /// <summary>
     /// True when the item counts against scan completeness: it was not scanned, or it has findings
     /// but could only be partially scanned (a non-<see cref="ScanReason.None"/> reason).
@@ -205,6 +255,12 @@ public sealed record ScanSummary
     public long NotScanned { get; init; }
 
     public long BytesScanned { get; init; }
+
+    /// <summary>Items moved to quarantine during this scan.</summary>
+    public long Quarantined { get; init; }
+
+    /// <summary>Items for which quarantine was attempted but failed.</summary>
+    public long QuarantineFailed { get; init; }
 }
 
 /// <summary>The complete outcome of a scan.</summary>

@@ -4,7 +4,7 @@ using Sentinel.Core;
 
 namespace Sentinel.Protocol;
 
-/// <summary>Frame type bytes. Worker messages are 0x01–0x0F, service messages 0x20–0x2F.</summary>
+/// <summary>Frame type bytes. Worker messages are 0x01–0x0F, service messages 0x20–0x3F.</summary>
 public static class MessageType
 {
     public const byte WorkerInit = 0x01;
@@ -23,13 +23,25 @@ public static class MessageType
     public const byte ScanResult = 0x26;
     public const byte Cancel = 0x27;
     public const byte Error = 0x2F;
+
+    public const byte QuarantineList = 0x30;
+    public const byte QuarantineListReply = 0x31;
+    public const byte QuarantineAdd = 0x32;
+    public const byte QuarantineRestore = 0x33;
+    public const byte QuarantineDelete = 0x34;
+    public const byte OperationReply = 0x35;
+    public const byte ExclusionsList = 0x36;
+    public const byte ExclusionsChange = 0x37;
+    public const byte ExclusionsReply = 0x38;
+    public const byte AuditQuery = 0x39;
+    public const byte AuditReply = 0x3A;
 }
 
 /// <summary>Protocol versions. A peer that sees a different version refuses to continue.</summary>
 public static class ProtocolVersion
 {
     public const int Worker = 1;
-    public const int Service = 1;
+    public const int Service = 2;
 }
 
 // ---- Shared ----
@@ -246,6 +258,12 @@ public sealed class StatusReplyDto
     public required List<ScheduleStatusDto> Schedules { get; init; }
 
     public required int ActiveScans { get; init; }
+
+    public required int QuarantineItems { get; init; }
+
+    public required int Exclusions { get; init; }
+
+    public required bool AuditChainValid { get; init; }
 }
 
 public sealed class ScanRequestDto
@@ -253,6 +271,125 @@ public sealed class ScanRequestDto
     public required List<string> Paths { get; init; }
 
     public required bool IncludeClean { get; init; }
+
+    /// <summary>"report" (read-only) or "quarantine" (quarantine high-confidence detections).</summary>
+    public required string Action { get; init; }
+}
+
+/// <summary>Values of <see cref="ScanRequestDto.Action"/>.</summary>
+public static class ScanActions
+{
+    public const string Report = "report";
+    public const string Quarantine = "quarantine";
+}
+
+public sealed class QuarantineItemDto
+{
+    public required string Id { get; init; }
+
+    public required string OriginalPath { get; init; }
+
+    public required string Sha256 { get; init; }
+
+    public required long SizeBytes { get; init; }
+
+    public required string QuarantinedUtc { get; init; }
+
+    public required string User { get; init; }
+
+    public required List<string> Detections { get; init; }
+
+    /// <summary>"scan" or "manual".</summary>
+    public required string Origin { get; init; }
+}
+
+public sealed class QuarantineListReplyDto
+{
+    public required List<QuarantineItemDto> Items { get; init; }
+}
+
+public sealed class QuarantineAddDto
+{
+    public required string Path { get; init; }
+}
+
+public sealed class QuarantineRestoreDto
+{
+    public required string Id { get; init; }
+
+    /// <summary>Where to restore; null restores to the original path.</summary>
+    public string? TargetPath { get; init; }
+}
+
+public sealed class QuarantineDeleteDto
+{
+    public required string Id { get; init; }
+}
+
+/// <summary>Outcome of a quarantine, restore or delete request.</summary>
+public sealed class OperationReplyDto
+{
+    public required bool Succeeded { get; init; }
+
+    /// <summary>"none" on success; otherwise a failure wire name (for example "locked", "targetExists", "notFound").</summary>
+    public required string Code { get; init; }
+
+    public string? Message { get; init; }
+
+    public string? QuarantineId { get; init; }
+
+    public string? Path { get; init; }
+}
+
+public sealed class ExclusionsReplyDto
+{
+    public required List<string> Paths { get; init; }
+
+    public required List<string> Sha256 { get; init; }
+}
+
+public sealed class ExclusionChangeDto
+{
+    /// <summary>"add" or "remove".</summary>
+    public required string Operation { get; init; }
+
+    /// <summary>A fully qualified local path, or a SHA-256 value (optionally prefixed with "sha256:").</summary>
+    public required string Value { get; init; }
+}
+
+public sealed class AuditQueryDto
+{
+    public required int Max { get; init; }
+}
+
+public sealed class AuditRecordDto
+{
+    public required long Seq { get; init; }
+
+    public required string TimeUtc { get; init; }
+
+    public required string User { get; init; }
+
+    public required string Sid { get; init; }
+
+    public required string Action { get; init; }
+
+    public required string Target { get; init; }
+
+    public required string Outcome { get; init; }
+
+    public string? Detail { get; init; }
+
+    public string? QuarantineId { get; init; }
+}
+
+public sealed class AuditReplyDto
+{
+    public required List<AuditRecordDto> Records { get; init; }
+
+    public required bool ChainValid { get; init; }
+
+    public string? Problem { get; init; }
 }
 
 public sealed class ScanProgressDto
@@ -286,6 +423,8 @@ public static class ErrorCodes
     public const string InvalidPath = "invalidPath";
     public const string Cancelled = "cancelled";
     public const string Internal = "internal";
+    public const string AccessDenied = "accessDenied";
+    public const string NotFound = "notFound";
 }
 
 [JsonSourceGenerationOptions(
@@ -309,6 +448,15 @@ public static class ErrorCodes
 [JsonSerializable(typeof(ScanProgressDto))]
 [JsonSerializable(typeof(ScanResultDto))]
 [JsonSerializable(typeof(ErrorDto))]
+[JsonSerializable(typeof(QuarantineListReplyDto))]
+[JsonSerializable(typeof(QuarantineAddDto))]
+[JsonSerializable(typeof(QuarantineRestoreDto))]
+[JsonSerializable(typeof(QuarantineDeleteDto))]
+[JsonSerializable(typeof(OperationReplyDto))]
+[JsonSerializable(typeof(ExclusionsReplyDto))]
+[JsonSerializable(typeof(ExclusionChangeDto))]
+[JsonSerializable(typeof(AuditQueryDto))]
+[JsonSerializable(typeof(AuditReplyDto))]
 internal sealed partial class ProtocolJsonContext : JsonSerializerContext
 {
 }

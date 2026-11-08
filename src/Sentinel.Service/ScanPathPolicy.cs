@@ -9,25 +9,7 @@ public static class ScanPathPolicy
 {
     public const int MaxPathsPerRequest = 64;
 
-    public static bool IsLocalAbsolutePath(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path) || path.Length > 32_000 || path.Length < 3)
-        {
-            return false;
-        }
-
-        if (!char.IsAsciiLetter(path[0]) || path[1] != ':' || path[2] != '\\')
-        {
-            return false;
-        }
-
-        if (path.AsSpan(2).Contains(':') || path.AsSpan().IndexOfAny('*', '?', '"') >= 0 || path.Contains('\0', StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        return Path.IsPathFullyQualified(path);
-    }
+    public static bool IsLocalAbsolutePath(string? path) => Scanning.PathPolicy.IsLocalAbsolutePath(path);
 
     /// <summary>Returns an error message, or null if every path is acceptable.</summary>
     public static string? Validate(IReadOnlyList<string> paths)

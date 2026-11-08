@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Sentinel.Core;
+using Sentinel.Response;
+using Sentinel.Scanning;
 
 namespace Sentinel.Service;
 
@@ -225,7 +227,8 @@ public sealed class Scheduler(ServiceCore core, ScheduleState state, ReportStore
             try
             {
                 // Full rescans: the cache is bypassed so that stale cached verdicts are bounded by the schedule.
-                ScanReport report = await core.Coordinator.ScanAsync(scan.Paths, includeClean: false, useCache: false, progress: null, cancellationToken);
+                IItemResponder? responder = scan.Quarantine ? new QuarantineResponder(core.Quarantine, Actor.System($"schedule '{scan.Name}'")) : null;
+                ScanReport report = await core.Coordinator.ScanAsync(scan.Paths, includeClean: false, useCache: false, responder, progress: null, cancellationToken);
                 string file = reports.Save(report, scan.Name, ServiceCore.Version);
                 core.RecordDetections(report, $"schedule '{scan.Name}'");
                 outcome = report.HasDetections ? "detections" : report.HasSuspicious ? "suspicious" : report.IsComplete ? "clean" : "incomplete";

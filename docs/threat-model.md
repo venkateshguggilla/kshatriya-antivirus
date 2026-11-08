@@ -1,10 +1,11 @@
-# Threat model (draft, M3)
+# Threat model (draft, M4)
 
-Scope: the M1–M3 scanner, service and workers, plus threats that later milestones must design for. Reviewed at every milestone.
+Scope: the M1–M4 scanner, service, workers and response component, plus threats that later milestones must design for. Reviewed at every milestone.
 
 ## Assets
 
-- Integrity of the user's files (the scanner must never damage them)
+- Integrity of the user's files (the scanner must never damage them; quarantine must never lose them)
+- Quarantined content (must stay inert and restorable) and the audit trail
 - Confidentiality of files the requesting user cannot read (the service runs as LocalSystem)
 - Correctness of verdicts (missed detections and false positives)
 - Integrity of signature content and service configuration
@@ -16,7 +17,8 @@ Scope: the M1–M3 scanner, service and workers, plus threats that later milesto
 |---|---|---|
 | Scanned file content → engines | Parsed only in sandboxed workers: restricted token, account SID deny-only, low integrity, Job Object, mitigations | AppContainer or dedicated low-privilege account (stronger read barrier) |
 | File system namespace → broker | Untrusted (links, placeholders, races); opened with the caller's own rights | Same |
-| Client process → service (pipe) | Caller identified by impersonation; scans run impersonated; local paths only | Admin-only operations for anything that weakens protection (M4/M5) |
+| Client process → service (pipe) | Caller identified by impersonation; scans, quarantine and restore run impersonated; local paths only; restore, exclusions and audit need an elevated administrator (M4) | Client binary verification (M11) |
+| Service → quarantine vault and audit log | Explicit ACL (SYSTEM + Administrators); vault key DPAPI-protected for SYSTEM | Off-machine audit forwarding |
 | Service → client (pipe) | Client checks the server PID against the SCM before sending anything | Signed binaries checked too (M11) |
 | Configuration and signature files → service | Refused unless owned and writable only by SYSTEM/Administrators/TrustedInstaller | Signed manifests with rollback protection (M6) |
 
@@ -49,13 +51,23 @@ Scope: the M1–M3 scanner, service and workers, plus threats that later milesto
 | T23 | A stale verdict-cache entry hides a modified file | Only complete clean results cached; key = file ID + size + last-write + change time + engine fingerprint; files changed in the last 2 s never cached; scheduled scans bypass the cache | M3 ✔ (see residual risks) |
 | T24 | Code-loading environment variables reach the worker | Startup-hook and profiler variables stripped; diagnostics IPC disabled; extension points and non-system fonts blocked by mitigation policy | M3 ✔ |
 | T25 | A malicious pipe server impersonates the client | The client writes nothing before verifying the server, and impersonation needs data to have been read | M3 ✔ |
+| T26 | A user makes the SYSTEM service delete or overwrite files they could not touch (confused deputy) | Quarantine opens and deletes, and restore creates, while impersonating the caller; only vault/audit I/O reverts to SYSTEM | M4 ✔ |
+| T27 | The file is swapped or modified between scan and quarantine | One handle: share-read only, no reparse following, attribute and link-count checks, SHA-256 re-verified while copying, deletion set on that same handle | M4 ✔ |
+| T28 | Quarantine loses the file (crash, full disk, delete failure) | Vault copy flushed before deletion; deletion failure discards the copy and leaves the file; restore verifies SHA-256 and removes partial output | M4 ✔ |
+| T29 | Quarantined content is executed, leaked or modified in the vault | AES-256-GCM chunks with authenticated header/index/final flag; DPAPI-protected key; vault ACL without Users; integrity failure blocks restore | M4 ✔ |
+| T30 | A standard user restores malware or adds exclusions to blind the scanner | Restore, exclusions and audit reads require an elevated administrator; drive roots and the Windows directory cannot be excluded; excluded items still appear in reports; all attempts audited | M4 ✔ |
+| T31 | Restore is used to plant a file over an existing one | `CREATE_NEW` only (never overwrites); impersonated; target must be a local path | M4 ✔ |
+| T32 | Audit records are edited or removed to hide actions (Repudiation) | Hash-chained, flushed per record, ACL SYSTEM + Administrators; verified by `sentinel audit` and `status` | M4 ✔ (tamper-evident only) |
 
-## Residual risks (M3)
+## Residual risks (M3–M4)
 
 - **Workers can still read world-readable files.** The worker's account SID is deny-only, so files private to the account (user profile, SYSTEM-only data) are unreadable. Files that Users or Everyone may read remain readable. A test (`Worker_can_still_read_world_readable_files`) documents this. AppContainer or a dedicated account is the planned fix.
 - **WinVerifyTrust parses PE files in the broker** (the service, as SYSTEM). It is Windows code, but it reads attacker-controlled input with full privileges.
 - **Verdict cache vs. timestamp forgery.** A process that can write a file can also restore its timestamps (including the change time, via native APIs), making a modified file look unchanged until the next scheduled scan or cache reset. A USN-journal-based cache key is future work.
-- The service authorizes per user, not per client binary. Today that grants nothing beyond the user's own rights; it must be revisited before operations that weaken protection exist.
+- The service authorizes per user, not per client binary. Since M4 an elevated administrator can restore files and add exclusions through any local client; malware already running elevated can do the same (it could also simply stop the service). Client binary verification is planned with signing (M11).
+- **Running malware is not stopped.** Quarantine of a running program fails with `inUse` and the file stays; process termination and reboot-time removal need a later design (M7/M8).
+- **The audit log is tamper-evident, not tamper-proof.** An administrator can rewrite the whole chain consistently. Off-machine forwarding is future work.
+- **Restored files lose their original ACL and alternate data streams** (they inherit the folder's ACL and get a fresh internet-zone mark).
 
 ## Known limitations
 

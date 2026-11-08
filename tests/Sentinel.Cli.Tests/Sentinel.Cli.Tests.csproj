@@ -15,7 +15,7 @@
     <ProjectReference Include="../../src/Sentinel.Cli/Sentinel.Cli.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="../../docs/schemas/scan-report.v2.schema.json" Link="schemas/scan-report.v2.schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../docs/schemas/scan-report.v3.schema.json" Link="schemas/scan-report.v3.schema.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

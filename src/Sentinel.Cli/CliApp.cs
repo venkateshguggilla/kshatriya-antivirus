@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using Sentinel.Core;
 using Sentinel.Protocol;
+using Sentinel.Response;
 using Sentinel.Runtime;
 using Sentinel.Runtime.Ipc;
 using Sentinel.Runtime.Workers;
@@ -53,6 +54,8 @@ public static class CliApp
                 return ExitCodes.Clean;
             case CliCommand.Status:
                 return await StatusAsync(options, stdout, stderr, cancellationToken);
+            case CliCommand.Quarantine or CliCommand.Exclusions or CliCommand.Audit:
+                return await ManageAsync(options, stdout, stderr, cancellationToken);
         }
 
         return options.UseService
@@ -130,11 +133,27 @@ public static class CliApp
                 await stderr.WriteLineAsync($"warning: {warning}");
             }
 
+            IItemResponder? responder = null;
+            if (options.Quarantine)
+            {
+                try
+                {
+                    responder = new QuarantineResponder(ManagementCommands.OpenLocal(), Actor.Current());
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or VaultIntegrityException)
+                {
+                    await stderr.WriteLineAsync($"error: could not open the quarantine vault: {ex.Message}");
+                    return ExitCodes.Fatal;
+                }
+            }
+
             var runner = new ScanRunner(analyzer, new ScanOptions
             {
                 Limits = limits,
                 IncludeCleanItems = options.IncludeClean,
                 TrustProvider = new AuthenticodeTrustProvider(),
+                Exclusions = options.Excludes.Count > 0 ? new ExclusionSet(options.Excludes) : null,
+                Responder = responder,
             });
 
             ScanReport report;
@@ -162,7 +181,7 @@ public static class CliApp
         try
         {
             await using ServiceClient client = await ConnectAsync(options, cancellationToken);
-            report = await client.ScanAsync(targets, options.IncludeClean, progress: null, cancellationToken);
+            report = await client.ScanAsync(targets, options.IncludeClean, options.Quarantine, progress: null, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -194,6 +213,24 @@ public static class CliApp
         }
     }
 
+    private static async Task<int> ManageAsync(CliOptions options, TextWriter stdout, TextWriter stderr, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return options.Command switch
+            {
+                CliCommand.Quarantine => await ManagementCommands.QuarantineAsync(options, () => ConnectAsync(options, cancellationToken), stdout, stderr, cancellationToken),
+                CliCommand.Exclusions => await ManagementCommands.ExclusionsAsync(options, () => ConnectAsync(options, cancellationToken), stdout, cancellationToken),
+                _ => await ManagementCommands.AuditAsync(options, () => ConnectAsync(options, cancellationToken), stdout, stderr, cancellationToken),
+            };
+        }
+        catch (Exception ex) when (IsServiceFailure(ex) || ex is VaultIntegrityException)
+        {
+            await stderr.WriteLineAsync($"error: {ex.Message}");
+            return ExitCodes.Fatal;
+        }
+    }
+
     private static Task<ServiceClient> ConnectAsync(CliOptions options, CancellationToken cancellationToken)
     {
         ServiceEndpoint endpoint = EndpointOverride ?? (options.DevService ? ServiceEndpoint.Development() : ServiceEndpoint.Production);
@@ -213,6 +250,7 @@ public static class CliApp
         sb.Append(CultureInfo.InvariantCulture, $"Sandboxed workers: {w.Configured} configured, {w.Running} running, {w.Started} started, {w.Crashed} crashed, {w.TimedOut} stopped at time limit").AppendLine();
         sb.Append(CultureInfo.InvariantCulture, $"Verdict cache: {status.Cache.Entries} entries, {status.Cache.Hits} hits, {status.Cache.Misses} misses").AppendLine();
         sb.Append(CultureInfo.InvariantCulture, $"Active scans: {status.ActiveScans}").AppendLine();
+        sb.Append(CultureInfo.InvariantCulture, $"Quarantine: {status.QuarantineItems} item(s). Exclusions: {status.Exclusions}. Audit log: {(status.AuditChainValid ? "intact" : "INTEGRITY CHECK FAILED")}").AppendLine();
         if (status.Schedules.Count == 0)
         {
             sb.AppendLine("Scheduled scans: none configured");

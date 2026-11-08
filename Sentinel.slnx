@@ -7,6 +7,7 @@
     <Project Path="src/Sentinel.Engines.Pe/Sentinel.Engines.Pe.csproj" />
     <Project Path="src/Sentinel.Engines.Yara/Sentinel.Engines.Yara.csproj" />
     <Project Path="src/Sentinel.Protocol/Sentinel.Protocol.csproj" />
+    <Project Path="src/Sentinel.Response/Sentinel.Response.csproj" />
     <Project Path="src/Sentinel.Runtime/Sentinel.Runtime.csproj" />
     <Project Path="src/Sentinel.Scanning/Sentinel.Scanning.csproj" />
     <Project Path="src/Sentinel.Service/Sentinel.Service.csproj" />
@@ -17,6 +18,7 @@
     <Project Path="tests/Sentinel.Engines.Hash.Tests/Sentinel.Engines.Hash.Tests.csproj" />
     <Project Path="tests/Sentinel.Engines.Pe.Tests/Sentinel.Engines.Pe.Tests.csproj" />
     <Project Path="tests/Sentinel.Engines.Yara.Tests/Sentinel.Engines.Yara.Tests.csproj" />
+    <Project Path="tests/Sentinel.Response.Tests/Sentinel.Response.Tests.csproj" />
     <Project Path="tests/Sentinel.Runtime.Tests/Sentinel.Runtime.Tests.csproj" />
     <Project Path="tests/Sentinel.Scanning.Tests/Sentinel.Scanning.Tests.csproj" />
     <Project Path="tests/Sentinel.Service.Tests/Sentinel.Service.Tests.csproj" />

@@ -102,10 +102,22 @@ public sealed class ServiceClient : IAsyncDisposable
     /// Asks the service to scan <paramref name="paths"/> as the calling user. Cancelling the token sends
     /// a cancel request; the service then stops and this method throws <see cref="OperationCanceledException"/>.
     /// </summary>
-    public async Task<ScanReport> ScanAsync(IReadOnlyList<string> paths, bool includeClean, IProgress<ScanProgressDto>? progress = null, CancellationToken cancellationToken = default)
+    public Task<ScanReport> ScanAsync(IReadOnlyList<string> paths, bool includeClean, IProgress<ScanProgressDto>? progress = null, CancellationToken cancellationToken = default) =>
+        ScanAsync(paths, includeClean, quarantine: false, progress, cancellationToken);
+
+    /// <summary>
+    /// Asks the service to scan as the calling user; with <paramref name="quarantine"/> high-confidence
+    /// detections are quarantined (files the caller can delete only).
+    /// </summary>
+    public async Task<ScanReport> ScanAsync(IReadOnlyList<string> paths, bool includeClean, bool quarantine, IProgress<ScanProgressDto>? progress = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        byte[] request = ProtocolJson.Serialize(new ScanRequestDto { Paths = [.. paths], IncludeClean = includeClean });
+        byte[] request = ProtocolJson.Serialize(new ScanRequestDto
+        {
+            Paths = [.. paths],
+            IncludeClean = includeClean,
+            Action = quarantine ? ScanActions.Quarantine : ScanActions.Report,
+        });
         await FrameIO.WriteAsync(_pipe, MessageType.Scan, request, cancellationToken: cancellationToken);
 
         int cancelSent = 0;
@@ -149,7 +161,39 @@ public sealed class ServiceClient : IAsyncDisposable
         }
     }
 
+    public Task<QuarantineListReplyDto> ListQuarantineAsync(CancellationToken cancellationToken = default) =>
+        RequestAsync<EmptyDto, QuarantineListReplyDto>(MessageType.QuarantineList, new EmptyDto(), MessageType.QuarantineListReply, cancellationToken);
+
+    public Task<OperationReplyDto> QuarantineFileAsync(string path, CancellationToken cancellationToken = default) =>
+        RequestAsync<QuarantineAddDto, OperationReplyDto>(MessageType.QuarantineAdd, new QuarantineAddDto { Path = path }, MessageType.OperationReply, cancellationToken);
+
+    public Task<OperationReplyDto> RestoreAsync(string id, string? targetPath, CancellationToken cancellationToken = default) =>
+        RequestAsync<QuarantineRestoreDto, OperationReplyDto>(MessageType.QuarantineRestore, new QuarantineRestoreDto { Id = id, TargetPath = targetPath }, MessageType.OperationReply, cancellationToken);
+
+    public Task<OperationReplyDto> DeleteQuarantinedAsync(string id, CancellationToken cancellationToken = default) =>
+        RequestAsync<QuarantineDeleteDto, OperationReplyDto>(MessageType.QuarantineDelete, new QuarantineDeleteDto { Id = id }, MessageType.OperationReply, cancellationToken);
+
+    public Task<ExclusionsReplyDto> GetExclusionsAsync(CancellationToken cancellationToken = default) =>
+        RequestAsync<EmptyDto, ExclusionsReplyDto>(MessageType.ExclusionsList, new EmptyDto(), MessageType.ExclusionsReply, cancellationToken);
+
+    /// <summary>Adds or removes an exclusion (<paramref name="add"/>); returns the resulting list.</summary>
+    public Task<ExclusionsReplyDto> ChangeExclusionAsync(bool add, string value, CancellationToken cancellationToken = default) =>
+        RequestAsync<ExclusionChangeDto, ExclusionsReplyDto>(MessageType.ExclusionsChange, new ExclusionChangeDto { Operation = add ? "add" : "remove", Value = value }, MessageType.ExclusionsReply, cancellationToken);
+
+    public Task<AuditReplyDto> GetAuditAsync(int max, CancellationToken cancellationToken = default) =>
+        RequestAsync<AuditQueryDto, AuditReplyDto>(MessageType.AuditQuery, new AuditQueryDto { Max = max }, MessageType.AuditReply, cancellationToken);
+
     public ValueTask DisposeAsync() => _pipe.DisposeAsync();
+
+    private async Task<TReply> RequestAsync<TRequest, TReply>(byte type, TRequest request, byte replyType, CancellationToken cancellationToken)
+        where TRequest : class
+        where TReply : class
+    {
+        await FrameIO.WriteAsync(_pipe, type, ProtocolJson.Serialize(request), cancellationToken: cancellationToken);
+        Frame? frame = await FrameIO.ReadAsync(_pipe, s_replyLimits, cancellationToken);
+        ThrowIfError(frame);
+        return ProtocolJson.Expect<TReply>(frame, replyType);
+    }
 
     private async Task SendCancelAsync()
     {

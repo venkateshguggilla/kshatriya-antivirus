@@ -1,10 +1,10 @@
 # Sentinel
 
-> **Status: Milestone 3, a read-only prototype.** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
+> **Status: Milestone 4 prototype.** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
 
 "Sentinel" is a working name and will change before any release.
 
-## What works today (M1–M3)
+## What works today (M1–M4)
 
 - `sentinel scan <path>...`: on-demand, **read-only** scan of files and folders
   - **Sandboxed parsing (M3):** file contents are analysed in separate worker processes. Each worker runs on a restricted token with the account SID deny-only and low integrity, inside a Job Object (one process, memory cap, killed with its parent) with process mitigations. Workers cannot write your files, start programs or read files private to your account. A crashed or hung worker is replaced and the item is reported as not scanned. `--no-sandbox` turns this off for development only.
@@ -17,14 +17,23 @@
   - Never reads cloud placeholders (OneDrive "online-only" files), so it cannot trigger downloads
   - Supports paths longer than 260 characters
   - Per-file size limit and time limit; locked, denied, oversized or timed-out files are reported as **not scanned**, never silently ignored
-  - Text output for people, versioned JSON output for tools ([schema v2](docs/schemas/scan-report.v2.schema.json))
+  - Text output for people, versioned JSON output for tools ([schema v3](docs/schemas/scan-report.v3.schema.json))
 - `sentinel scan --stdin`: scans piped data (useful for the EICAR test string without writing it to disk)
 - **Windows service (M3):** `Sentinel.Service` runs as LocalSystem with a shared worker pool, a verdict cache for unchanged clean files and scheduled scans
   - `sentinel scan --service <path>` asks the service to scan. The service scans **with your own access rights** (pipe impersonation), so it can't be used to read files you can't read.
   - `sentinel status` shows the engines, workers, cache, schedules and active scans.
   - The client verifies that the pipe really belongs to the installed service before sending anything.
 
-Sentinel **never modifies, moves or deletes files**. Quarantine arrives in a later milestone.
+- **Quarantine (M4), opt-in:** `scan --quarantine` moves confirmed, high-confidence detections (category malware or test, confidence high) into an encrypted vault. Suspicious (heuristic) and PUA findings are only reported. `sentinel quarantine add <file>` quarantines a file by hand.
+  - The file is removed only through the same handle that was verified: opened without following links and shared for reading only, checked (regular file, one hard link, ≤ 1 GiB), re-hashed while it is encrypted into the vault, and deleted only after the vault copy is on disk. If anything fails (the file changed, is locked, is a running program, …) the file is left where it was and the report says why.
+  - The vault uses AES-256-GCM with a DPAPI-protected key; the service's vault is readable only by SYSTEM and Administrators.
+  - `sentinel quarantine restore <id> [--to <path>]` never overwrites an existing file, verifies the content and marks the restored file as downloaded from the internet. `quarantine list` and `quarantine delete <id>` manage the vault.
+  - Running programs are **not** stopped; quarantining one fails with `inUse`.
+- **Exclusions (M4):** folders, files or SHA-256 values that Sentinel does not scan. Excluded items still appear in every report (`skipped`, reason `excluded`). Drive roots and the Windows directory cannot be excluded. Exclusions apply to Sentinel only and never to Microsoft Defender.
+- **Audit log (M4):** every quarantine, restore, delete and exclusion change (including refused attempts) is recorded in a hash-chained log; `sentinel audit` shows it and checks the chain. This makes edits detectable but cannot stop an administrator from rewriting the whole file.
+- With the **service**, quarantine and restore act with your own access rights (you can only quarantine files you could delete). Restoring files, managing exclusions and reading the audit log require an elevated administrator.
+
+Scans without `--quarantine` (and the service without quarantine requests or schedules) **never modify, move or delete files**.
 
 ## Build and test
 
@@ -66,30 +75,35 @@ Optional `%ProgramData%\Sentinel\config\service.json` (development: `%LOCALAPPDA
 }
 ```
 
-Scheduled scans run in local time and skip the verdict cache. Their reports (schema v2) are written to `reports\`. A run missed while the machine was off happens once the service is running again; a new schedule waits for its first occurrence.
+Scheduled scans run in local time and skip the verdict cache. Add `"action": "quarantine"` to a schedule to quarantine high-confidence detections (default `"report"`). Reports (schema v3) are written to `reports\`. Persistent exclusions live in `config\exclusions.json` and are managed with `sentinel exclusions ... --service`; the quarantine vault is `quarantine\` and the audit log `audit\`. A run missed while the machine was off happens once the service is running again; a new schedule waits for its first occurrence.
 
 ### CLI
 
 ```text
-sentinel scan <path>... [--json] [--output <file>] [--include-clean] [--signatures <file>]... [--rules <file>]...
-                        [--no-heuristics] [--archive-depth <n>] [--max-file-size <MiB>] [--timeout <seconds>]
-                        [--parallelism <n>] [--no-sandbox] [--quiet]
+sentinel scan <path>... [--quarantine] [--exclude <path>]... [--json] [--output <file>] [--include-clean]
+                        [--signatures <file>]... [--rules <file>]... [--no-heuristics] [--archive-depth <n>]
+                        [--max-file-size <MiB>] [--timeout <seconds>] [--parallelism <n>] [--no-sandbox] [--quiet]
 sentinel scan --stdin [--name <label>] [options]
-sentinel scan --service [--dev] <path>... [--json] [--output <file>] [--include-clean] [--quiet]
+sentinel scan --service [--dev] <path>... [--quarantine] [--json] [--output <file>] [--include-clean] [--quiet]
 sentinel status [--dev]
+sentinel quarantine list | add <file> | restore <id> [--to <path>] | delete <id>   [--service [--dev]]
+sentinel exclusions list | add <path|sha256:...> | remove <path|sha256:...>   --service [--dev]
+sentinel audit [--last <n>] [--service [--dev]]
 sentinel version | help
 ```
 
 | Exit code | Meaning |
 |---|---|
 | 0 | Everything in scope was scanned; nothing detected |
-| 1 | At least one confirmed detection (takes precedence over 5 and 2) |
+| 1 | At least one confirmed detection, whether or not it was quarantined (takes precedence over 5 and 2) |
 | 5 | No confirmed detections, but at least one **suspicious** (heuristic) finding (takes precedence over 2) |
 | 2 | Nothing found, but some items could not be scanned or were only partially scanned, or the scan was cancelled |
 | 3 | Invalid command line |
-| 4 | Fatal error (for example an invalid signature database, workers that cannot be started, or an unreachable service) |
+| 4 | Fatal error (for example an invalid signature database, workers that cannot be started, or an unreachable service), or a failed quarantine/restore/delete command or audit integrity check |
 
-Items skipped **by policy** (links, cloud placeholders) are listed but do not make a scan incomplete.
+Items skipped **by policy** (links, cloud placeholders, exclusions) are listed but do not make a scan incomplete.
+
+Without `--service`, quarantine uses a per-user vault and audit log in `%LOCALAPPDATA%\Sentinel\local`.
 
 ### Hash database format (v1)
 
@@ -149,7 +163,7 @@ Mutation fuzzing (`tools/Sentinel.Fuzz`, unguided, seed 20261108), **1,000,000 i
 | ZIP expansion | 23 s |
 | Hash-database parser | 4 s |
 | IPC frames and DTOs (M3) | 9.5 s |
-| JSON report reader (M3) | 14.6 s |
+| JSON report reader (M3; v3 seed with actions in M4) | 15.6 s |
 
 CI runs 100,000 iterations per target.
 
@@ -168,7 +182,8 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 | `src/Sentinel.Protocol` | Framing and strict DTOs for the worker and service pipes |
 | `src/Sentinel.Runtime` | Sandbox launcher, worker pool, engine setup, authenticated service client |
 | `src/Sentinel.Worker` | Sandboxed scan worker process |
-| `src/Sentinel.Service` | Windows service: pipe server, scan coordinator, scheduler |
+| `src/Sentinel.Response` | Quarantine manager, encrypted vault, hash-chained audit log, quarantine responder |
+| `src/Sentinel.Service` | Windows service: pipe server, scan coordinator, scheduler, exclusion store |
 | `src/Sentinel.Cli` | `sentinel` command-line tool |
 | `tests/` | xUnit tests (shared helpers in `tests/Shared`) |
 | `docs/` | [Architecture](docs/architecture.md), [threat model](docs/threat-model.md), [ADRs](docs/adr), [schemas](docs/schemas) |
@@ -177,7 +192,7 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 
 ## Roadmap
 
-See [docs/architecture.md](docs/architecture.md#roadmap). Next: M4 adds the encrypted quarantine, handle-based removal and restore, exclusions and an audit log.
+See [docs/architecture.md](docs/architecture.md#roadmap). Next: M5 adds a desktop app (dashboard, scans, detections, quarantine, settings).
 
 ## Security
 

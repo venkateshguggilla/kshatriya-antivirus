@@ -3,6 +3,7 @@ using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Sentinel.Core;
 using Sentinel.Protocol;
+using Sentinel.Response;
 using Sentinel.Runtime;
 using Sentinel.Runtime.Workers;
 
@@ -23,6 +24,13 @@ public sealed record ServiceCoreOptions
     public TimeProvider Time { get; init; } = TimeProvider.System;
 
     public TimeZoneInfo TimeZone { get; init; } = TimeZoneInfo.Local;
+
+    /// <summary>
+    /// Require an elevated administrator for restore, exclusions, the audit log and other users'
+    /// quarantine items. Null (default) requires it in production only; a development service serves
+    /// only its own user.
+    /// </summary>
+    public bool? RequireAdministrator { get; init; }
 }
 
 /// <summary>
@@ -36,11 +44,13 @@ public sealed class ServiceCore : IDisposable
     private readonly DateTimeOffset _started;
     private ScheduleState? _scheduleState;
 
-    private ServiceCore(ServiceCoreOptions options, ServiceSettings settings, ScanCoordinator coordinator, ILogger logger)
+    private ServiceCore(ServiceCoreOptions options, ServiceSettings settings, ScanCoordinator coordinator, ExclusionStore exclusions, QuarantineManager quarantine, ILogger logger)
     {
         _options = options;
         Settings = settings;
         Coordinator = coordinator;
+        Exclusions = exclusions;
+        Quarantine = quarantine;
         _logger = logger;
         _started = options.Time.GetUtcNow();
     }
@@ -51,6 +61,16 @@ public sealed class ServiceCore : IDisposable
     public ServiceSettings Settings { get; }
 
     public ScanCoordinator Coordinator { get; }
+
+    public ExclusionStore Exclusions { get; }
+
+    public QuarantineManager Quarantine { get; }
+
+    /// <summary>True for the installed service; false for a development service that serves only its own user.</summary>
+    public bool IsProduction => _options.Paths.Production;
+
+    /// <summary>Whether management operations require an elevated administrator.</summary>
+    public bool RequireAdministrator => _options.RequireAdministrator ?? _options.Paths.Production;
 
     /// <summary>Loads settings, verifies trusted files, prepares directories and starts the worker pool.</summary>
     public static async Task<ServiceCore> StartAsync(ServiceCoreOptions options, ILogger logger, CancellationToken cancellationToken)
@@ -68,6 +88,14 @@ public sealed class ServiceCore : IDisposable
                 throw new InvalidOperationException($"Refusing to load signatures or rules: {problem}");
             }
         }
+
+        ExclusionStore exclusions = ExclusionStore.Load(options.Paths.ExclusionsFile, options.Paths.Production);
+        StorageAccess access = options.Paths.Production ? StorageAccess.Machine : StorageAccess.CurrentUser;
+        var quarantine = new QuarantineManager(
+            QuarantineVault.Open(options.Paths.QuarantineDirectory, access),
+            AuditLog.Open(options.Paths.AuditDirectory, access, options.Time),
+            ProcessIdentityScope.Instance,
+            time: options.Time);
 
         EngineConfiguration engines = EngineConfiguration.FromFiles(settings.SignatureFiles, settings.RuleFiles) with
         {
@@ -89,7 +117,7 @@ public sealed class ServiceCore : IDisposable
             Version,
             options.Paths.Production ? "production" : "development",
             string.Join(", ", pool.Engines.Select(e => $"{e.Id} {e.Version} [{e.ContentVersion}]")));
-        return new ServiceCore(options, settings, new ScanCoordinator(pool, settings), logger);
+        return new ServiceCore(options, settings, new ScanCoordinator(pool, settings, exclusions), exclusions, quarantine, logger);
     }
 
     /// <summary>Serves the pipe and runs the scheduler until cancelled.</summary>
@@ -132,10 +160,13 @@ public sealed class ServiceCore : IDisposable
                 };
             })],
             ActiveScans = Coordinator.ActiveScans,
+            QuarantineItems = Quarantine.List().Count,
+            Exclusions = Exclusions.Current.Paths.Count + Exclusions.Current.Hashes.Count,
+            AuditChainValid = Quarantine.Audit.Verify().Valid,
         };
     }
 
-    /// <summary>Writes one audit entry per detection or suspicious item.</summary>
+    /// <summary>Writes one log entry per detection or suspicious item, including any action taken.</summary>
     public void RecordDetections(ScanReport report, string requestedBy)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -146,7 +177,13 @@ public sealed class ServiceCore : IDisposable
                 WireNames.Of(item.Status),
                 item.Path,
                 requestedBy,
-                string.Join(", ", item.Detections.Select(d => d.Location is null ? d.Name : $"{d.Name} at {d.Location}")));
+                string.Join(", ", item.Detections.Select(d => d.Location is null ? d.Name : $"{d.Name} at {d.Location}")),
+                item.Action switch
+                {
+                    null => "none (reported only)",
+                    { Succeeded: true } a => $"quarantined ({a.QuarantineId})",
+                    { } a => $"quarantine failed ({WireNames.Of(a.Failure)}); the file was left in place",
+                });
         }
     }
 

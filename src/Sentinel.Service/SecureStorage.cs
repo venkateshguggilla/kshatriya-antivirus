@@ -12,6 +12,14 @@ public sealed record ServicePaths(string Root, bool Production)
 
     public string StateDirectory => Path.Combine(Root, "state");
 
+    public string ExclusionsFile => Path.Combine(Root, "config", "exclusions.json");
+
+    /// <summary>Encrypted quarantine vault (SYSTEM and Administrators only, not readable by Users).</summary>
+    public string QuarantineDirectory => Path.Combine(Root, "quarantine");
+
+    /// <summary>Hash-chained audit log (SYSTEM and Administrators only).</summary>
+    public string AuditDirectory => Path.Combine(Root, "audit");
+
     /// <summary>%ProgramData%\Sentinel, writable only by SYSTEM and Administrators.</summary>
     public static ServicePaths ForProduction() =>
         new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Sentinel"), Production: true);

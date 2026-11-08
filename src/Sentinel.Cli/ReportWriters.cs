@@ -37,6 +37,15 @@ public static class TextReportWriter
                 {
                     sb.Append(CultureInfo.InvariantCulture, $"  partially scanned [{WireNames.Of(item.Reason)}]: {item.Message}").AppendLine();
                 }
+
+                if (item.Action is { Succeeded: true } done)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"  -> quarantined (id {done.QuarantineId})").AppendLine();
+                }
+                else if (item.Action is { } failed)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"  -> NOT quarantined [{WireNames.Of(failed.Failure)}]: {failed.Message}").AppendLine();
+                }
             }
 
             foreach (ScanItemResult item in report.Items.Where(i => i.Status == ScanStatus.NotScanned))
@@ -55,7 +64,10 @@ public static class TextReportWriter
             }
         }
 
-        string verdict = s.Detected > 0
+        string verdict = s.Detected > 0 && (s.Quarantined > 0 || s.QuarantineFailed > 0)
+            ? $"{s.Detected} item(s) detected: {s.Quarantined} quarantined, {s.QuarantineFailed} could not be quarantined"
+              + (s.Detected > s.Quarantined + s.QuarantineFailed ? $", {s.Detected - s.Quarantined - s.QuarantineFailed} not eligible (reported only)." : ".")
+            : s.Detected > 0
             ? $"{s.Detected} item(s) detected. No files were changed; review the items above."
             : s.Suspicious > 0
                 ? $"{s.Suspicious} item(s) look suspicious but are not confirmed malware. No files were changed; review before acting."

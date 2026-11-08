@@ -147,7 +147,10 @@ static async Task<int> FuzzFramesAsync(long iterations, int seed, string crashDi
     var messages = new (byte Type, byte[] Json, byte[] Binary)[]
     {
         (MessageType.Hello, ProtocolJson.Serialize(new HelloDto { Protocol = 1, Client = "c" }), []),
-        (MessageType.Scan, ProtocolJson.Serialize(new ScanRequestDto { Paths = [@"C:\x", @"D:\y"], IncludeClean = true }), []),
+        (MessageType.Scan, ProtocolJson.Serialize(new ScanRequestDto { Paths = [@"C:\x", @"D:\y"], IncludeClean = true, Action = "quarantine" }), []),
+        (MessageType.QuarantineRestore, ProtocolJson.Serialize(new QuarantineRestoreDto { Id = new string('a', 32), TargetPath = @"C:\t" }), []),
+        (MessageType.ExclusionsChange, ProtocolJson.Serialize(new ExclusionChangeDto { Operation = "add", Value = @"C:\tools" }), []),
+        (MessageType.AuditQuery, ProtocolJson.Serialize(new AuditQueryDto { Max = 5 }), []),
         (MessageType.Analyze, ProtocolJson.Serialize(new AnalyzeDto { Id = 7, DisplayPath = "p", Length = 4, Sha256 = new string('a', 64), BudgetMs = 1000, Trust = new TrustDto { Status = "valid", Source = "catalog", Signer = "S" } }), [1, 2, 3, 4]),
         (MessageType.AnalyzeReply, ProtocolJson.Serialize(new AnalyzeReplyDto { Id = 7, Detections = [detection], Reason = "archiveLimit", Message = "m" }), []),
         (MessageType.ScanProgress, ProtocolJson.Serialize(new ScanProgressDto { ItemsCompleted = 1, Detected = 0, BytesScanned = 9 }), []),
@@ -202,6 +205,21 @@ static async Task<int> FuzzFramesAsync(long iterations, int seed, string crashDi
             case MessageType.Scan:
                 _ = ProtocolJson.Deserialize<ScanRequestDto>(frame.Json);
                 break;
+            case MessageType.QuarantineAdd:
+                _ = ProtocolJson.Deserialize<QuarantineAddDto>(frame.Json);
+                break;
+            case MessageType.QuarantineRestore:
+                _ = ProtocolJson.Deserialize<QuarantineRestoreDto>(frame.Json);
+                break;
+            case MessageType.QuarantineDelete:
+                _ = ProtocolJson.Deserialize<QuarantineDeleteDto>(frame.Json);
+                break;
+            case MessageType.ExclusionsChange:
+                _ = ProtocolJson.Deserialize<ExclusionChangeDto>(frame.Json);
+                break;
+            case MessageType.AuditQuery:
+                _ = ProtocolJson.Deserialize<AuditQueryDto>(frame.Json);
+                break;
             case MessageType.Analyze:
                 _ = ProtocolJson.Deserialize<AnalyzeDto>(frame.Json).Trust?.ToDomain();
                 break;
@@ -229,7 +247,7 @@ static int FuzzReport(long iterations, int seed, string crashDir)
         StartedUtc = new DateTimeOffset(2026, 11, 8, 1, 2, 3, TimeSpan.Zero),
         FinishedUtc = new DateTimeOffset(2026, 11, 8, 1, 2, 4, TimeSpan.Zero),
         Engines = [new EngineInfo("hash", "1.0.0", "1-abc")],
-        Summary = new ScanSummary { ItemsSeen = 2, FilesScanned = 1, Detected = 1, NotScanned = 1, BytesScanned = 10 },
+        Summary = new ScanSummary { ItemsSeen = 4, FilesScanned = 2, Detected = 2, Skipped = 1, NotScanned = 1, BytesScanned = 10, Quarantined = 1, QuarantineFailed = 1 },
         Items =
         [
             new ScanItemResult
@@ -241,7 +259,17 @@ static int FuzzReport(long iterations, int seed, string crashDir)
                 Sha256 = new string('b', 64),
                 Trust = new FileTrust(TrustStatus.Valid, TrustSource.Embedded, "Signer"),
                 Detections = [new Detection("hash", "T", DetectionCategory.TestFile, DetectionConfidence.High, "d") { Location = "x/y" }],
+                Action = ItemAction.Quarantined(new string('c', 32)),
             },
+            new ScanItemResult
+            {
+                Path = @"C:\scan\b.exe",
+                Kind = ScanItemKind.File,
+                Status = ScanStatus.Detected,
+                Detections = [new Detection("hash", "U", DetectionCategory.Malware, DetectionConfidence.High)],
+                Action = ItemAction.Failed(ActionFailure.InUse, "running"),
+            },
+            ScanItemResult.Skip(@"C:\scan\tools", ScanItemKind.Directory, ScanReason.Excluded),
             ScanItemResult.Fail(@"C:\scan\locked.bin", ScanItemKind.File, ScanReason.Locked, "busy"),
         ],
     };

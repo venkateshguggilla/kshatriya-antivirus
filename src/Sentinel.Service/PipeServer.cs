@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Sentinel.Core;
 using Sentinel.Protocol;
+using Sentinel.Response;
 using Sentinel.Runtime.Ipc;
 using Sentinel.Scanning;
 
@@ -125,7 +126,11 @@ public sealed class PipeServer
     }
 }
 
-/// <summary>One client connection: handshake, then status and scan requests until the client disconnects.</summary>
+/// <summary>
+/// One client connection: handshake, then requests until the client disconnects. Operations that weaken
+/// protection (restore, exclusions) and reading other users' quarantine items or the audit log require an
+/// elevated administrator in production; a development service serves only its own user. Refusals are audited.
+/// </summary>
 internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core, ILogger logger) : IDisposable
 {
     private static readonly FrameLimits s_requestLimits = FrameLimits.Control;
@@ -208,6 +213,8 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
         }
 
         bool isAdmin = new WindowsPrincipal(caller).IsInRole(WindowsBuiltInRole.Administrator);
+        bool canManage = isAdmin || !core.RequireAdministrator;
+        Actor actor = Actor.FromIdentity(caller);
         PipeNative.GetNamedPipeClientProcessId(pipe.SafePipeHandle, out uint clientPid);
         Log.ClientConnected(logger, caller.Name, clientPid, isAdmin, hello.Client);
 
@@ -227,7 +234,30 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
                     await SendAsync(MessageType.StatusReply, core.GetStatus(), cancellationToken);
                     break;
                 case MessageType.Scan:
-                    await ScanAsync(ProtocolJson.Deserialize<ScanRequestDto>(frame.Json), caller, cancellationToken);
+                    await ScanAsync(ProtocolJson.Deserialize<ScanRequestDto>(frame.Json), caller, actor, cancellationToken);
+                    break;
+                case MessageType.QuarantineList:
+                    ProtocolJson.Deserialize<EmptyDto>(frame.Json);
+                    await SendAsync(MessageType.QuarantineListReply, ListQuarantine(actor, canManage), cancellationToken);
+                    break;
+                case MessageType.QuarantineAdd:
+                    await QuarantineAddAsync(ProtocolJson.Deserialize<QuarantineAddDto>(frame.Json), caller, actor, cancellationToken);
+                    break;
+                case MessageType.QuarantineRestore:
+                    await RestoreAsync(ProtocolJson.Deserialize<QuarantineRestoreDto>(frame.Json), caller, actor, canManage, cancellationToken);
+                    break;
+                case MessageType.QuarantineDelete:
+                    await DeleteAsync(ProtocolJson.Deserialize<QuarantineDeleteDto>(frame.Json), actor, canManage, cancellationToken);
+                    break;
+                case MessageType.ExclusionsList:
+                    ProtocolJson.Deserialize<EmptyDto>(frame.Json);
+                    await ExclusionsListAsync(actor, canManage, cancellationToken);
+                    break;
+                case MessageType.ExclusionsChange:
+                    await ExclusionsChangeAsync(ProtocolJson.Deserialize<ExclusionChangeDto>(frame.Json), actor, canManage, cancellationToken);
+                    break;
+                case MessageType.AuditQuery:
+                    await AuditAsync(ProtocolJson.Deserialize<AuditQueryDto>(frame.Json), actor, canManage, cancellationToken);
                     break;
                 case MessageType.Cancel:
                     // No scan running; nothing to cancel.
@@ -239,13 +269,29 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
         }
     }
 
-    private async Task ScanAsync(ScanRequestDto request, WindowsIdentity caller, CancellationToken cancellationToken)
+    private async Task ScanAsync(ScanRequestDto request, WindowsIdentity caller, Actor actor, CancellationToken cancellationToken)
     {
         string? invalid = ScanPathPolicy.Validate(request.Paths);
         if (invalid is not null)
         {
             await SendErrorAsync(ErrorCodes.InvalidPath, invalid, cancellationToken);
             return;
+        }
+
+        IItemResponder? responder;
+        switch (request.Action)
+        {
+            case ScanActions.Report:
+                responder = null;
+                break;
+            case ScanActions.Quarantine:
+                // Quarantine opens and removes files while impersonating the caller, so it can only remove
+                // files the caller could delete themselves.
+                responder = new QuarantineResponder(core.Quarantine, actor);
+                break;
+            default:
+                await SendErrorAsync(ErrorCodes.BadRequest, $"Unknown scan action '{request.Action}'.", cancellationToken);
+                return;
         }
 
         Log.ScanRequested(logger, caller.Name, request.Paths.Count);
@@ -258,7 +304,7 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
             // anything the caller could not read themselves. Workers are started as the service identity.
             ScanReport report = await WindowsIdentity.RunImpersonatedAsync(
                 caller.AccessToken,
-                () => core.Coordinator.ScanAsync(request.Paths, request.IncludeClean, useCache: true, progress, scanCancel.Token));
+                () => core.Coordinator.ScanAsync(request.Paths, request.IncludeClean, useCache: true, responder, progress, scanCancel.Token));
 
             core.RecordDetections(report, caller.Name);
 
@@ -288,6 +334,195 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
             await scanCancel.CancelAsync();
             await watcher;
         }
+    }
+
+    private QuarantineListReplyDto ListQuarantine(Actor actor, bool canManage) => new()
+    {
+        Items = [.. core.Quarantine.List()
+            .Where(e => canManage || e.ActorSid == actor.Sid)
+            .Select(e => new QuarantineItemDto
+            {
+                Id = e.Id,
+                OriginalPath = e.OriginalPath,
+                Sha256 = e.Sha256,
+                SizeBytes = e.SizeBytes,
+                QuarantinedUtc = e.QuarantinedUtc.UtcDateTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                User = e.ActorName,
+                Detections = [.. e.Detections],
+                Origin = e.Origin,
+            })],
+    };
+
+    private async Task QuarantineAddAsync(QuarantineAddDto request, WindowsIdentity caller, Actor actor, CancellationToken cancellationToken)
+    {
+        if (!ScanPathPolicy.IsLocalAbsolutePath(request.Path))
+        {
+            await SendErrorAsync(ErrorCodes.InvalidPath, $"'{request.Path}' is not a fully qualified local path.", cancellationToken);
+            return;
+        }
+
+        // The file is opened and removed as the caller; only the vault write runs as the service.
+        QuarantineResult result = WindowsIdentity.RunImpersonated(
+            caller.AccessToken,
+            () => core.Quarantine.Quarantine(request.Path, actor, [], expectedSha256: null, origin: "manual"));
+        if (result.Succeeded)
+        {
+            Log.Quarantined(logger, actor.Name, request.Path, result.Entry!.Id);
+        }
+        else
+        {
+            Log.QuarantineFailed(logger, request.Path, actor.Name, WireNames.Of(result.Failure));
+        }
+
+        await SendAsync(MessageType.OperationReply, new OperationReplyDto
+        {
+            Succeeded = result.Succeeded,
+            Code = WireNames.Of(result.Failure),
+            Message = result.Message,
+            QuarantineId = result.Entry?.Id,
+            Path = request.Path,
+        }, cancellationToken);
+    }
+
+    private async Task RestoreAsync(QuarantineRestoreDto request, WindowsIdentity caller, Actor actor, bool canManage, CancellationToken cancellationToken)
+    {
+        if (!canManage)
+        {
+            const string reason = "Restoring a quarantined file requires an elevated administrator (run the command as administrator).";
+            core.Quarantine.AuditDenied(actor, AuditActions.Restore, request.Id, reason);
+            Log.Denied(logger, AuditActions.Restore, actor.Name, reason);
+            await SendErrorAsync(ErrorCodes.AccessDenied, reason, cancellationToken);
+            return;
+        }
+
+        if (request.TargetPath is not null && !ScanPathPolicy.IsLocalAbsolutePath(request.TargetPath))
+        {
+            await SendErrorAsync(ErrorCodes.InvalidPath, $"'{request.TargetPath}' is not a fully qualified local path.", cancellationToken);
+            return;
+        }
+
+        // The restored file is created as the caller, so it lands only where the caller may write.
+        RestoreResult result = WindowsIdentity.RunImpersonated(caller.AccessToken, () => core.Quarantine.Restore(request.Id, request.TargetPath, actor));
+        Log.Restored(logger, actor.Name, request.Id, result.RestoredPath ?? request.TargetPath ?? "-", RestoreResult.WireName(result.Failure));
+        await SendAsync(MessageType.OperationReply, new OperationReplyDto
+        {
+            Succeeded = result.Succeeded,
+            Code = RestoreResult.WireName(result.Failure),
+            Message = result.Succeeded && !result.MarkOfTheWeb ? "Restored, but the internet zone mark could not be written on this volume." : result.Message,
+            QuarantineId = request.Id,
+            Path = result.RestoredPath,
+        }, cancellationToken);
+    }
+
+    private async Task DeleteAsync(QuarantineDeleteDto request, Actor actor, bool canManage, CancellationToken cancellationToken)
+    {
+        QuarantineEntry? entry = core.Quarantine.Get(request.Id);
+        if (entry is not null && !canManage && entry.ActorSid != actor.Sid)
+        {
+            const string reason = "Only an elevated administrator can delete items quarantined for another user.";
+            core.Quarantine.AuditDenied(actor, AuditActions.Delete, request.Id, reason);
+            Log.Denied(logger, AuditActions.Delete, actor.Name, reason);
+            await SendErrorAsync(ErrorCodes.AccessDenied, reason, cancellationToken);
+            return;
+        }
+
+        bool deleted = entry is not null && core.Quarantine.Delete(request.Id, actor);
+        Log.QuarantineDeleted(logger, actor.Name, request.Id, deleted);
+        await SendAsync(MessageType.OperationReply, new OperationReplyDto
+        {
+            Succeeded = deleted,
+            Code = deleted ? "none" : "notFound",
+            Message = deleted ? null : $"No quarantined item with id '{request.Id}'.",
+            QuarantineId = request.Id,
+        }, cancellationToken);
+    }
+
+    private async Task ExclusionsListAsync(Actor actor, bool canManage, CancellationToken cancellationToken)
+    {
+        if (!canManage)
+        {
+            Log.Denied(logger, "exclusionList", actor.Name, "not an elevated administrator");
+            await SendErrorAsync(ErrorCodes.AccessDenied, "Viewing exclusions requires an elevated administrator.", cancellationToken);
+            return;
+        }
+
+        await SendAsync(MessageType.ExclusionsReply, ExclusionsReply(), cancellationToken);
+    }
+
+    private async Task ExclusionsChangeAsync(ExclusionChangeDto request, Actor actor, bool canManage, CancellationToken cancellationToken)
+    {
+        string? action = request.Operation switch
+        {
+            "add" => AuditActions.ExclusionAdd,
+            "remove" => AuditActions.ExclusionRemove,
+            _ => null,
+        };
+        if (action is null)
+        {
+            await SendErrorAsync(ErrorCodes.BadRequest, $"Unknown exclusion operation '{request.Operation}'.", cancellationToken);
+            return;
+        }
+
+        if (!canManage)
+        {
+            const string reason = "Changing exclusions requires an elevated administrator.";
+            core.Quarantine.AuditDenied(actor, action, request.Value, reason);
+            Log.Denied(logger, action, actor.Name, reason);
+            await SendErrorAsync(ErrorCodes.AccessDenied, reason, cancellationToken);
+            return;
+        }
+
+        string? problem = action == AuditActions.ExclusionAdd ? core.Exclusions.Add(request.Value) : core.Exclusions.Remove(request.Value);
+        core.Quarantine.AuditEvent(actor, action, request.Value, problem is null ? AuditOutcomes.Succeeded : AuditOutcomes.Failed, problem);
+        Log.ExclusionChanged(logger, actor.Name, request.Operation, request.Value, problem ?? "done");
+        if (problem is not null)
+        {
+            await SendErrorAsync(ErrorCodes.BadRequest, problem, cancellationToken);
+            return;
+        }
+
+        await SendAsync(MessageType.ExclusionsReply, ExclusionsReply(), cancellationToken);
+    }
+
+    private ExclusionsReplyDto ExclusionsReply()
+    {
+        var current = core.Exclusions.Current;
+        return new ExclusionsReplyDto { Paths = [.. current.Paths], Sha256 = [.. current.Hashes.Order(StringComparer.Ordinal)] };
+    }
+
+    private async Task AuditAsync(AuditQueryDto request, Actor actor, bool canManage, CancellationToken cancellationToken)
+    {
+        if (!canManage)
+        {
+            Log.Denied(logger, "auditQuery", actor.Name, "not an elevated administrator");
+            await SendErrorAsync(ErrorCodes.AccessDenied, "Reading the audit log requires an elevated administrator.", cancellationToken);
+            return;
+        }
+
+        if (request.Max is < 1 or > 1000)
+        {
+            await SendErrorAsync(ErrorCodes.BadRequest, "max must be between 1 and 1000.", cancellationToken);
+            return;
+        }
+
+        AuditVerification verification = core.Quarantine.Audit.Verify();
+        await SendAsync(MessageType.AuditReply, new AuditReplyDto
+        {
+            Records = [.. core.Quarantine.Audit.ReadRecent(request.Max).Select(r => new AuditRecordDto
+            {
+                Seq = r.Sequence,
+                TimeUtc = r.TimeUtc.UtcDateTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                User = r.ActorName,
+                Sid = r.ActorSid,
+                Action = r.Action,
+                Target = r.Target,
+                Outcome = r.Outcome,
+                Detail = r.Detail,
+                QuarantineId = r.QuarantineId,
+            })],
+            ChainValid = verification.Valid,
+            Problem = verification.Problem,
+        }, cancellationToken);
     }
 
     /// <summary>While a scan runs, consumes inbound frames: cancel (or the client disconnecting) stops the scan.</summary>

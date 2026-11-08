@@ -23,6 +23,15 @@ public sealed record ScanOptions
 
     /// <summary>Optional cache of clean verdicts for unchanged files. Null (default) rescans everything.</summary>
     public VerdictCache? Cache { get; init; }
+
+    /// <summary>Paths and hashes not to scan (reported as skipped). Null excludes nothing.</summary>
+    public ExclusionSet? Exclusions { get; init; }
+
+    /// <summary>
+    /// Optional response component (quarantine) invoked for detected files after their scan handle is
+    /// closed. Null (default) keeps the scan strictly read-only.
+    /// </summary>
+    public IItemResponder? Responder { get; init; }
 }
 
 /// <summary>Live progress counters.</summary>
@@ -31,7 +40,8 @@ public readonly record struct ScanProgress(long ItemsCompleted, long Detected, l
 /// <summary>
 /// Read-only scan pipeline: enumerate → open safely → (cache) → hash → trust check → analyzer → report.
 /// The analyzer runs the engines and archive expansion, in-process or in sandboxed workers.
-/// It never modifies, moves or deletes any file; responding to detections is a separate, later component.
+/// The runner itself never modifies, moves or deletes any file; responding to detections is delegated to
+/// an optional <see cref="IItemResponder"/> (Sentinel.Response), which re-verifies each file before acting.
 /// </summary>
 public sealed class ScanRunner
 {
@@ -83,7 +93,7 @@ public sealed class ScanRunner
                 {
                     foreach (string target in targets)
                     {
-                        foreach (WalkEntry entry in SafeFileEnumerator.Walk(target, cancellationToken))
+                        foreach (WalkEntry entry in SafeFileEnumerator.Walk(target, _options.Exclusions, cancellationToken))
                         {
                             await channel.Writer.WriteAsync(entry, cancellationToken);
                         }
@@ -107,6 +117,15 @@ public sealed class ScanRunner
         await Parallel.ForEachAsync(channel.Reader.ReadAllAsync(cancellationToken), parallel, async (entry, ct) =>
         {
             ScanItemResult result = entry.Result ?? await ScanFileAsync(entry.Path, entry.Length, ct);
+            if (_options.Responder is { } responder && result.Status == ScanStatus.Detected && result.Kind == ScanItemKind.File)
+            {
+                ItemAction? action = await responder.RespondAsync(result, ct);
+                if (action is not null)
+                {
+                    result = result with { Action = action };
+                }
+            }
+
             results.Add(result);
 
             if (result.Status is ScanStatus.Detected or ScanStatus.Suspicious)
@@ -232,6 +251,11 @@ public sealed class ScanRunner
 
             sha256 = await HashAsync(stream, timeout.Token);
             stream.Position = 0;
+
+            if (_options.Exclusions?.IsHashExcluded(sha256) == true)
+            {
+                return ScanItemResult.Skip(path, ScanItemKind.File, ScanReason.Excluded, "SHA-256 exclusion.") with { SizeBytes = length, Sha256 = sha256 };
+            }
 
             trust = EvaluateTrust(handle, stream, path);
             stream.Position = 0;
@@ -366,7 +390,7 @@ public sealed class ScanRunner
 
     private ScanReport BuildReport(IReadOnlyList<string> targets, DateTimeOffset started, IEnumerable<ScanItemResult> results)
     {
-        long seen = 0, scanned = 0, detected = 0, suspicious = 0, skipped = 0, notScanned = 0, partial = 0, bytes = 0;
+        long seen = 0, scanned = 0, detected = 0, suspicious = 0, skipped = 0, notScanned = 0, partial = 0, bytes = 0, quarantined = 0, quarantineFailed = 0;
         var listed = new List<ScanItemResult>();
         foreach (ScanItemResult r in results)
         {
@@ -402,6 +426,18 @@ public sealed class ScanRunner
                 bytes += r.SizeBytes ?? 0;
             }
 
+            if (r.Action is { } action)
+            {
+                if (action.Succeeded)
+                {
+                    quarantined++;
+                }
+                else
+                {
+                    quarantineFailed++;
+                }
+            }
+
             if (r.Status != ScanStatus.Clean || _options.IncludeCleanItems)
             {
                 listed.Add(r);
@@ -426,6 +462,8 @@ public sealed class ScanRunner
                 NotScanned = notScanned,
                 Partial = partial,
                 BytesScanned = bytes,
+                Quarantined = quarantined,
+                QuarantineFailed = quarantineFailed,
             },
             Items = listed,
             CleanItemsIncluded = _options.IncludeCleanItems,

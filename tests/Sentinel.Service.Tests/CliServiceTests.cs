@@ -49,7 +49,7 @@ public class CliServiceTests
 
         Assert.Equal(ExitCodes.Detections, code);
         using var doc = JsonDocument.Parse(output);
-        Assert.Equal(2, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(3, doc.RootElement.GetProperty("schemaVersion").GetInt32());
         Assert.Equal(1, doc.RootElement.GetProperty("summary").GetProperty("detected").GetInt32());
     }
 
