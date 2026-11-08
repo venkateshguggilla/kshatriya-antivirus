@@ -6,7 +6,7 @@ This document describes the target architecture and what exists today. Planned p
 
 - **Companion to Microsoft Defender**, never a replacement that turns it off ([ADR 0002](adr/0002-defender-companion-mode.md)).
 - **User mode first.** A kernel minifilter is an optional, late phase.
-- **Hostile input is parsed only in memory-safe code**, and (from M3) only inside sandboxed worker processes.
+- **Hostile input is parsed only in memory-safe code, inside sandboxed worker processes** (M3). The process that opens files never parses their contents beyond the SHA-256 and the Windows signature check.
 - **Scanning is read-only.** Changing user files is the job of a separate, auditable, reversible response component.
 - **Nothing is silently skipped.** Every item is clean, detected, skipped by policy (with reason), or not scanned (with reason).
 - **Offline first.** Cloud features are opt-in and send hashes only.
@@ -14,7 +14,7 @@ This document describes the target architecture and what exists today. Planned p
 ## Target component diagram
 
 ```
- UI (WinUI 3, user) ──gRPC/named pipe, both ends verified──► Service (LocalSystem)        (planned M3/M5)
+ UI (WinUI 3, user) ──named pipe, both ends verified──► Service (LocalSystem)               (UI planned M5)
                                                               ├─ Scan Coordinator ─► Sandboxed scan workers
                                                               │                      └─ Engines: Hash · YARA-X · PE · Archive · ML
                                                               ├─ Monitors: file activity · ETW process start · ransomware · WFP
@@ -23,24 +23,32 @@ This document describes the target architecture and what exists today. Planned p
  Defender stays ON · optional minifilter driver = final phase
 ```
 
-## What exists (M1–M2)
+## What exists (M1–M3)
 
 ```
-sentinel.exe (Sentinel.Cli)
-  └─ ScanRunner (Sentinel.Scanning)
-       ├─ SafeFileEnumerator  → walks targets; never follows reparse points; skips cloud placeholders;
-       │                        long paths; directory identity tracking; reports unreadable directories
-       ├─ SafeFileOpener      → CreateFileW(GENERIC_READ, share all, OPEN_REPARSE_POINT); re-checks the
-       │                        handle's attributes to close enumeration→open races
-       ├─ SHA-256 (streamed, size- and time-limited)
-       ├─ AuthenticodeTrustProvider → WinVerifyTrust on the open handle: embedded, then catalog; offline
-       ├─ IDetectionEngine[]
-       │    ├─ HashEngine          (Sentinel.Engines.Hash)  exact SHA-256 signatures
-       │    ├─ YaraEngine          (Sentinel.Engines.Yara)  YARA-X rules via C API, includes disabled
-       │    └─ PeHeuristicEngine   (Sentinel.Engines.Pe)    static PE indicators → "suspicious" only
-       └─ ZipExpander         → in-memory, metered expansion of ZIP-based containers under a per-item
-                                budget; every engine runs on every entry; findings carry the entry path
+sentinel.exe (Sentinel.Cli) ─────────────┐        Sentinel.Service.exe (LocalSystem, or --dev as the user)
+  scan <paths>      local broker         │          ├─ PipeServer  \\.\pipe\Sentinel.Service.v1
+  scan --service ───────────── named pipe ─────────►│    caller identified by impersonation; scans run AS the caller
+  status            client checks server PID = SCM  │  ├─ ScanCoordinator (shared worker pool, verdict cache, scan cap)
+                                                    │  └─ Scheduler (local-time schedules, reports, catch-up)
+        broker (CLI or service)
+          └─ ScanRunner (Sentinel.Scanning)
+               ├─ SafeFileEnumerator  → never follows reparse points; skips cloud placeholders; long paths
+               ├─ SafeFileOpener      → read-only, share-all, OPEN_REPARSE_POINT; handle attributes re-checked
+               ├─ VerdictCache        → unchanged clean files (file ID + size + write/change times + engine fingerprint)
+               ├─ SHA-256 · AuthenticodeTrustProvider (WinVerifyTrust on the open handle, offline)
+               └─ IContentAnalyzer
+                    ├─ WorkerPoolAnalyzer (default) ── bytes over overlapped pipes ──► Sentinel.Worker.exe ×N
+                    │                                   restricted token · account SID deny-only · low integrity
+                    │                                   Job Object (1 process, memory cap, kill on close, UI limits)
+                    │                                   mitigations (no child processes, no extension points, ...)
+                    │                                     └─ InProcessAnalyzer
+                    └─ InProcessAnalyzer (--no-sandbox, development only)
+                          ├─ HashEngine · YaraEngine · PeHeuristicEngine   (IDetectionEngine)
+                          └─ ZipExpander (metered, per-item budget, every engine on every entry)
 ```
+
+See [ADR 0005](adr/0005-service-sandbox-ipc.md) for the service, sandbox and IPC decisions.
 
 ### Verdict aggregation
 
@@ -75,12 +83,22 @@ Engines and (future) protection modules are compiled in and shipped signed. Thir
 
 Detections carry a category (`malware`, `pua`, `suspicious`, `test`) and a confidence (`low`, `medium`, `high`). Only high-confidence detections may ever drive automatic actions (from M4).
 
-## Planned communication between UI and service (M3)
+## Communication between clients and the service (M3)
 
-- gRPC over a named pipe. The access list grants SYSTEM full control and interactive users connect rights, denies network logons, and grants nobody else `FILE_CREATE_PIPE_INSTANCE`.
-- Service verifies the client (`GetNamedPipeClientProcessId` → image path in install directory → Authenticode signer). Client verifies the server (`GetNamedPipeServerProcessId` → our signed service running as SYSTEM) and connects at the Identification impersonation level.
-- Operations that weaken protection (disable real-time, add exclusion, restore a detected file, change update source) require an elevated administrator token and are audited.
-- Protocol version handshake; protobuf evolution rules; the service supports N and N-1.
+- Length-prefixed frames over a named pipe, with strict JSON headers and limits checked before
+  allocation. The handshake carries a protocol version, and a mismatch is refused.
+- Pipe ACL: SYSTEM and Administrators full control; Authenticated Users read/write but **not**
+  `FILE_CREATE_PIPE_INSTANCE`; network logons denied. The first instance uses `FILE_FLAG_FIRST_PIPE_INSTANCE`.
+- The **client verifies the server before sending anything**: the pipe server's PID must be the
+  PID that the SCM reports for `SentinelService` (development: same user).
+- The **service identifies the client only via impersonation** and runs that client's scans
+  impersonated, so a caller can scan only what it can read. Clients therefore connect at the
+  Impersonation level; Identification-only clients are refused.
+- Accepted paths: fully qualified local drive paths only (no UNC, device, `\\?\`, ADS or wildcards).
+- Not yet built: operations that weaken protection (restore a detected file, exclusions, disabling
+  protection). They arrive with M4/M5 and will require an elevated administrator caller and an audit entry.
+- Not yet built: verifying the *client binary* (image path and signer). Authorization is per user,
+  because every operation today grants only what the caller already has.
 
 ## Roadmap
 
@@ -90,7 +108,7 @@ Labels: **P** prototype/educational · **B** beta for trusted testers. Nothing h
 |---|---|---|
 | M1 | Foundation + read-only scanner CLI ✔ | P |
 | M2 | YARA-X rules, PE heuristics, Authenticode checks, archive scanning with limits ✔ | P |
-| M3 | Windows service, sandboxed scan workers, authenticated IPC, scheduler, verdict cache | P |
+| M3 | Windows service, sandboxed scan workers, authenticated IPC, scheduler, verdict cache ✔ | P |
 | M4 | Encrypted quarantine, handle-based removal, restore, exclusions, audit log | P |
 | M5 | WinUI 3 app: dashboard, scan, detections, quarantine, protection, updates, settings; accessibility | P→B |
 | M6 | Signed content updates with rollback/freeze protection, offline import | B |

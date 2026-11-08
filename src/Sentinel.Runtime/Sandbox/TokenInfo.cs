@@ -7,17 +7,19 @@ namespace Sentinel.Runtime.Sandbox;
 public static class TokenInfo
 {
     /// <summary>The current process's mandatory integrity level: untrusted, low, medium, high, system or unknown.</summary>
-    public static string CurrentIntegrityLevel()
+    /// <remarks>
+    /// Uses the current-process-token pseudo-handle: inside the sandbox the worker's own token object is not
+    /// openable (its account SID is deny-only), but the pseudo-handle needs no access check.
+    /// </remarks>
+    public static unsafe string CurrentIntegrityLevel()
     {
-        if (!SandboxNative.OpenProcessToken(SandboxNative.GetCurrentProcess(), SandboxNative.TokenQuery, out SafeKernelHandle token))
+        byte* buffer = stackalloc byte[256];
+        if (!SandboxNative.GetTokenInformationByPseudoHandle(SandboxNative.CurrentProcessTokenPseudoHandle, SandboxNative.TokenIntegrityLevel, buffer, 256, out _))
         {
             return "unknown";
         }
 
-        using (token)
-        {
-            return IntegrityLevelOf(token);
-        }
+        return Name(new SecurityIdentifier(((SandboxNative.SidAndAttributes*)buffer)->Sid).Value);
     }
 
     /// <summary>The user SID of another process, or null if it cannot be queried.</summary>
@@ -33,19 +35,6 @@ public static class TokenInfo
         {
             return UserOf(token);
         }
-    }
-
-    internal static unsafe string IntegrityLevelOf(SafeKernelHandle token)
-    {
-        byte* buffer = stackalloc byte[256];
-        if (!SandboxNative.GetTokenInformation(token, SandboxNative.TokenIntegrityLevel, buffer, 256, out _))
-        {
-            return "unknown";
-        }
-
-        IntPtr sidPointer = ((SandboxNative.SidAndAttributes*)buffer)->Sid;
-        string sid = new SecurityIdentifier(sidPointer).Value;
-        return Name(sid);
     }
 
     internal static string Name(string integritySid) => integritySid switch

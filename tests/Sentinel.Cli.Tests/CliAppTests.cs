@@ -46,7 +46,7 @@ public class CliAppTests
     {
         var (code, output, _) = await Run(null, "version");
         Assert.Equal(ExitCodes.Clean, code);
-        Assert.StartsWith("sentinel 0.1.0", output, StringComparison.Ordinal);
+        Assert.StartsWith("sentinel 0.3.0", output, StringComparison.Ordinal);
     }
 
     [Theory]

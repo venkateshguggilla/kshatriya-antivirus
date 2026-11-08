@@ -49,6 +49,9 @@ public sealed class WorkerStartException : Exception
         : base(message, innerException)
     {
     }
+
+    /// <summary>True when the worker started but rejected the engine configuration (bad signatures or rules).</summary>
+    public bool IsConfigurationError { get; init; }
 }
 
 /// <summary>Live counters for status reporting.</summary>
@@ -243,7 +246,7 @@ public sealed class WorkerPoolAnalyzer : IContentAnalyzer, IDisposable
             WorkerInitReplyDto reply = await worker.InitializeAsync(_config, _options.StartupTimeout, cancellationToken);
             if (reply.Error is not null)
             {
-                throw new WorkerStartException(reply.Error);
+                throw new WorkerStartException(reply.Error) { IsConfigurationError = true };
             }
 
             if (_options.RequireLowIntegrity && reply.IntegrityLevel is not ("low" or "untrusted"))

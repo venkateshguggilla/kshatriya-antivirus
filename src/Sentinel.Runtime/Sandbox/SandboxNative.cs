@@ -163,6 +163,12 @@ internal static unsafe partial class SandboxNative
     [LibraryImport("kernel32.dll")]
     internal static partial IntPtr GetCurrentProcess();
 
+    internal const uint HandleFlagInherit = 0x1;
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetHandleInformation(SafeFileHandle handle, uint mask, uint flags);
+
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool OpenProcessToken(IntPtr process, uint desiredAccess, out SafeKernelHandle token);
@@ -200,6 +206,13 @@ internal static unsafe partial class SandboxNative
     [LibraryImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetTokenInformation(SafeKernelHandle token, int informationClass, void* information, uint length, out uint returnLength);
+
+    /// <summary>GetCurrentProcessToken(): a pseudo-handle with TOKEN_QUERY access that needs no access check.</summary>
+    internal static readonly IntPtr CurrentProcessTokenPseudoHandle = -4;
+
+    [LibraryImport("advapi32.dll", EntryPoint = "GetTokenInformation", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetTokenInformationByPseudoHandle(IntPtr token, int informationClass, void* information, uint length, out uint returnLength);
 
     [LibraryImport("kernel32.dll", EntryPoint = "CreateJobObjectW", SetLastError = true)]
     internal static partial SafeKernelHandle CreateJobObject(IntPtr attributes, IntPtr name);

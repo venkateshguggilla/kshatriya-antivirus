@@ -12,6 +12,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Sentinel.Service/Sentinel.Service.csproj" />
+    <ProjectReference Include="../../src/Sentinel.Cli/Sentinel.Cli.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

@@ -14,7 +14,13 @@ internal static class Program
     public static async Task<int> Main(string[] args)
     {
         bool dev = args.Contains("--dev");
-        HostApplicationBuilder builder = Host.CreateApplicationBuilder([.. args.Where(a => a != "--dev")]);
+        // Content root = install directory (admin-only), never the current directory, so a stray
+        // appsettings.json next to wherever the service is started from is not picked up.
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+        {
+            Args = [.. args.Where(a => a != "--dev")],
+            ContentRootPath = AppContext.BaseDirectory,
+        });
         builder.Services.AddWindowsService(o => o.ServiceName = ServiceEndpoint.DefaultServiceName);
         builder.Services.AddSingleton(new ServiceCoreOptions
         {

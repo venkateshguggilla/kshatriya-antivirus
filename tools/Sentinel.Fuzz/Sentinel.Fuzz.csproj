@@ -9,6 +9,7 @@
     <ProjectReference Include="../../src/Sentinel.Engines.Pe/Sentinel.Engines.Pe.csproj" />
     <ProjectReference Include="../../src/Sentinel.Engines.Hash/Sentinel.Engines.Hash.csproj" />
     <ProjectReference Include="../../src/Sentinel.Scanning/Sentinel.Scanning.csproj" />
+    <ProjectReference Include="../../src/Sentinel.Protocol/Sentinel.Protocol.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../../tests/Shared/Mutator.cs" Link="Shared/Mutator.cs" />

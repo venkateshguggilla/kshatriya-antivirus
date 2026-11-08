@@ -1,5 +1,5 @@
 // Mutation fuzz harness for Sentinel parsers.
-//   dotnet run -c Release --project tools/Sentinel.Fuzz -- <pe|zip|hashdb|all> [iterations] [seed] [crashDir]
+//   dotnet run -c Release --project tools/Sentinel.Fuzz -- <pe|zip|hashdb|frame|report|all> [iterations] [seed] [crashDir]
 // Any exception escaping a parser counts as a failure; the offending input is saved to crashDir.
 // This is unguided mutation fuzzing; coverage-guided fuzzing (SharpFuzz + libFuzzer) is future work.
 
@@ -9,6 +9,7 @@ using System.Text;
 using Sentinel.Core;
 using Sentinel.Engines.Hash;
 using Sentinel.Engines.Pe;
+using Sentinel.Protocol;
 using Sentinel.Scanning;
 using Sentinel.Tests.Shared;
 
@@ -18,13 +19,15 @@ int seed = args.Length > 2 ? int.Parse(args[2], CultureInfo.InvariantCulture) : 
 string crashDir = args.Length > 3 ? args[3] : Path.Combine(Path.GetTempPath(), "sentinel-fuzz-crashes");
 
 int failures = 0;
-foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb" } : [target])
+foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "report" } : [target])
 {
     failures += t switch
     {
         "pe" => FuzzPe(iterations, seed, crashDir),
         "zip" => await FuzzZipAsync(iterations, seed, crashDir),
         "hashdb" => FuzzHashDb(iterations, seed, crashDir),
+        "frame" => await FuzzFramesAsync(iterations, seed, crashDir),
+        "report" => FuzzReport(iterations, seed, crashDir),
         _ => throw new ArgumentException($"Unknown target '{t}'."),
     };
 }
@@ -133,6 +136,139 @@ static int FuzzHashDb(long iterations, int seed, string crashDir)
     }
 
     Report("hashdb", iterations, failures, sw.Elapsed, $"accepted {accepted:N0}");
+    return failures;
+}
+
+// IPC input from an untrusted peer: frame decoding plus strict DTO decoding and wire-name mapping.
+// The only acceptable failure is ProtocolException.
+static async Task<int> FuzzFramesAsync(long iterations, int seed, string crashDir)
+{
+    var detection = new DetectionDto { Engine = "hash", Name = "N", Category = "test", Confidence = "high", Location = "a>b" };
+    var messages = new (byte Type, byte[] Json, byte[] Binary)[]
+    {
+        (MessageType.Hello, ProtocolJson.Serialize(new HelloDto { Protocol = 1, Client = "c" }), []),
+        (MessageType.Scan, ProtocolJson.Serialize(new ScanRequestDto { Paths = [@"C:\x", @"D:\y"], IncludeClean = true }), []),
+        (MessageType.Analyze, ProtocolJson.Serialize(new AnalyzeDto { Id = 7, DisplayPath = "p", Length = 4, Sha256 = new string('a', 64), BudgetMs = 1000, Trust = new TrustDto { Status = "valid", Source = "catalog", Signer = "S" } }), [1, 2, 3, 4]),
+        (MessageType.AnalyzeReply, ProtocolJson.Serialize(new AnalyzeReplyDto { Id = 7, Detections = [detection], Reason = "archiveLimit", Message = "m" }), []),
+        (MessageType.ScanProgress, ProtocolJson.Serialize(new ScanProgressDto { ItemsCompleted = 1, Detected = 0, BytesScanned = 9 }), []),
+        (MessageType.Error, ProtocolJson.Serialize(new ErrorDto { Code = "busy", Message = "m" }), []),
+    };
+
+    var seeds = new List<byte[]>();
+    foreach (var (type, json, binary) in messages)
+    {
+        using var buffer = new MemoryStream();
+        await FrameIO.WriteAsync(buffer, type, json, new MemoryStream(binary), binary.Length);
+        seeds.Add(buffer.ToArray());
+    }
+
+    var mutator = new Mutator(seed);
+    var limits = new FrameLimits(1 << 20, 1 << 16);
+    long decoded = 0;
+    int failures = 0;
+    var sw = Stopwatch.StartNew();
+    for (long i = 0; i < iterations; i++)
+    {
+        byte[] input = mutator.Mutate(seeds[(int)(i % seeds.Count)]);
+        try
+        {
+            using var stream = new MemoryStream(input, writable: false);
+            while (await FrameIO.ReadAsync(stream, limits) is { } frame)
+            {
+                DecodeFrame(frame);
+                decoded++;
+            }
+        }
+        catch (ProtocolException)
+        {
+            // Expected: malformed input is rejected and the connection would be dropped.
+        }
+        catch (Exception ex)
+        {
+            failures += Save(crashDir, "frame", i, input, ex);
+        }
+    }
+
+    Report("frame", iterations, failures, sw.Elapsed, $"decoded {decoded:N0}");
+    return failures;
+
+    static void DecodeFrame(Frame frame)
+    {
+        switch (frame.Type)
+        {
+            case MessageType.Hello:
+                _ = ProtocolJson.Deserialize<HelloDto>(frame.Json);
+                break;
+            case MessageType.Scan:
+                _ = ProtocolJson.Deserialize<ScanRequestDto>(frame.Json);
+                break;
+            case MessageType.Analyze:
+                _ = ProtocolJson.Deserialize<AnalyzeDto>(frame.Json).Trust?.ToDomain();
+                break;
+            case MessageType.AnalyzeReply:
+                AnalyzeReplyDto reply = ProtocolJson.Deserialize<AnalyzeReplyDto>(frame.Json);
+                _ = DtoMapping.ParseReason(reply.Reason);
+                _ = reply.Detections.Select(d => d.ToDomain()).ToList();
+                break;
+            case MessageType.ScanProgress:
+                _ = ProtocolJson.Deserialize<ScanProgressDto>(frame.Json);
+                break;
+            default:
+                _ = ProtocolJson.Deserialize<ErrorDto>(frame.Json);
+                break;
+        }
+    }
+}
+
+// Reports read back from the service (or from disk). The only acceptable failure is FormatException.
+static int FuzzReport(long iterations, int seed, string crashDir)
+{
+    var report = new ScanReport
+    {
+        Targets = [@"C:\scan"],
+        StartedUtc = new DateTimeOffset(2026, 11, 8, 1, 2, 3, TimeSpan.Zero),
+        FinishedUtc = new DateTimeOffset(2026, 11, 8, 1, 2, 4, TimeSpan.Zero),
+        Engines = [new EngineInfo("hash", "1.0.0", "1-abc")],
+        Summary = new ScanSummary { ItemsSeen = 2, FilesScanned = 1, Detected = 1, NotScanned = 1, BytesScanned = 10 },
+        Items =
+        [
+            new ScanItemResult
+            {
+                Path = @"C:\scan\a.zip",
+                Kind = ScanItemKind.File,
+                Status = ScanStatus.Detected,
+                SizeBytes = 10,
+                Sha256 = new string('b', 64),
+                Trust = new FileTrust(TrustStatus.Valid, TrustSource.Embedded, "Signer"),
+                Detections = [new Detection("hash", "T", DetectionCategory.TestFile, DetectionConfidence.High, "d") { Location = "x/y" }],
+            },
+            ScanItemResult.Fail(@"C:\scan\locked.bin", ScanItemKind.File, ScanReason.Locked, "busy"),
+        ],
+    };
+    byte[] seedText = Encoding.UTF8.GetBytes(ScanReportJson.Write(report, "0.0.0"));
+    var mutator = new Mutator(seed);
+    long accepted = 0;
+    int failures = 0;
+    var sw = Stopwatch.StartNew();
+    for (long i = 0; i < iterations; i++)
+    {
+        byte[] input = mutator.Mutate(seedText);
+        try
+        {
+            _ = ScanReportJson.Read(Encoding.UTF8.GetString(input));
+            accepted++;
+        }
+        catch (FormatException)
+        {
+            // Expected.
+        }
+        catch (Exception ex)
+        {
+            failures += Save(crashDir, "report", i, input, ex);
+        }
+    }
+
+    Report("report", iterations, failures, sw.Elapsed, $"accepted {accepted:N0}");
     return failures;
 }
 

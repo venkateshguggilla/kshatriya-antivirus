@@ -1,10 +1,11 @@
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 using Sentinel.Core;
-using Sentinel.Engines;
-using Sentinel.Engines.Hash;
-using Sentinel.Engines.Pe;
-using Sentinel.Engines.Yara;
+using Sentinel.Protocol;
+using Sentinel.Runtime;
+using Sentinel.Runtime.Ipc;
+using Sentinel.Runtime.Workers;
 using Sentinel.Scanning;
 using Sentinel.Scanning.Trust;
 
@@ -15,6 +16,9 @@ public static class CliApp
 {
     public static string ToolVersion { get; } =
         typeof(CliApp).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";
+
+    /// <summary>Overrides the service endpoint (tests). Null uses the installed or development service.</summary>
+    public static ServiceEndpoint? EndpointOverride { get; set; }
 
     public static async Task<int> RunAsync(
         IReadOnlyList<string> args,
@@ -47,49 +51,17 @@ public static class CliApp
             case CliCommand.Version:
                 await stdout.WriteLineAsync($"sentinel {ToolVersion}");
                 return ExitCodes.Clean;
+            case CliCommand.Status:
+                return await StatusAsync(options, stdout, stderr, cancellationToken);
         }
 
-        var engines = new List<IDetectionEngine>();
-        YaraEngine? yara = null;
-        try
-        {
-            engines.Add(HashEngine.CreateDefault(options.SignatureFiles.Select(HashSignatureDatabase.LoadFile)));
+        return options.UseService
+            ? await ServiceScanAsync(options, stdout, stderr, cancellationToken)
+            : await LocalScanAsync(options, stdin, stdout, stderr, cancellationToken);
+    }
 
-            if (YaraEngine.IsAvailable(out string? yaraUnavailable))
-            {
-                var sources = new List<YaraSource> { YaraEngine.BuiltInRules() };
-                sources.AddRange(options.RuleFiles.Select(f => new YaraSource(File.ReadAllText(f, Encoding.UTF8), Path.GetFileName(f))));
-                yara = YaraEngine.Create(sources, new YaraEngineOptions { MaxScanBytes = options.MaxFileSizeBytes ?? new ScanLimits().MaxFileSizeBytes });
-                engines.Add(yara);
-            }
-            else if (options.RuleFiles.Count > 0)
-            {
-                await stderr.WriteLineAsync($"error: --rules requires the YARA engine, which is unavailable: {yaraUnavailable}");
-                return ExitCodes.Fatal;
-            }
-            else
-            {
-                await stderr.WriteLineAsync($"warning: YARA engine unavailable ({yaraUnavailable}). Scanning without YARA rules.");
-            }
-
-            if (!options.NoHeuristics)
-            {
-                engines.Add(new PeHeuristicEngine(new PeHeuristicOptions { SkipValidlySigned = !options.HeuristicsIncludeSigned }));
-            }
-        }
-        catch (Exception ex) when (ex is FormatException or IOException or UnauthorizedAccessException)
-        {
-            yara?.Dispose();
-            await stderr.WriteLineAsync($"error: could not load signatures or rules: {ex.Message}");
-            return ExitCodes.Fatal;
-        }
-        catch (YaraCompileException ex)
-        {
-            await stderr.WriteLineAsync($"error: {ex.Message}");
-            return ExitCodes.Fatal;
-        }
-
-        using var yaraLifetime = yara;
+    private static async Task<int> LocalScanAsync(CliOptions options, Stream stdin, TextWriter stdout, TextWriter stderr, CancellationToken cancellationToken)
+    {
         var limits = new ScanLimits();
         limits = limits with
         {
@@ -99,26 +71,167 @@ public static class CliApp
             Archives = options.ArchiveDepth is int depth ? limits.Archives with { MaxDepth = depth } : limits.Archives,
         };
 
-        var runner = new ScanRunner(engines, new ScanOptions
+        EngineConfiguration engines;
+        try
         {
-            Limits = limits,
-            IncludeCleanItems = options.IncludeClean,
-            TrustProvider = new AuthenticodeTrustProvider(),
-        });
+            engines = EngineConfiguration.FromFiles(options.SignatureFiles, options.RuleFiles) with
+            {
+                Heuristics = !options.NoHeuristics,
+                HeuristicsIncludeSigned = options.HeuristicsIncludeSigned,
+                MaxScanBytes = limits.MaxFileSizeBytes,
+                Archives = limits.Archives,
+            };
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await stderr.WriteLineAsync($"error: could not load signatures or rules: {ex.Message}");
+            return ExitCodes.Fatal;
+        }
 
+        IContentAnalyzer analyzer;
+        IDisposable lifetime;
+        IReadOnlyList<string> warnings;
+        try
+        {
+            if (options.NoSandbox)
+            {
+                (InProcessAnalyzer local, EngineSet set) = EngineSetup.BuildInProcess(engines);
+                (analyzer, lifetime, warnings) = (local, set, set.Warnings);
+            }
+            else
+            {
+                WorkerPoolAnalyzer pool = await WorkerPoolAnalyzer.StartAsync(
+                    new WorkerPoolOptions { Engines = engines, WorkerCount = limits.MaxDegreeOfParallelism },
+                    cancellationToken);
+                (analyzer, lifetime, warnings) = (pool, pool, pool.Warnings);
+            }
+        }
+        catch (EngineSetupException ex)
+        {
+            await stderr.WriteLineAsync($"error: could not load signatures or rules: {ex.Message}");
+            return ExitCodes.Fatal;
+        }
+        catch (WorkerStartException ex) when (ex.IsConfigurationError)
+        {
+            await stderr.WriteLineAsync($"error: could not load signatures or rules: {ex.Message}");
+            return ExitCodes.Fatal;
+        }
+        catch (WorkerStartException ex)
+        {
+            await stderr.WriteLineAsync($"error: could not start sandboxed scan workers: {ex.Message}");
+            await stderr.WriteLineAsync("Scanning without isolation is possible with --no-sandbox (less safe; for development only).");
+            return ExitCodes.Fatal;
+        }
+
+        using (lifetime)
+        {
+            foreach (string warning in warnings)
+            {
+                await stderr.WriteLineAsync($"warning: {warning}");
+            }
+
+            var runner = new ScanRunner(analyzer, new ScanOptions
+            {
+                Limits = limits,
+                IncludeCleanItems = options.IncludeClean,
+                TrustProvider = new AuthenticodeTrustProvider(),
+            });
+
+            ScanReport report;
+            try
+            {
+                report = options.ReadStdin
+                    ? await ScanStdinAsync(runner, stdin, options.StdinName, cancellationToken)
+                    : await runner.ScanPathsAsync(options.Targets, progress: null, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                await stderr.WriteLineAsync("Scan cancelled. Results are incomplete.");
+                return ExitCodes.Incomplete;
+            }
+
+            return await WriteReportAsync(report, options, stdout, stderr, cancellationToken);
+        }
+    }
+
+    private static async Task<int> ServiceScanAsync(CliOptions options, TextWriter stdout, TextWriter stderr, CancellationToken cancellationToken)
+    {
+        // The service accepts only absolute paths; resolve relative ones against this process's directory.
+        string[] targets = [.. options.Targets.Select(Path.GetFullPath)];
         ScanReport report;
         try
         {
-            report = options.ReadStdin
-                ? await ScanStdinAsync(runner, engines.Select(e => e.Descriptor.ToInfo()).ToArray(), stdin, options.StdinName, cancellationToken)
-                : await runner.ScanPathsAsync(options.Targets, progress: null, cancellationToken);
+            await using ServiceClient client = await ConnectAsync(options, cancellationToken);
+            report = await client.ScanAsync(targets, options.IncludeClean, progress: null, cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             await stderr.WriteLineAsync("Scan cancelled. Results are incomplete.");
             return ExitCodes.Incomplete;
         }
+        catch (Exception ex) when (IsServiceFailure(ex))
+        {
+            await stderr.WriteLineAsync($"error: {ex.Message}");
+            return ExitCodes.Fatal;
+        }
 
+        return await WriteReportAsync(report, options, stdout, stderr, cancellationToken);
+    }
+
+    private static async Task<int> StatusAsync(CliOptions options, TextWriter stdout, TextWriter stderr, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using ServiceClient client = await ConnectAsync(options, cancellationToken);
+            StatusReplyDto status = await client.GetStatusAsync(cancellationToken);
+            await stdout.WriteAsync(FormatStatus(client.Hello, status));
+            return ExitCodes.Clean;
+        }
+        catch (Exception ex) when (IsServiceFailure(ex))
+        {
+            await stderr.WriteLineAsync($"error: {ex.Message}");
+            return ExitCodes.Fatal;
+        }
+    }
+
+    private static Task<ServiceClient> ConnectAsync(CliOptions options, CancellationToken cancellationToken)
+    {
+        ServiceEndpoint endpoint = EndpointOverride ?? (options.DevService ? ServiceEndpoint.Development() : ServiceEndpoint.Production);
+        return ServiceClient.ConnectAsync(endpoint, $"sentinel-cli/{ToolVersion}", TimeSpan.FromSeconds(5), cancellationToken);
+    }
+
+    private static bool IsServiceFailure(Exception ex) =>
+        ex is ServiceException or ServiceAuthenticationException or ProtocolException or IOException or TimeoutException or UnauthorizedAccessException;
+
+    internal static string FormatStatus(HelloReplyDto hello, StatusReplyDto status)
+    {
+        var sb = new StringBuilder();
+        sb.Append(CultureInfo.InvariantCulture, $"{hello.Service} ({status.Mode}), running since {status.StartedUtc}").AppendLine();
+        sb.Append(CultureInfo.InvariantCulture, $"Connected as: {hello.User} (administrator: {(hello.IsAdmin ? "yes" : "no")})").AppendLine();
+        sb.Append("Engines: ").AppendJoin(", ", status.Engines.Select(e => $"{e.Id} {e.Version} [{e.ContentVersion}]")).AppendLine();
+        WorkerStatsDto w = status.Workers;
+        sb.Append(CultureInfo.InvariantCulture, $"Sandboxed workers: {w.Configured} configured, {w.Running} running, {w.Started} started, {w.Crashed} crashed, {w.TimedOut} stopped at time limit").AppendLine();
+        sb.Append(CultureInfo.InvariantCulture, $"Verdict cache: {status.Cache.Entries} entries, {status.Cache.Hits} hits, {status.Cache.Misses} misses").AppendLine();
+        sb.Append(CultureInfo.InvariantCulture, $"Active scans: {status.ActiveScans}").AppendLine();
+        if (status.Schedules.Count == 0)
+        {
+            sb.AppendLine("Scheduled scans: none configured");
+        }
+        else
+        {
+            sb.AppendLine("Scheduled scans:");
+            foreach (ScheduleStatusDto s in status.Schedules)
+            {
+                string last = s.LastRunUtc is null ? "never run" : $"last {s.LastRunUtc} ({s.LastOutcome})";
+                sb.Append(CultureInfo.InvariantCulture, $"  {s.Name}  next {s.NextRunUtc}  {last}").AppendLine();
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static async Task<int> WriteReportAsync(ScanReport report, CliOptions options, TextWriter stdout, TextWriter stderr, CancellationToken cancellationToken)
+    {
         string output = options.Json
             ? JsonReportWriter.Write(report, ToolVersion)
             : TextReportWriter.Write(report, options.Quiet);
@@ -146,7 +259,7 @@ public static class CliApp
             : ExitCodes.Incomplete;
     }
 
-    private static async Task<ScanReport> ScanStdinAsync(ScanRunner runner, IReadOnlyList<EngineInfo> engines, Stream stdin, string name, CancellationToken ct)
+    private static async Task<ScanReport> ScanStdinAsync(ScanRunner runner, Stream stdin, string name, CancellationToken ct)
     {
         DateTimeOffset started = DateTimeOffset.UtcNow;
         ScanItemResult item = await runner.ScanStreamAsync(stdin, name, ct);
@@ -156,7 +269,7 @@ public static class CliApp
             Targets = [name],
             StartedUtc = started,
             FinishedUtc = DateTimeOffset.UtcNow,
-            Engines = engines,
+            Engines = runner.Engines,
             Summary = new ScanSummary
             {
                 ItemsSeen = 1,

@@ -7,6 +7,7 @@ public enum CliCommand
     Help,
     Version,
     Scan,
+    Status,
 }
 
 /// <summary>Parsed command line. Hand-written parser: tiny surface, no third-party dependency.</summary>
@@ -44,12 +45,23 @@ public sealed record CliOptions
 
     public int? Parallelism { get; init; }
 
+    /// <summary>Analyse content in this process instead of sandboxed workers (development and benchmarking only).</summary>
+    public bool NoSandbox { get; init; }
+
+    /// <summary>Send the scan to the Sentinel service instead of scanning in this process.</summary>
+    public bool UseService { get; init; }
+
+    /// <summary>Talk to a development service (started with --dev) instead of the installed one.</summary>
+    public bool DevService { get; init; }
+
     public const string HelpText = """
-        Sentinel scanner (milestone 2, read-only prototype)
+        Sentinel scanner (milestone 3, read-only prototype)
 
         Usage:
           sentinel scan <path>... [options]
           sentinel scan --stdin [--name <label>] [options]
+          sentinel scan --service [--dev] <path>... [--json] [--output <file>] [--include-clean] [--quiet]
+          sentinel status [--dev]
           sentinel version
           sentinel help
 
@@ -68,6 +80,10 @@ public sealed record CliOptions
           --quiet                Print only the summary in text mode
           --stdin                Scan data piped to standard input
           --name <label>         Display name for --stdin content
+          --no-sandbox           Parse files in this process instead of sandboxed worker processes
+                                 (development and benchmarking only; less safe)
+          --service              Ask the Sentinel service to scan, with your own access rights
+          --dev                  With --service or status: use a development service (Sentinel.Service --dev)
 
         Exit codes:
           0 clean   1 detections   5 suspicious only   2 incomplete   3 usage error   4 fatal error
@@ -92,6 +108,8 @@ public sealed record CliOptions
                 return new CliOptions { Command = CliCommand.Version };
             case "scan":
                 break;
+            case "status":
+                return ParseStatus(args);
             default:
                 throw new CliUsageException($"Unknown command '{args[0]}'.");
         }
@@ -149,6 +167,15 @@ public sealed record CliOptions
                 case "--parallelism":
                     options = options with { Parallelism = (int)ParsePositive(Next(args, ref i, arg), arg, max: 64) };
                     break;
+                case "--no-sandbox":
+                    options = options with { NoSandbox = true };
+                    break;
+                case "--service":
+                    options = options with { UseService = true };
+                    break;
+                case "--dev":
+                    options = options with { DevService = true };
+                    break;
                 case "--":
                     targets.AddRange(args.Skip(i + 1));
                     i = args.Count;
@@ -174,7 +201,43 @@ public sealed record CliOptions
             throw new CliUsageException("No scan targets given.");
         }
 
+        if (options.DevService && !options.UseService)
+        {
+            throw new CliUsageException("--dev is only valid together with --service.");
+        }
+
+        if (options.UseService)
+        {
+            // The service decides engines, limits and isolation from its own protected configuration.
+            bool local = options.ReadStdin || signatures.Count > 0 || rules.Count > 0 || options.NoHeuristics || options.HeuristicsIncludeSigned
+                || options.ArchiveDepth is not null || options.MaxFileSizeBytes is not null || options.Timeout is not null
+                || options.Parallelism is not null || options.NoSandbox;
+            if (local)
+            {
+                throw new CliUsageException("With --service only --json, --output, --include-clean, --quiet and --dev can be used; the service applies its own engines and limits.");
+            }
+        }
+        else if (!options.NoSandbox && options.MaxFileSizeBytes > 1024L * 1024 * 1024)
+        {
+            throw new CliUsageException("Sandboxed scanning supports files up to 1024 MiB; use a smaller --max-file-size.");
+        }
+
         return options with { Targets = targets, SignatureFiles = signatures, RuleFiles = rules };
+    }
+
+    private static CliOptions ParseStatus(IReadOnlyList<string> args)
+    {
+        var options = new CliOptions { Command = CliCommand.Status };
+        for (int i = 1; i < args.Count; i++)
+        {
+            options = args[i] switch
+            {
+                "--dev" => options with { DevService = true },
+                _ => throw new CliUsageException($"Unknown option '{args[i]}' for status."),
+            };
+        }
+
+        return options;
     }
 
     private static string Next(IReadOnlyList<string> args, ref int i, string option)

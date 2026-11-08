@@ -2,6 +2,7 @@ using System.Collections;
 using System.ComponentModel;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
@@ -69,14 +70,14 @@ public sealed class SandboxedProcess : IDisposable
 
     private readonly SafeKernelHandle _job;
     private readonly SafeKernelHandle _process;
-    private readonly AnonymousPipeServerStream _stdin;
-    private readonly AnonymousPipeServerStream _stdout;
-    private readonly AnonymousPipeServerStream _stderr;
+    private readonly NamedPipeServerStream _stdin;
+    private readonly NamedPipeServerStream _stdout;
+    private readonly NamedPipeServerStream _stderr;
     private readonly StringBuilder _errorTail = new();
     private readonly Lock _errorGate = new();
     private int _disposed;
 
-    private SandboxedProcess(SafeKernelHandle job, SafeKernelHandle process, int processId, AnonymousPipeServerStream stdin, AnonymousPipeServerStream stdout, AnonymousPipeServerStream stderr)
+    private SandboxedProcess(SafeKernelHandle job, SafeKernelHandle process, int processId, NamedPipeServerStream stdin, NamedPipeServerStream stdout, NamedPipeServerStream stderr)
     {
         _job = job;
         _process = process;
@@ -157,9 +158,10 @@ public sealed class SandboxedProcess : IDisposable
 
     private static unsafe SandboxedProcess StartCore(string fullPath, string arguments, SandboxOptions options)
     {
-        var stdin = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
-        var stdout = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable);
-        var stderr = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable);
+        using ChildPipe stdinPipe = ChildPipe.Create(PipeDirection.Out);
+        using ChildPipe stdoutPipe = ChildPipe.Create(PipeDirection.In);
+        using ChildPipe stderrPipe = ChildPipe.Create(PipeDirection.In);
+        NamedPipeServerStream stdin = stdinPipe.Server, stdout = stdoutPipe.Server, stderr = stderrPipe.Server;
         SafeKernelHandle? job = null;
         SafeKernelHandle? process = null;
         try
@@ -168,9 +170,9 @@ public sealed class SandboxedProcess : IDisposable
             job = CreateJob(options);
 
             IntPtr* handles = stackalloc IntPtr[3];
-            handles[0] = stdin.ClientSafePipeHandle.DangerousGetHandle();
-            handles[1] = stdout.ClientSafePipeHandle.DangerousGetHandle();
-            handles[2] = stderr.ClientSafePipeHandle.DangerousGetHandle();
+            handles[0] = stdinPipe.Child.DangerousGetHandle();
+            handles[1] = stdoutPipe.Child.DangerousGetHandle();
+            handles[2] = stderrPipe.Child.DangerousGetHandle();
 
             ulong mitigations = SandboxNative.MitigationHeapTerminateAlwaysOn
                 | SandboxNative.MitigationBottomUpAslrAlwaysOn
@@ -246,10 +248,8 @@ public sealed class SandboxedProcess : IDisposable
                     throw new SandboxException($"Could not start the worker: {new Win32Exception(error).Message}");
                 }
 
-                stdin.DisposeLocalCopyOfClientHandle();
-                stdout.DisposeLocalCopyOfClientHandle();
-                stderr.DisposeLocalCopyOfClientHandle();
-                return new SandboxedProcess(job, process, (int)info.ProcessId, stdin, stdout, stderr);
+                // The child now holds its ends; the server ends move to the new instance.
+                return new SandboxedProcess(job, process, (int)info.ProcessId, stdinPipe.TakeServer(), stdoutPipe.TakeServer(), stderrPipe.TakeServer());
             }
             finally
             {
@@ -270,10 +270,77 @@ public sealed class SandboxedProcess : IDisposable
 
             process?.Dispose();
             job?.Dispose();
-            stdin.Dispose();
-            stdout.Dispose();
-            stderr.Dispose();
             throw;
+        }
+    }
+
+    /// <summary>
+    /// One channel to the child. The parent's end is an overlapped named-pipe server (true asynchronous I/O,
+    /// so many workers do not tie up thread-pool threads the way synchronous anonymous pipes do). The pipe has
+    /// a random name, a single instance and an ACL for the parent's own account; the parent opens the child's
+    /// end itself (synchronous, inheritable) before the child exists, so nothing else can connect.
+    /// </summary>
+    private sealed class ChildPipe : IDisposable
+    {
+        private NamedPipeServerStream? _server;
+
+        private ChildPipe(NamedPipeServerStream server, SafeFileHandle child)
+        {
+            _server = server;
+            Child = child;
+        }
+
+        public NamedPipeServerStream Server => _server ?? throw new ObjectDisposedException(nameof(ChildPipe));
+
+        public SafeFileHandle Child { get; }
+
+        public static ChildPipe Create(PipeDirection serverDirection)
+        {
+            string name = $"Sentinel.Worker.{Environment.ProcessId}.{Guid.NewGuid():N}";
+            var security = new PipeSecurity();
+            security.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User!, PipeAccessRights.FullControl, AccessControlType.Allow));
+            NamedPipeServerStream server = NamedPipeServerStreamAcl.Create(
+                name,
+                serverDirection,
+                maxNumberOfServerInstances: 1,
+                PipeTransmissionMode.Byte,
+                PipeOptions.Asynchronous | PipeOptions.FirstPipeInstance,
+                inBufferSize: 0,
+                outBufferSize: 0,
+                security);
+            try
+            {
+                FileAccess childAccess = serverDirection == PipeDirection.Out ? FileAccess.Read : FileAccess.Write;
+                SafeFileHandle child = File.OpenHandle($@"\\.\pipe\{name}", FileMode.Open, childAccess, FileShare.None, FileOptions.None);
+                if (!SandboxNative.SetHandleInformation(child, SandboxNative.HandleFlagInherit, SandboxNative.HandleFlagInherit))
+                {
+                    int error = Marshal.GetLastPInvokeError();
+                    child.Dispose();
+                    throw new SandboxException($"Could not make the worker pipe inheritable: {new Win32Exception(error).Message}");
+                }
+
+                server.WaitForConnection();
+                return new ChildPipe(server, child);
+            }
+            catch
+            {
+                server.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>Transfers ownership of the server end to the caller.</summary>
+        public NamedPipeServerStream TakeServer()
+        {
+            NamedPipeServerStream server = Server;
+            _server = null;
+            return server;
+        }
+
+        public void Dispose()
+        {
+            Child.Dispose();
+            _server?.Dispose();
         }
     }
 
@@ -290,11 +357,18 @@ public sealed class SandboxedProcess : IDisposable
         {
             IntPtr admins = ToSid(AdministratorsSid);
             IntPtr low = ToSid(LowIntegritySid);
+            byte* user = stackalloc byte[256];
+            Check(SandboxNative.GetTokenInformation(processToken, SandboxNative.TokenUser, user, 256, out _), "GetTokenInformation(TokenUser)");
             try
             {
-                var disable = new SandboxNative.SidAndAttributes { Sid = admins };
+                // Deny-only SIDs can only deny. Making the account's own SID deny-only means files that are
+                // private to the account (its profile, SYSTEM-only data) cannot be read by the worker; it keeps
+                // only what broad groups such as Users or Everyone may read (its own binaries, system DLLs).
+                SandboxNative.SidAndAttributes* disable = stackalloc SandboxNative.SidAndAttributes[2];
+                disable[0] = new SandboxNative.SidAndAttributes { Sid = admins };
+                disable[1] = new SandboxNative.SidAndAttributes { Sid = ((SandboxNative.SidAndAttributes*)user)->Sid };
                 Check(
-                    SandboxNative.CreateRestrictedToken(processToken, SandboxNative.DisableMaxPrivilege, 1, &disable, 0, IntPtr.Zero, 0, IntPtr.Zero, out SafeKernelHandle restricted),
+                    SandboxNative.CreateRestrictedToken(processToken, SandboxNative.DisableMaxPrivilege, 2, disable, 0, IntPtr.Zero, 0, IntPtr.Zero, out SafeKernelHandle restricted),
                     "CreateRestrictedToken");
 
                 var label = new SandboxNative.SidAndAttributes { Sid = low, Attributes = SandboxNative.SeGroupIntegrity };

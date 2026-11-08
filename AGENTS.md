@@ -18,6 +18,10 @@
 - Code that handles files must open them through `SafeFileOpener` / `SafeFileEnumerator`: never follow reparse points, never read cloud placeholders, always enforce size and time limits, and report every item that was not scanned.
 - Scanning code is read-only. Anything that changes user files belongs in the (future) response/quarantine component, must act on the same handle it verified, and must be reversible.
 - Engines implement `IDetectionEngine` and must be pure: no file system, network, or global state access.
+- Untrusted content is parsed only inside `Sentinel.Worker` (sandboxed). The broker (CLI/service) opens files and streams bytes; never give a worker a path to open, and never weaken the worker token, job limits or mitigations ([ADR 0005](docs/adr/0005-service-sandbox-ipc.md)). Sandbox properties are covered by `SandboxTests`; keep them passing.
+- The service must act on a client's behalf only while impersonating that client, accept only local absolute paths, and identify clients only through the pipe, never from message contents.
+- Every message read from a pipe is untrusted: enforce frame limits before allocating, deserialize strictly, and treat any violation as a reason to drop the connection.
+- Logging in the service uses the source-generated `Log` class with stable event IDs.
 - Heuristic engines report `DetectionCategory.Suspicious` only. Confirmed categories (`malware`, `pua`) come from exact signatures or rules with explicit metadata.
 - Synthetic test executables come from `tests/Shared/PeBuilder.cs`; never commit real binaries.
 - Public report formats are versioned (`docs/schemas`). Map enum values to wire names explicitly; never serialize enum member names directly.

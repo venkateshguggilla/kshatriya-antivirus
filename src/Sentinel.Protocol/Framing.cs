@@ -89,39 +89,60 @@ public static class FrameIO
             throw new ProtocolException($"Frame of {total} bytes exceeds the protocol maximum.");
         }
 
-        byte[] header = new byte[PrefixBytes + FixedBodyBytes];
-        BinaryPrimitives.WriteUInt32LittleEndian(header, (uint)total);
-        header[4] = type;
-        BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(5), (uint)json.Length);
-        await stream.WriteAsync(header, cancellationToken);
-        await stream.WriteAsync(json, cancellationToken);
-
-        if (binary is not null && binaryLength > 0)
+        // Small frames (most files) go out in a single write: one system call instead of three or more.
+        int headerBytes = PrefixBytes + FixedBodyBytes;
+        bool coalesce = headerBytes + total <= CoalesceLimit;
+        int capacity = coalesce ? (int)(PrefixBytes + total) : Math.Max(headerBytes + json.Length, 128 * 1024);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(capacity);
+        try
         {
-            byte[] chunk = ArrayPool<byte>.Shared.Rent(128 * 1024);
-            try
-            {
-                long remaining = binaryLength;
-                while (remaining > 0)
-                {
-                    int read = await binary.ReadAsync(chunk.AsMemory(0, (int)Math.Min(chunk.Length, remaining)), cancellationToken);
-                    if (read == 0)
-                    {
-                        // The frame is now unusable: the peer expects more bytes. Callers drop the connection.
-                        throw new IOException("Content ended before the announced length (the file changed while it was read).");
-                    }
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer, (uint)total);
+            buffer[4] = type;
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(5), (uint)json.Length);
+            json.Span.CopyTo(buffer.AsSpan(headerBytes));
+            int used = headerBytes + json.Length;
 
-                    await stream.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
-                    remaining -= read;
+            if (coalesce)
+            {
+                if (binary is not null && binaryLength > 0)
+                {
+                    await ReadContentAsync(binary, buffer.AsMemory(used, (int)binaryLength), cancellationToken);
+                    used += (int)binaryLength;
+                }
+
+                await stream.WriteAsync(buffer.AsMemory(0, used), cancellationToken);
+            }
+            else
+            {
+                await stream.WriteAsync(buffer.AsMemory(0, used), cancellationToken);
+                long remaining = binaryLength;
+                while (binary is not null && remaining > 0)
+                {
+                    int chunk = (int)Math.Min(buffer.Length, remaining);
+                    await ReadContentAsync(binary, buffer.AsMemory(0, chunk), cancellationToken);
+                    await stream.WriteAsync(buffer.AsMemory(0, chunk), cancellationToken);
+                    remaining -= chunk;
                 }
             }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(chunk);
-            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
 
         await stream.FlushAsync(cancellationToken);
+    }
+
+    private const int CoalesceLimit = 256 * 1024;
+
+    private static async Task ReadContentAsync(Stream content, Memory<byte> destination, CancellationToken cancellationToken)
+    {
+        int read = await content.ReadAtLeastAsync(destination, destination.Length, throwOnEndOfStream: false, cancellationToken);
+        if (read < destination.Length)
+        {
+            // The frame is now unusable: the peer expects more bytes. Callers drop the connection.
+            throw new IOException("Content ended before the announced length (the file changed while it was read).");
+        }
     }
 
     /// <summary>Reads one frame. Returns null on a clean end of stream at a frame boundary.</summary>

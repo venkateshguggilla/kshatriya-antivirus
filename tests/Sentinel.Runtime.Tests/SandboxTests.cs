@@ -40,6 +40,45 @@ public class SandboxTests
     }
 
     [Fact]
+    public async Task Worker_cannot_read_files_private_to_the_account()
+    {
+        // A typical profile file: readable by the account, SYSTEM and Administrators only.
+        using var temp = new TempDirectory();
+        string secret = temp.File("private.txt", "not for the worker"u8.ToArray());
+        var security = new System.Security.AccessControl.FileSecurity();
+        security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        foreach (var sid in new[]
+        {
+            System.Security.Principal.WindowsIdentity.GetCurrent().User!,
+            new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.LocalSystemSid, null),
+            new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid, null),
+        })
+        {
+            security.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(sid, System.Security.AccessControl.FileSystemRights.FullControl, System.Security.AccessControl.AccessControlType.Allow));
+        }
+
+        new FileInfo(secret).SetAccessControl(security);
+        using WorkerPoolAnalyzer pool = await StartAsync(testHooks: true);
+
+        ProbeReplyDto reply = await pool.ProbeAsync(new ProbeDto { Kind = "read", Argument = secret }, ProbeTimeout);
+
+        Assert.False(reply.Succeeded);
+        Assert.Equal(nameof(UnauthorizedAccessException), reply.Detail);
+    }
+
+    [Fact]
+    public async Task Worker_can_still_read_world_readable_files()
+    {
+        // Documents the residual risk recorded in the threat model: files readable by Users/Everyone
+        // (system binaries, shared configuration) stay readable from inside the sandbox.
+        using WorkerPoolAnalyzer pool = await StartAsync(testHooks: true);
+
+        ProbeReplyDto reply = await pool.ProbeAsync(new ProbeDto { Kind = "read", Argument = Path.Combine(Environment.SystemDirectory, "kernel32.dll") }, ProbeTimeout);
+
+        Assert.True(reply.Succeeded);
+    }
+
+    [Fact]
     public async Task Worker_cannot_start_child_processes()
     {
         using WorkerPoolAnalyzer pool = await StartAsync(testHooks: true);
