@@ -1,4 +1,4 @@
-# Threat model (draft, M10)
+# Threat model (draft, M11)
 
 Scope: the M1–M4 scanner, service, workers and response component, plus threats that later milestones must design for. Reviewed at every milestone.
 
@@ -71,6 +71,7 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 | T43 | ML false positives cause harm | ML findings are suspicious only, never auto-actioned; off by default; signed files skipped | M9 ✔ |
 | T44 | Malware reaches known command-and-control addresses | WFP block filters from signed blocklists at the ALE connect layers | M10 ✔ (IP only) |
 | T45 | A bad blocklist cuts the machine off the network | Guardrails (no loopback/link-local/multicast/unspecified, no ranges broader than /16 or /48); dynamic WFP session removes all filters if the service stops | M10 ✔ |
+| T46 | A tampered release is installed | Install from release verifies SHA256SUMS.txt (missing, modified or unlisted binaries abort); optional Authenticode requirement | M11 ✔ (checksums alone give integrity, not publisher authenticity) |
 | T32 | Audit records are edited or removed to hide actions (Repudiation) | Hash-chained, flushed per record, ACL SYSTEM + Administrators; verified by `sentinel audit` and `status` | M4 ✔ (tamper-evident only) |
 
 ## Residual risks (M3–M4)
@@ -82,6 +83,7 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 - **Running malware is not stopped.** Quarantine of a running program fails with `inUse` and the file stays; process termination and reboot-time removal need a later design (M7/M8).
 - **The audit log is tamper-evident, not tamper-proof.** An administrator can rewrite the whole chain consistently. Off-machine forwarding is future work.
 - **Ransomware behaviour detection warns but does not stop** encryption; thresholds are untuned (no ransomware corpus was run) and no process is terminated.
+- **Releases are unsigned** unless a code-signing certificate is supplied; there is no product auto-update yet.
 - **Network protection is IP-only** (no domain or URL filtering) and gives no per-connection notification.
 - **Real-time monitoring cannot block.** A program can run, or a file can be opened, before its scan completes; short-lived processes may exit before their image path is read. Blocking needs a minifilter (optional, M13+).
 - **No production content signing key exists yet**; installed services accept only administrator-configured keys. Key rotation and revocation are manual.

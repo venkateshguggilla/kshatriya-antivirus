@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
@@ -24,6 +24,11 @@ if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
         Stop-Service -Name $serviceName -ErrorAction SilentlyContinue
         sc.exe delete $serviceName | Out-Null
     }
+}
+
+$shortcut = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Sentinel.lnk'
+if ((Test-Path $shortcut) -and $PSCmdlet.ShouldProcess($shortcut, 'Remove Start menu shortcut')) {
+    Remove-Item -LiteralPath $shortcut -Force
 }
 
 if (-not $KeepFiles -and (Test-Path $InstallDirectory)) {

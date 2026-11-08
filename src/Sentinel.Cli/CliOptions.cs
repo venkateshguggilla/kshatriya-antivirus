@@ -82,7 +82,7 @@ public sealed record CliOptions
     public int AuditLast { get; init; } = 50;
 
     public const string HelpText = """
-        Sentinel scanner (milestone 10 prototype)
+        Sentinel scanner (milestone 11 prototype)
 
         Usage:
           sentinel scan <path>... [options]
