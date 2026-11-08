@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+﻿#Requires -Version 5.1
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
@@ -109,8 +109,11 @@ if ($PSCmdlet.ShouldProcess($serviceName, 'Register and start service')) {
     New-Service -Name $serviceName `
         -BinaryPathName "`"$binary`"" `
         -DisplayName 'Sentinel (prototype)' `
-        -Description 'Sentinel prototype scanner service. Runs alongside Microsoft Defender; read-only scanning.' `
-        -StartupType AutomaticDelayedStart | Out-Null
+        -Description 'Sentinel prototype scanner service. Runs alongside Microsoft Defender; scanning is read-only; files change only through opt-in quarantine.' `
+        -StartupType Automatic | Out-Null
+    # Delayed automatic start (New-Service only offers it from PowerShell 6, so set it with sc.exe).
+    sc.exe config $serviceName start= delayed-auto | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "sc.exe config failed ($LASTEXITCODE)." }
 
     # Restart after a crash (5 s, 30 s, then every 5 minutes); reset the failure count after a day.
     sc.exe failure $serviceName reset= 86400 actions= restart/5000/restart/30000/restart/300000 | Out-Null
