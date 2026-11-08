@@ -1,0 +1,21 @@
+# Normalize line endings; keep Windows-specific files as CRLF.
+* text=auto
+
+*.cs      text diff=csharp
+*.csproj  text
+*.props   text
+*.targets text
+*.slnx    text
+*.md      text
+*.json    text
+*.yml     text
+*.sh      text eol=lf
+*.ps1     text eol=crlf
+*.cmd     text eol=crlf
+*.bat     text eol=crlf
+
+# Never commit live malware. Test fixtures are generated at test time.
+*.exe  binary
+*.dll  binary
+*.zip  binary
+*.7z   binary

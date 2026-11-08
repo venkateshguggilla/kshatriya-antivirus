@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Sentinel.Cli/Sentinel.Cli.csproj" />
+    <Project Path="src/Sentinel.Core/Sentinel.Core.csproj" />
+    <Project Path="src/Sentinel.Engines.Abstractions/Sentinel.Engines.Abstractions.csproj" />
+    <Project Path="src/Sentinel.Engines.Hash/Sentinel.Engines.Hash.csproj" />
+    <Project Path="src/Sentinel.Scanning/Sentinel.Scanning.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Sentinel.Cli.Tests/Sentinel.Cli.Tests.csproj" />
+    <Project Path="tests/Sentinel.Engines.Hash.Tests/Sentinel.Engines.Hash.Tests.csproj" />
+    <Project Path="tests/Sentinel.Scanning.Tests/Sentinel.Scanning.Tests.csproj" />
+  </Folder>
+</Solution>

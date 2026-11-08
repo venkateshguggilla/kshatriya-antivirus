@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>Sentinel.Scanning</RootNamespace>
+    <!-- Required by LibraryImport-generated P/Invoke marshalling. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Sentinel.Engines.Abstractions\Sentinel.Engines.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sentinel.Scanning.Tests" />
+  </ItemGroup>
+</Project>
