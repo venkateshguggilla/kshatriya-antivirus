@@ -1,6 +1,7 @@
 # ADR 0013: Release packaging, signing pipeline and product updates
 
-- Status: accepted in part (M11); installer technology and product auto-update await owner decisions
+- Status: accepted (M11). Installer technology decided by the owner on 2026-11-09: keep the zip and
+  install script. Product auto-update still awaits owner decisions.
 - Date: 2026-11-09
 
 ## Context
@@ -31,9 +32,21 @@ or assets that only the project owner can provide:
 - `.github/workflows/release.yml` builds, tests and packages on version tags or on demand, and uploads
   the zip as a workflow artifact. It publishes nothing publicly.
 
+## Installer decision (owner, 2026-11-09)
+
+The project owner chose to **keep the self-contained zip plus `Install-SentinelService.ps1`** as the
+only installer, and not to adopt WiX or MSIX for now.
+
+- Why: it keeps every build dependency within [ADR 0003](0003-dependency-licensing.md) (no MS-RL toolset,
+  no maintenance fee) and avoids MSIX restricted capabilities. The script already verifies checksums
+  and, with `-RequireSignature`, Authenticode signatures before installing.
+- Consequences: installing requires an elevated PowerShell session; there is no Add/Remove Programs
+  entry, repair, or Group Policy/Intune MSI deployment. Uninstall is `Uninstall-SentinelService.ps1`.
+- Revisit when managed (enterprise) deployment is needed, or when an installer toolset with a
+  compatible licence is available.
+
 ## Not built (needs the owner)
 
-- MSI or MSIX installer: pending the licensing choice above.
 - Product auto-update: the signed-package machinery of [ADR 0008](0008-signed-content-updates.md) can verify
   a release manifest (version, zip SHA-256, anti-rollback), but hosting, the release key and the
   replace-running-service procedure need decisions first.

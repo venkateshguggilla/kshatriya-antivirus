@@ -31,7 +31,7 @@ missing before anyone should call a build "beta", let alone production.
 
 - [ ] Install and run the LocalSystem service end to end on clean Windows 10 22H2 and Windows 11 VMs
       (so far exercised in development mode and by CI tests only).
-- [ ] Code-signing certificate and signed releases; decide the installer technology (ADR 0013).
+- [ ] Code-signing certificate and signed releases. (Installer decided: zip + install script, ADR 0013.)
 - [ ] Production content signing key, key-custody process and a first signed content release (ADR 0008).
 - [ ] A broader benign corpus (many machines and installers) and a labelled malware set run in an
       isolated lab, with false-positive and detection rates published.
