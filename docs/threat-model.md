@@ -1,4 +1,4 @@
-# Threat model (draft, M9)
+# Threat model (draft, M10)
 
 Scope: the M1–M4 scanner, service, workers and response component, plus threats that later milestones must design for. Reviewed at every milestone.
 
@@ -69,6 +69,8 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 | T41 | Backups and shadow copies are deleted before encryption | Recovery-tampering command detection on process start | M8 ✔ (alert only; short-lived processes may be missed) |
 | T42 | A malicious or malformed model crashes or hangs the worker | Strict bounded JSON model format, acyclic trees by construction, pure managed evaluation inside the sandbox, models only from signed content, fuzzed | M9 ✔ |
 | T43 | ML false positives cause harm | ML findings are suspicious only, never auto-actioned; off by default; signed files skipped | M9 ✔ |
+| T44 | Malware reaches known command-and-control addresses | WFP block filters from signed blocklists at the ALE connect layers | M10 ✔ (IP only) |
+| T45 | A bad blocklist cuts the machine off the network | Guardrails (no loopback/link-local/multicast/unspecified, no ranges broader than /16 or /48); dynamic WFP session removes all filters if the service stops | M10 ✔ |
 | T32 | Audit records are edited or removed to hide actions (Repudiation) | Hash-chained, flushed per record, ACL SYSTEM + Administrators; verified by `sentinel audit` and `status` | M4 ✔ (tamper-evident only) |
 
 ## Residual risks (M3–M4)
@@ -80,6 +82,7 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 - **Running malware is not stopped.** Quarantine of a running program fails with `inUse` and the file stays; process termination and reboot-time removal need a later design (M7/M8).
 - **The audit log is tamper-evident, not tamper-proof.** An administrator can rewrite the whole chain consistently. Off-machine forwarding is future work.
 - **Ransomware behaviour detection warns but does not stop** encryption; thresholds are untuned (no ransomware corpus was run) and no process is terminated.
+- **Network protection is IP-only** (no domain or URL filtering) and gives no per-connection notification.
 - **Real-time monitoring cannot block.** A program can run, or a file can be opened, before its scan completes; short-lived processes may exit before their image path is read. Blocking needs a minifilter (optional, M13+).
 - **No production content signing key exists yet**; installed services accept only administrator-configured keys. Key rotation and revocation are manual.
 - **Restored files lose their original ACL and alternate data streams** (they inherit the folder's ACL and get a fresh internet-zone mark).

@@ -6,6 +6,7 @@ using Sentinel.Protocol;
 using Sentinel.Response;
 using Sentinel.Runtime;
 using Sentinel.Runtime.Workers;
+using Sentinel.Service.Net;
 using Sentinel.Service.RealTime;
 using Sentinel.Updates;
 
@@ -87,6 +88,9 @@ public sealed class ServiceCore : IDisposable
     /// <summary>Recent findings from user scans, schedules and real-time monitoring.</summary>
     public DetectionHistory History { get; } = new();
 
+    /// <summary>WFP network protection when enabled in settings.</summary>
+    public NetworkProtection? Network { get; private set; }
+
     /// <summary>The real-time monitor while the service runs with it enabled.</summary>
     public RealTimeMonitor? RealTime { get; private set; }
 
@@ -161,8 +165,31 @@ public sealed class ServiceCore : IDisposable
             Version,
             options.Paths.Production ? "production" : "development",
             string.Join(", ", pool.Engines.Select(e => $"{e.Id} {e.Version} [{e.ContentVersion}]")));
-        return new ServiceCore(options, settings, new ScanCoordinator(pool, settings, exclusions), exclusions, quarantine, logger, contentStore, keys, content, contentProblem);
+        var core = new ServiceCore(options, settings, new ScanCoordinator(pool, settings, exclusions), exclusions, quarantine, logger, contentStore, keys, content, contentProblem);
+        if (settings.NetworkProtection)
+        {
+            core.Network = new NetworkProtection(logger);
+            IReadOnlyList<BlockEntry> blocked = [];
+            try
+            {
+                blocked = content is null ? [] : BlockList(content);
+            }
+            catch (FormatException ex)
+            {
+                core.ContentProblem = $"The installed blocklist is invalid and was not applied: {ex.Message}";
+                Log.ContentProblem(logger, core.ContentProblem);
+            }
+
+            core.Network.Apply(blocked);
+        }
+
+        return core;
     }
+
+    /// <summary>All network blocklists in a content package (throws <see cref="FormatException"/> if any is invalid).</summary>
+    internal static IReadOnlyList<BlockEntry> BlockList(VerifiedContent content) =>
+        [.. content.Manifest.Files.Where(f => f.Kind == "netblock")
+            .SelectMany(f => NetBlockList.Parse(System.Text.Encoding.UTF8.GetString(content.Files[f.Name]), f.Name))];
 
     /// <summary>
     /// Verifies and activates a content package: signature, hashes, expiry, anti-rollback, then a new
@@ -177,6 +204,16 @@ public sealed class ServiceCore : IDisposable
         {
             VerifiedContent content = ContentPackage.Verify(package, _contentKeys, _options.Time.GetUtcNow());
             _contentStore.CheckForward(content.Manifest);
+            IReadOnlyList<BlockEntry> blocked;
+            try
+            {
+                blocked = BlockList(content);
+            }
+            catch (FormatException ex)
+            {
+                throw new ContentVerificationException(ContentErrors.ContentInvalid, $"The package's network blocklist is invalid: {ex.Message}");
+            }
+
             long sequence = content.Manifest.Sequence;
             _contentStore.Stage(sequence, package);
             WorkerPoolAnalyzer next;
@@ -204,6 +241,7 @@ public sealed class ServiceCore : IDisposable
             _contentStore.Activate(sequence);
             ActiveContent = content;
             ContentProblem = null;
+            Network?.Apply(blocked);
             Coordinator.Cache.Clear();
             Log.ContentActivated(_logger, sequence, content.Manifest.Channel, content.KeyId);
             return content;
@@ -296,6 +334,7 @@ public sealed class ServiceCore : IDisposable
             RealTime = RealTime?.Stats is { } rt
                 ? new RealTimeStatusDto { Enabled = true, Paths = [.. rt.WatchedPaths], Processes = rt.Processes, RemovableMedia = rt.RemovableMedia, Queued = rt.Queued, Scanned = rt.Scanned, Findings = rt.Findings, LostEvents = rt.Overflows, Behaviour = rt.Behaviour, BehaviourAlerts = rt.BehaviourAlerts }
                 : new RealTimeStatusDto { Enabled = false, Paths = [], Processes = "off", RemovableMedia = "off", Queued = 0, Scanned = 0, Findings = 0, LostEvents = 0, Behaviour = "off", BehaviourAlerts = 0 },
+            Network = new NetworkStatusDto { State = Network?.State ?? "off", Blocked = Network?.Blocked ?? 0 },
             Content = new ContentStatusDto
             {
                 Sequence = ActiveContent?.Manifest.Sequence ?? 0,
@@ -350,6 +389,7 @@ public sealed class ServiceCore : IDisposable
 
     public void Dispose()
     {
+        Network?.Dispose();
         Coordinator.Dispose();
         _contentGate.Dispose();
     }

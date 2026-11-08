@@ -1,10 +1,10 @@
 # Sentinel
 
-> **Status: Milestone 9 prototype.** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
+> **Status: Milestone 10 prototype.** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
 
 "Sentinel" is a working name and will change before any release.
 
-## What works today (M1–M9)
+## What works today (M1–M10)
 
 - `sentinel scan <path>...`: on-demand, **read-only** scan of files and folders
   - **Sandboxed parsing (M3):** file contents are analysed in separate worker processes. Each worker runs on a restricted token with the account SID deny-only and low integrity, inside a Job Object (one process, memory cap, killed with its parent) with process mitigations. Workers cannot write your files, start programs or read files private to your account. A crashed or hung worker is replaced and the item is reported as not scanned. `--no-sandbox` turns this off for development only.
@@ -42,6 +42,8 @@
 - **Ransomware behaviour detection (M8, alert only):** with real-time monitoring on, Sentinel raises *suspicious* alerts when many existing files are rewritten or renamed in a short time and the results look encrypted, when ransom-note-like files appear, when a program runs a command that deletes shadow copies or disables recovery, and (opt-in) when a hidden decoy file in a chosen folder is touched. Alerts name recently started programs from user-writable folders as possible sources. **Nothing is stopped or quarantined automatically.** The app shows whether Defender's Controlled folder access (which can block) is on, and recommends it; Sentinel never changes it.
 
 - **Optional machine-learning scoring (M9, off by default):** an `ml` engine scores PE files with a JSON model (logistic regression or gradient-boosted trees over 296 EMBER-style features), evaluated in pure C# inside the sandboxed workers. Results are only ever *suspicious*. **No model is shipped**: use `scan --model <file.model.json>` to evaluate one locally, or deliver it in a signed content package and set `"machineLearning": true` in `service.json`. No detection-quality claim is made.
+
+- **Network protection (M10, opt-in):** with `"networkProtection": true` the service turns IP blocklists from signed content packages (`*.netblock`) into Windows Filtering Platform filters that block outbound connections to those addresses. The filters live in a dynamic session, so they disappear if the service stops (it never strands the machine offline), and broad or local ranges are refused. **IP only** (no domain or URL filtering); no blocklist is published by this project.
 
 Scans without `--quarantine` (and the service without quarantine requests or schedules) **never modify, move or delete files**.
 
@@ -214,7 +216,7 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 
 ## Roadmap
 
-See [docs/architecture.md](docs/architecture.md#roadmap). Next: M10 adds network protection (blocking connections to known-bad addresses).
+See [docs/architecture.md](docs/architecture.md#roadmap). Next: M11 covers packaging, signing and product updates.
 
 ## Security
 

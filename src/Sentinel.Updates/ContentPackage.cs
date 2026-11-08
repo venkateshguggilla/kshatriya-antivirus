@@ -7,8 +7,8 @@ using System.Text.Json.Serialization;
 namespace Sentinel.Updates;
 
 /// <summary>One content file listed in a manifest.</summary>
-/// <param name="Name">Simple file name (letters, digits, '.', '-', '_'), ending in .hashdb, .yar or .model.json.</param>
-/// <param name="Kind">"hashdb", "yara" or "model".</param>
+/// <param name="Name">Simple file name (letters, digits, '.', '-', '_'), ending in .hashdb, .yar, .model.json or .netblock.</param>
+/// <param name="Kind">"hashdb", "yara", "model" or "netblock".</param>
 /// <param name="Sha256">Lower-case hex SHA-256 of the file.</param>
 /// <param name="Size">Size in bytes.</param>
 public sealed record ContentFile(string Name, string Kind, string Sha256, long Size);
@@ -208,7 +208,7 @@ public static class ContentPackage
             Files = [.. files.Select(f => new ManifestFileDto
             {
                 Name = f.Name,
-                Kind = KindOf(f.Name) ?? throw new ArgumentException($"'{f.Name}' must end in .hashdb, .yar or .model.json."),
+                Kind = KindOf(f.Name) ?? throw new ArgumentException($"'{f.Name}' must end in .hashdb, .yar, .model.json or .netblock."),
                 Sha256 = Convert.ToHexStringLower(SHA256.HashData(f.Data)),
                 Size = f.Data.Length,
             })],
@@ -243,6 +243,7 @@ public static class ContentPackage
         name.EndsWith(".hashdb", StringComparison.OrdinalIgnoreCase) ? "hashdb"
         : name.EndsWith(".yar", StringComparison.OrdinalIgnoreCase) ? "yara"
         : name.EndsWith(".model.json", StringComparison.OrdinalIgnoreCase) ? "model"
+        : name.EndsWith(".netblock", StringComparison.OrdinalIgnoreCase) ? "netblock"
         : null;
 
     private static ContentManifest ParseManifest(ReadOnlySpan<byte> bytes)

@@ -35,6 +35,9 @@ public sealed record ServiceSettings
 
     public IReadOnlyList<ScheduledScan> ScheduledScans { get; init; } = [];
 
+    /// <summary>Block outbound connections to addresses in installed blocklists (WFP, off by default).</summary>
+    public bool NetworkProtection { get; init; }
+
     /// <summary>Use machine-learning models from installed content (off by default; results are suspicious only).</summary>
     public bool MachineLearning { get; init; }
 
@@ -107,6 +110,7 @@ public sealed record ServiceSettings
             ContentKeys = ValidateKeys(dto.ContentKeys),
             RealTime = ParseRealTime(dto.RealTime),
             MachineLearning = dto.MachineLearning ?? false,
+            NetworkProtection = dto.NetworkProtection ?? false,
         };
     }
 
@@ -301,6 +305,8 @@ internal sealed class ServiceSettingsDto
     public RealTimeDto? RealTime { get; init; }
 
     public bool? MachineLearning { get; init; }
+
+    public bool? NetworkProtection { get; init; }
 }
 
 internal sealed class RealTimeDto

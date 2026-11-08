@@ -178,6 +178,7 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
             RealTime = rt.Enabled
                 ? $"Real-time monitoring is on for {string.Join(", ", rt.Paths)}. Programs: {rt.Processes}. Removable drives: {rt.RemovableMedia}. Ransomware behaviour: {rt.Behaviour} ({rt.BehaviourAlerts} alert(s)). It scans files after they are written; it cannot block them."
                 : "Real-time monitoring is off (it can be enabled in the service settings).";
+            RealTime += $" Network protection: {status.Network.State}.";
             ContentStatusDto c = status.Content;
             Content = c.Sequence == 0
                 ? "Content: built-in signatures only (no signed update installed)." + (c.Problem is null ? string.Empty : $" {c.Problem}")

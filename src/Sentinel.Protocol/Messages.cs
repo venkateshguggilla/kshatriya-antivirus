@@ -45,7 +45,7 @@ public static class MessageType
 public static class ProtocolVersion
 {
     public const int Worker = 2;
-    public const int Service = 5;
+    public const int Service = 6;
 }
 
 // ---- Shared ----
@@ -274,6 +274,16 @@ public sealed class StatusReplyDto
     public required ContentStatusDto Content { get; init; }
 
     public required RealTimeStatusDto RealTime { get; init; }
+
+    public required NetworkStatusDto Network { get; init; }
+}
+
+public sealed class NetworkStatusDto
+{
+    /// <summary>"off", "blocking N address range(s)", "on (no blocklist installed)" or "unavailable: ...".</summary>
+    public required string State { get; init; }
+
+    public required int Blocked { get; init; }
 }
 
 public sealed class RealTimeStatusDto

@@ -257,6 +257,7 @@ public static class CliApp
         sb.Append("Real-time monitoring: ").AppendLine(rt.Enabled
             ? $"on ({string.Join(", ", rt.Paths)}); processes: {rt.Processes}; removable media: {rt.RemovableMedia}; {rt.Scanned} file(s) scanned, {rt.Findings} finding(s), {rt.Queued} queued, {rt.LostEvents} lost-event rescan(s); ransomware behaviour: {rt.Behaviour} ({rt.BehaviourAlerts} alert(s))"
             : "off (not configured)");
+        sb.Append("Network protection: ").AppendLine(status.Network.State);
         ContentStatusDto content = status.Content;
         sb.Append("Content: ").Append(content.Sequence == 0
             ? "built-in only (no signed update installed)"

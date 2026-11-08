@@ -41,6 +41,7 @@ internal sealed class FakeGateway : IServiceGateway
                 Exclusions = Exclusions.Count,
                 AuditChainValid = true,
                 RealTime = new RealTimeStatusDto { Enabled = true, Paths = [@"C:\Users"], Processes = "scanning started programs", RemovableMedia = "watching for removable drives", Queued = 0, Scanned = 12, Findings = 1, LostEvents = 0, Behaviour = "off", BehaviourAlerts = 0 },
+                Network = new NetworkStatusDto { State = "off", Blocked = 0 },
                 Content = new ContentStatusDto { Sequence = 7, Channel = "stable", ExpiresUtc = "2020-01-01T00:00:00Z", Expired = true },
             }));
     }
