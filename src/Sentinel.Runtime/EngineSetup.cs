@@ -22,6 +22,9 @@ public sealed record EngineConfiguration
 
     public IReadOnlyList<TextSource> YaraRules { get; init; } = [];
 
+    /// <summary>Machine-learning models (JSON). Empty means the ML engine is off.</summary>
+    public IReadOnlyList<TextSource> Models { get; init; } = [];
+
     /// <summary>When true, a missing YARA engine is an error rather than a warning (set when custom rules are supplied).</summary>
     public bool YaraRequired { get; init; }
 
@@ -51,6 +54,7 @@ public sealed record EngineConfiguration
     {
         HashDatabases = [.. HashDatabases.Select(s => new TextSourceDto { Origin = s.Origin, Text = s.Text })],
         YaraRules = [.. YaraRules.Select(s => new TextSourceDto { Origin = s.Origin, Text = s.Text })],
+        Models = [.. Models.Select(s => new TextSourceDto { Origin = s.Origin, Text = s.Text })],
         YaraRequired = YaraRequired,
         Heuristics = Heuristics,
         HeuristicsIncludeSigned = HeuristicsIncludeSigned,
@@ -65,6 +69,7 @@ public sealed record EngineConfiguration
         {
             HashDatabases = [.. dto.HashDatabases.Select(s => new TextSource(s.Origin, s.Text))],
             YaraRules = [.. dto.YaraRules.Select(s => new TextSource(s.Origin, s.Text))],
+            Models = [.. dto.Models.Select(s => new TextSource(s.Origin, s.Text))],
             YaraRequired = dto.YaraRequired,
             Heuristics = dto.Heuristics,
             HeuristicsIncludeSigned = dto.HeuristicsIncludeSigned,
@@ -143,6 +148,18 @@ public static class EngineSetup
             if (configuration.Heuristics)
             {
                 engines.Add(new PeHeuristicEngine(new PeHeuristicOptions { SkipValidlySigned = !configuration.HeuristicsIncludeSigned }));
+            }
+
+            foreach (TextSource model in configuration.Models)
+            {
+                try
+                {
+                    engines.Add(new MlEngine(MlModel.Parse(model.Text)));
+                }
+                catch (FormatException ex)
+                {
+                    throw new EngineSetupException($"Could not load model '{model.Origin}': {ex.Message}", ex);
+                }
             }
 
             return new EngineSet(engines, warnings, yara);

@@ -1,5 +1,5 @@
 // Mutation fuzz harness for Sentinel parsers.
-//   dotnet run -c Release --project tools/Sentinel.Fuzz -- <pe|zip|hashdb|frame|report|content|all> [iterations] [seed] [crashDir]
+//   dotnet run -c Release --project tools/Sentinel.Fuzz -- <pe|zip|hashdb|frame|report|content|model|all> [iterations] [seed] [crashDir]
 // Any exception escaping a parser counts as a failure; the offending input is saved to crashDir.
 // This is unguided mutation fuzzing; coverage-guided fuzzing (SharpFuzz + libFuzzer) is future work.
 
@@ -20,7 +20,7 @@ int seed = args.Length > 2 ? int.Parse(args[2], CultureInfo.InvariantCulture) : 
 string crashDir = args.Length > 3 ? args[3] : Path.Combine(Path.GetTempPath(), "sentinel-fuzz-crashes");
 
 int failures = 0;
-foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "report", "content" } : [target])
+foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "report", "content", "model" } : [target])
 {
     failures += t switch
     {
@@ -30,6 +30,7 @@ foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "
         "frame" => await FuzzFramesAsync(iterations, seed, crashDir),
         "report" => FuzzReport(iterations, seed, crashDir),
         "content" => FuzzContent(iterations, seed, crashDir),
+        "model" => FuzzModel(iterations, seed, crashDir),
         _ => throw new ArgumentException($"Unknown target '{t}'."),
     };
 }
@@ -241,6 +242,49 @@ static async Task<int> FuzzFramesAsync(long iterations, int seed, string crashDi
 }
 
 // Reports read back from the service (or from disk). The only acceptable failure is FormatException.
+// Machine-learning model files: the only acceptable failure is FormatException; accepted models must score.
+static int FuzzModel(long iterations, int seed, string crashDir)
+{
+    string trees = string.Join(",", Enumerable.Repeat("[[280, 0.5, 1, 2], [-1.5], [281, 6.0, 3, 4], [0.5], [2.0]]", 4));
+    string seedText = "{ \"schemaVersion\": 1, \"name\": \"fuzz\", \"detectionName\": \"Sentinel.ML.Fuzz\", \"featureSet\": \"pe-v1\", \"featureCount\": 296, "
+        + "\"kind\": \"trees\", \"bias\": 0.1, \"threshold\": 0.7, \"trees\": [" + trees + "] }";
+    _ = MlModel.Parse(seedText); // the seed itself must be valid
+    byte[] seedBytes = Encoding.UTF8.GetBytes(seedText);
+    float[] features = new float[PeFeatures.Count];
+    var mutator = new Mutator(seed);
+    long accepted = 0;
+    int failures = 0;
+    var sw = Stopwatch.StartNew();
+    for (long i = 0; i < iterations; i++)
+    {
+        byte[] input = mutator.Mutate(seedBytes);
+        try
+        {
+            MlModel model = MlModel.Parse(Encoding.UTF8.GetString(input));
+            features[280] = i % 3;
+            features[281] = i % 8;
+            double score = model.Score(features);
+            if (!(score >= 0 && score <= 1))
+            {
+                throw new InvalidOperationException($"Score out of range: {score}");
+            }
+
+            accepted++;
+        }
+        catch (FormatException)
+        {
+            // Expected: rejected.
+        }
+        catch (Exception ex)
+        {
+            failures += Save(crashDir, "model", i, input, ex);
+        }
+    }
+
+    Report("model", iterations, failures, sw.Elapsed, $"accepted {accepted:N0}");
+    return failures;
+}
+
 // Signed content packages: the only acceptable failure is ContentVerificationException.
 static int FuzzContent(long iterations, int seed, string crashDir)
 {

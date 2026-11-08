@@ -50,7 +50,7 @@ sentinel.exe (Sentinel.Cli) ─────────────┐        Se
                     │                                   restricted token · account SID deny-only · low integrity
                     │                                   Job Object (1 process, memory cap, kill on close, UI limits)
                     │                                   mitigations (no child processes, no extension points, ...)
-                    │                                     └─ InProcessAnalyzer
+                    │                                     └─ InProcessAnalyzer (+ MlEngine when a model is enabled)
                     └─ InProcessAnalyzer (--no-sandbox, development only)
                           ├─ HashEngine · YaraEngine · PeHeuristicEngine   (IDetectionEngine)
                           └─ ZipExpander (metered, per-item budget, every engine on every entry)
@@ -129,7 +129,7 @@ Labels: **P** prototype/educational · **B** beta for trusted testers. Nothing h
 | M6 | Signed content updates with rollback/freeze protection, offline import ✔ ([ADR 0008](adr/0008-signed-content-updates.md)) | P |
 | M7 | User-mode real-time monitoring (file activity, process start, removable media) ✔ ([ADR 0009](adr/0009-user-mode-real-time-monitoring.md)); detects after the fact, cannot block | P |
 | M8 | Ransomware behaviour detection (mass modification, ransom notes, recovery tampering, opt-in decoys), alert only ✔ ([ADR 0010](adr/0010-ransomware-behaviour-detection.md)) | P |
-| M9 | Optional local ML (EMBER-style features, ONNX), off by default | P |
+| M9 | Optional local ML scoring (EMBER-style `pe-v1` features, JSON tree/logistic models in pure C#, no native runtime), off by default, no model shipped ✔ ([ADR 0011](adr/0011-local-ml-scoring.md)) | P |
 | M10 | Web/network protection via WFP user-mode filters | B |
 | M11 | WiX MSI packaging, signing pipeline, product updater | B |
 | M12 | Release hardening: fuzzing, performance budgets, false-positive corpus, disclosure process | B |

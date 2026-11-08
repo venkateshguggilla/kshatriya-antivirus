@@ -44,7 +44,7 @@ public static class MessageType
 /// <summary>Protocol versions. A peer that sees a different version refuses to continue.</summary>
 public static class ProtocolVersion
 {
-    public const int Worker = 1;
+    public const int Worker = 2;
     public const int Service = 5;
 }
 
@@ -111,6 +111,8 @@ public sealed class EngineConfigDto
     public required List<TextSourceDto> HashDatabases { get; init; }
 
     public required List<TextSourceDto> YaraRules { get; init; }
+
+    public required List<TextSourceDto> Models { get; init; }
 
     public required bool YaraRequired { get; init; }
 

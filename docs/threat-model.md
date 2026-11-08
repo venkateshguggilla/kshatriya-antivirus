@@ -1,4 +1,4 @@
-# Threat model (draft, M8)
+# Threat model (draft, M9)
 
 Scope: the M1–M4 scanner, service, workers and response component, plus threats that later milestones must design for. Reviewed at every milestone.
 
@@ -67,6 +67,8 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 | T39 | Monitoring feedback loop (quarantine or reports trigger new scans) | The service data folder is never monitored | M7 ✔ |
 | T40 | Ransomware encrypts user files | Behaviour alerts (mass modification + entropy/extension, ransom notes, recovery-tampering commands, opt-in decoys); app recommends Defender Controlled folder access | M8 ✔ (warns, does not stop) |
 | T41 | Backups and shadow copies are deleted before encryption | Recovery-tampering command detection on process start | M8 ✔ (alert only; short-lived processes may be missed) |
+| T42 | A malicious or malformed model crashes or hangs the worker | Strict bounded JSON model format, acyclic trees by construction, pure managed evaluation inside the sandbox, models only from signed content, fuzzed | M9 ✔ |
+| T43 | ML false positives cause harm | ML findings are suspicious only, never auto-actioned; off by default; signed files skipped | M9 ✔ |
 | T32 | Audit records are edited or removed to hide actions (Repudiation) | Hash-chained, flushed per record, ACL SYSTEM + Administrators; verified by `sentinel audit` and `status` | M4 ✔ (tamper-evident only) |
 
 ## Residual risks (M3–M4)

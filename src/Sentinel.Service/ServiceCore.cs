@@ -228,10 +228,12 @@ public sealed class ServiceCore : IDisposable
             TextSource Source(ContentFile f) => new($"{origin}/{f.Name}", System.Text.Encoding.UTF8.GetString(content.Files[f.Name]));
             TextSource[] hashdbs = [.. content.Manifest.Files.Where(f => f.Kind == "hashdb").Select(Source)];
             TextSource[] rules = [.. content.Manifest.Files.Where(f => f.Kind == "yara").Select(Source)];
+            TextSource[] models = settings.MachineLearning ? [.. content.Manifest.Files.Where(f => f.Kind == "model").Select(Source)] : [];
             engines = engines with
             {
                 HashDatabases = [.. engines.HashDatabases, .. hashdbs],
                 YaraRules = [.. engines.YaraRules, .. rules],
+                Models = models,
                 YaraRequired = engines.YaraRequired || rules.Length > 0,
             };
         }

@@ -39,6 +39,9 @@ public sealed record CliOptions
 
     public IReadOnlyList<string> RuleFiles { get; init; } = [];
 
+    /// <summary>Machine-learning model files (local scans; off unless given).</summary>
+    public IReadOnlyList<string> ModelFiles { get; init; } = [];
+
     public bool NoHeuristics { get; init; }
 
     public bool HeuristicsIncludeSigned { get; init; }
@@ -79,7 +82,7 @@ public sealed record CliOptions
     public int AuditLast { get; init; } = 50;
 
     public const string HelpText = """
-        Sentinel scanner (milestone 8 prototype)
+        Sentinel scanner (milestone 9 prototype)
 
         Usage:
           sentinel scan <path>... [options]
@@ -103,6 +106,8 @@ public sealed record CliOptions
           --include-clean        List clean items in the report (counts are always included)
           --signatures <file>    Load an additional hash database (repeatable)
           --rules <file>         Load additional YARA rules (repeatable; includes are disabled)
+          --model <file>         Score PE files with a machine-learning model (*.model.json; results are
+                                 only ever "suspicious"; off unless given)
           --no-heuristics        Disable static PE heuristics
           --heuristics-include-signed  Also score validly signed files (for false-positive evaluation)
           --archive-depth <n>    Nested archive depth to inspect, 0-10 (default 3; 0 disables)
@@ -166,6 +171,7 @@ public sealed record CliOptions
         var excludes = new List<string>();
         var signatures = new List<string>();
         var rules = new List<string>();
+        var models = new List<string>();
         var options = new CliOptions { Command = CliCommand.Scan };
 
         for (int i = 1; i < args.Count; i++)
@@ -196,6 +202,9 @@ public sealed record CliOptions
                     break;
                 case "--rules":
                     rules.Add(Next(args, ref i, arg));
+                    break;
+                case "--model":
+                    models.Add(Next(args, ref i, arg));
                     break;
                 case "--no-heuristics":
                     options = options with { NoHeuristics = true };
@@ -275,7 +284,7 @@ public sealed record CliOptions
         if (options.UseService)
         {
             // The service decides engines, limits and isolation from its own protected configuration.
-            bool local = options.ReadStdin || signatures.Count > 0 || rules.Count > 0 || options.NoHeuristics || options.HeuristicsIncludeSigned
+            bool local = options.ReadStdin || signatures.Count > 0 || rules.Count > 0 || models.Count > 0 || options.NoHeuristics || options.HeuristicsIncludeSigned
                 || options.ArchiveDepth is not null || options.MaxFileSizeBytes is not null || options.Timeout is not null
                 || options.Parallelism is not null || options.NoSandbox;
             if (local)
@@ -288,7 +297,7 @@ public sealed record CliOptions
             throw new CliUsageException("Sandboxed scanning supports files up to 1024 MiB; use a smaller --max-file-size.");
         }
 
-        return options with { Targets = targets, SignatureFiles = signatures, RuleFiles = rules, Excludes = excludes };
+        return options with { Targets = targets, SignatureFiles = signatures, RuleFiles = rules, ModelFiles = models, Excludes = excludes };
     }
 
     private static CliOptions ParseManagement(IReadOnlyList<string> args, CliCommand command, string[] actions)

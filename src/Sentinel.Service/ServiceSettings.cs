@@ -35,6 +35,9 @@ public sealed record ServiceSettings
 
     public IReadOnlyList<ScheduledScan> ScheduledScans { get; init; } = [];
 
+    /// <summary>Use machine-learning models from installed content (off by default; results are suspicious only).</summary>
+    public bool MachineLearning { get; init; }
+
     /// <summary>Real-time monitoring (disabled unless configured).</summary>
     public RealTime.RealTimeOptions RealTime { get; init; } = new();
 
@@ -103,6 +106,7 @@ public sealed record ServiceSettings
             ScheduledScans = schedules,
             ContentKeys = ValidateKeys(dto.ContentKeys),
             RealTime = ParseRealTime(dto.RealTime),
+            MachineLearning = dto.MachineLearning ?? false,
         };
     }
 
@@ -295,6 +299,8 @@ internal sealed class ServiceSettingsDto
     public List<string>? ContentKeys { get; init; }
 
     public RealTimeDto? RealTime { get; init; }
+
+    public bool? MachineLearning { get; init; }
 }
 
 internal sealed class RealTimeDto

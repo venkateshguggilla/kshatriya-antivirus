@@ -83,6 +83,7 @@ public static class CliApp
                 HeuristicsIncludeSigned = options.HeuristicsIncludeSigned,
                 MaxScanBytes = limits.MaxFileSizeBytes,
                 Archives = limits.Archives,
+                Models = [.. options.ModelFiles.Select(f => new TextSource(Path.GetFileName(f), File.ReadAllText(f)))],
             };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
