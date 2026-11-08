@@ -40,6 +40,7 @@ internal sealed class FakeGateway : IServiceGateway
                 QuarantineItems = Quarantine.Count,
                 Exclusions = Exclusions.Count,
                 AuditChainValid = true,
+                Content = new ContentStatusDto { Sequence = 7, Channel = "stable", ExpiresUtc = "2020-01-01T00:00:00Z", Expired = true },
             }));
     }
 

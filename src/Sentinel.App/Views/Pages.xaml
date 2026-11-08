@@ -59,6 +59,7 @@
           <TextBlock Text="{Binding Workers}" TextWrapping="Wrap" Margin="0,4,0,0" />
           <TextBlock Text="{Binding Quarantine}" TextWrapping="Wrap" Margin="0,4,0,0" />
           <TextBlock Text="{Binding AuditState}" TextWrapping="Wrap" Margin="0,4,0,0" />
+          <TextBlock Text="{Binding Content}" TextWrapping="Wrap" Margin="0,4,0,0" />
         </StackPanel>
       </Border>
 

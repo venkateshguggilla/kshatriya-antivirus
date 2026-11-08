@@ -54,7 +54,7 @@ public static class CliApp
                 return ExitCodes.Clean;
             case CliCommand.Status:
                 return await StatusAsync(options, stdout, stderr, cancellationToken);
-            case CliCommand.Quarantine or CliCommand.Exclusions or CliCommand.Audit:
+            case CliCommand.Quarantine or CliCommand.Exclusions or CliCommand.Audit or CliCommand.Update:
                 return await ManageAsync(options, stdout, stderr, cancellationToken);
         }
 
@@ -221,6 +221,7 @@ public static class CliApp
             {
                 CliCommand.Quarantine => await ManagementCommands.QuarantineAsync(options, () => ConnectAsync(options, cancellationToken), stdout, stderr, cancellationToken),
                 CliCommand.Exclusions => await ManagementCommands.ExclusionsAsync(options, () => ConnectAsync(options, cancellationToken), stdout, cancellationToken),
+                CliCommand.Update => await ManagementCommands.UpdateAsync(options, () => ConnectAsync(options, cancellationToken), stdout, stderr, cancellationToken),
                 _ => await ManagementCommands.AuditAsync(options, () => ConnectAsync(options, cancellationToken), stdout, stderr, cancellationToken),
             };
         }
@@ -250,6 +251,11 @@ public static class CliApp
         sb.Append(CultureInfo.InvariantCulture, $"Sandboxed workers: {w.Configured} configured, {w.Running} running, {w.Started} started, {w.Crashed} crashed, {w.TimedOut} stopped at time limit").AppendLine();
         sb.Append(CultureInfo.InvariantCulture, $"Verdict cache: {status.Cache.Entries} entries, {status.Cache.Hits} hits, {status.Cache.Misses} misses").AppendLine();
         sb.Append(CultureInfo.InvariantCulture, $"Active scans: {status.ActiveScans}").AppendLine();
+        ContentStatusDto content = status.Content;
+        sb.Append("Content: ").Append(content.Sequence == 0
+            ? "built-in only (no signed update installed)"
+            : $"update {content.Sequence} ({content.Channel}), " + (content.Expired ? $"EXPIRED {content.ExpiresUtc}" : $"valid until {content.ExpiresUtc}"))
+          .AppendLine(content.Problem is null ? string.Empty : $"; {content.Problem}");
         sb.Append(CultureInfo.InvariantCulture, $"Quarantine: {status.QuarantineItems} item(s). Exclusions: {status.Exclusions}. Audit log: {(status.AuditChainValid ? "intact" : "INTEGRITY CHECK FAILED")}").AppendLine();
         if (status.Schedules.Count == 0)
         {

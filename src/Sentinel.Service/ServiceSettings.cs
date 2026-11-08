@@ -35,6 +35,9 @@ public sealed record ServiceSettings
 
     public IReadOnlyList<ScheduledScan> ScheduledScans { get; init; } = [];
 
+    /// <summary>Additional content signing public keys (base64 SubjectPublicKeyInfo, ECDSA P-256).</summary>
+    public IReadOnlyList<string> ContentKeys { get; init; } = [];
+
     /// <summary>Parses and validates settings. Any unknown member or invalid value rejects the whole file.</summary>
     public static ServiceSettings Parse(string json)
     {
@@ -95,7 +98,26 @@ public sealed record ServiceSettings
             ReportRetention = Range(dto.ReportRetention, defaults.ReportRetention, 1, 1000, "reportRetention"),
             MaxConcurrentScans = Range(dto.MaxConcurrentScans, defaults.MaxConcurrentScans, 1, 8, "maxConcurrentScans"),
             ScheduledScans = schedules,
+            ContentKeys = ValidateKeys(dto.ContentKeys),
         };
+    }
+
+    private static string[] ValidateKeys(List<string>? keys)
+    {
+        string[] list = [.. keys ?? []];
+        foreach (string key in list)
+        {
+            try
+            {
+                _ = Sentinel.Updates.ContentKey.Parse(key);
+            }
+            catch (Exception ex) when (ex is FormatException or System.Security.Cryptography.CryptographicException)
+            {
+                throw new FormatException($"'contentKeys' entry is not a base64 ECDSA P-256 public key: {ex.Message}", ex);
+            }
+        }
+
+        return list;
     }
 
     private static int Range(int? value, int fallback, int min, int max, string name)
@@ -186,6 +208,8 @@ internal sealed class ServiceSettingsDto
     public int? MaxConcurrentScans { get; init; }
 
     public List<ScheduleDto>? ScheduledScans { get; init; }
+
+    public List<string>? ContentKeys { get; init; }
 }
 
 internal sealed class ScheduleDto

@@ -256,6 +256,9 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
                 case MessageType.ExclusionsChange:
                     await ExclusionsChangeAsync(ProtocolJson.Deserialize<ExclusionChangeDto>(frame.Json), actor, canManage, cancellationToken);
                     break;
+                case MessageType.ContentImport:
+                    await ContentImportAsync(ProtocolJson.Deserialize<ContentImportDto>(frame.Json), caller, actor, canManage, cancellationToken);
+                    break;
                 case MessageType.AuditQuery:
                     await AuditAsync(ProtocolJson.Deserialize<AuditQueryDto>(frame.Json), actor, canManage, cancellationToken);
                     break;
@@ -482,6 +485,73 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
         }
 
         await SendAsync(MessageType.ExclusionsReply, ExclusionsReply(), cancellationToken);
+    }
+
+    private async Task ContentImportAsync(ContentImportDto request, WindowsIdentity caller, Actor actor, bool canManage, CancellationToken cancellationToken)
+    {
+        const string action = "contentUpdate";
+        if (!canManage)
+        {
+            const string reason = "Installing content updates requires an elevated administrator.";
+            core.Quarantine.AuditDenied(actor, action, request.Path, reason);
+            Log.Denied(logger, action, actor.Name, reason);
+            await SendErrorAsync(ErrorCodes.AccessDenied, reason, cancellationToken);
+            return;
+        }
+
+        if (!ScanPathPolicy.IsLocalAbsolutePath(request.Path))
+        {
+            await SendErrorAsync(ErrorCodes.InvalidPath, $"'{request.Path}' is not a fully qualified local path.", cancellationToken);
+            return;
+        }
+
+        ContentImportReplyDto reply;
+        try
+        {
+            // The package is read with the caller's rights and a size limit; it is verified as the service.
+            byte[] package = WindowsIdentity.RunImpersonated(caller.AccessToken, () => ReadPackage(request.Path));
+            Sentinel.Updates.VerifiedContent content = await core.ImportContentAsync(package, cancellationToken);
+            reply = new ContentImportReplyDto
+            {
+                Succeeded = true,
+                Code = "none",
+                Sequence = content.Manifest.Sequence,
+                ExpiresUtc = content.Manifest.ExpiresUtc.UtcDateTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                Message = $"Content {content.Manifest.Sequence} ({content.Files.Count} file(s), signed by key {content.KeyId}) is active.",
+            };
+            core.Quarantine.AuditEvent(actor, action, request.Path, AuditOutcomes.Succeeded, $"sequence {content.Manifest.Sequence}; key {content.KeyId}");
+        }
+        catch (Sentinel.Updates.ContentVerificationException ex)
+        {
+            reply = new ContentImportReplyDto { Succeeded = false, Code = ex.Code, Message = ex.Message };
+            core.Quarantine.AuditEvent(actor, action, request.Path, AuditOutcomes.Failed, $"{ex.Code}: {ex.Message}");
+            Log.ContentRefused(logger, actor.Name, ex.Code, ex.Message);
+        }
+        catch (ScanCapacityException ex)
+        {
+            await SendErrorAsync(ErrorCodes.Busy, ex.Message, cancellationToken);
+            return;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            reply = new ContentImportReplyDto { Succeeded = false, Code = "ioError", Message = ex.Message };
+            core.Quarantine.AuditEvent(actor, action, request.Path, AuditOutcomes.Failed, ex.Message);
+        }
+
+        await SendAsync(MessageType.ContentImportReply, reply, cancellationToken);
+    }
+
+    private static byte[] ReadPackage(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (stream.Length > Sentinel.Updates.ContentPackage.MaxPackageBytes)
+        {
+            throw new Sentinel.Updates.ContentVerificationException(Sentinel.Updates.ContentErrors.TooLarge, "The package is too large.");
+        }
+
+        byte[] data = new byte[stream.Length];
+        stream.ReadExactly(data);
+        return data;
     }
 
     private ExclusionsReplyDto ExclusionsReply()

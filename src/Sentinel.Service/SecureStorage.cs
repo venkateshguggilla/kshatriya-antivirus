@@ -20,6 +20,9 @@ public sealed record ServicePaths(string Root, bool Production)
     /// <summary>Hash-chained audit log (SYSTEM and Administrators only).</summary>
     public string AuditDirectory => Path.Combine(Root, "audit");
 
+    /// <summary>Signed content packages and the anti-rollback state.</summary>
+    public string ContentDirectory => Path.Combine(Root, "content");
+
     /// <summary>%ProgramData%\Sentinel, writable only by SYSTEM and Administrators.</summary>
     public static ServicePaths ForProduction() =>
         new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Sentinel"), Production: true);

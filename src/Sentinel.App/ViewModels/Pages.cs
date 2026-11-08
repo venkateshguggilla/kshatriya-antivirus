@@ -101,6 +101,7 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
     private string _workers = string.Empty;
     private string _quarantine = string.Empty;
     private string _auditState = string.Empty;
+    private string _content = string.Empty;
     private AntivirusHealth _antivirus = AntivirusHealth.Unknown;
 
     public string ServiceState { get => _serviceState; private set => Set(ref _serviceState, value); }
@@ -118,6 +119,8 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
     public string Quarantine { get => _quarantine; private set => Set(ref _quarantine, value); }
 
     public string AuditState { get => _auditState; private set => Set(ref _auditState, value); }
+
+    public string Content { get => _content; private set => Set(ref _content, value); }
 
     public AntivirusHealth Antivirus
     {
@@ -160,6 +163,10 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
             Engines = string.Join(Environment.NewLine, status.Engines.Select(e => $"{e.Id} {e.Version}  [{e.ContentVersion}]"));
             Workers = $"{status.Workers.Running} of {status.Workers.Configured} sandboxed workers running; {status.Workers.Crashed} crashed, {status.Workers.TimedOut} stopped at the time limit. Active scans: {status.ActiveScans}.";
             Quarantine = $"{status.QuarantineItems} item(s) in quarantine. {status.Exclusions} exclusion(s).";
+            ContentStatusDto c = status.Content;
+            Content = c.Sequence == 0
+                ? "Content: built-in signatures only (no signed update installed)." + (c.Problem is null ? string.Empty : $" {c.Problem}")
+                : $"Content: update {c.Sequence} ({c.Channel}), " + (c.Expired ? $"EXPIRED on {Local(c.ExpiresUtc)}; install a newer update." : $"valid until {Local(c.ExpiresUtc)}.");
             AuditState = status.AuditChainValid ? "Audit log: intact." : "Audit log: INTEGRITY CHECK FAILED. Review the History page.";
             Schedules.Clear();
             foreach (ScheduleStatusDto s in status.Schedules)

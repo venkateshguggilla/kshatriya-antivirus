@@ -1,5 +1,5 @@
 // Mutation fuzz harness for Sentinel parsers.
-//   dotnet run -c Release --project tools/Sentinel.Fuzz -- <pe|zip|hashdb|frame|report|all> [iterations] [seed] [crashDir]
+//   dotnet run -c Release --project tools/Sentinel.Fuzz -- <pe|zip|hashdb|frame|report|content|all> [iterations] [seed] [crashDir]
 // Any exception escaping a parser counts as a failure; the offending input is saved to crashDir.
 // This is unguided mutation fuzzing; coverage-guided fuzzing (SharpFuzz + libFuzzer) is future work.
 
@@ -12,6 +12,7 @@ using Sentinel.Engines.Pe;
 using Sentinel.Protocol;
 using Sentinel.Scanning;
 using Sentinel.Tests.Shared;
+using Sentinel.Updates;
 
 string target = args.Length > 0 ? args[0] : "all";
 long iterations = args.Length > 1 ? long.Parse(args[1], CultureInfo.InvariantCulture) : 1_000_000;
@@ -19,7 +20,7 @@ int seed = args.Length > 2 ? int.Parse(args[2], CultureInfo.InvariantCulture) : 
 string crashDir = args.Length > 3 ? args[3] : Path.Combine(Path.GetTempPath(), "sentinel-fuzz-crashes");
 
 int failures = 0;
-foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "report" } : [target])
+foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "report", "content" } : [target])
 {
     failures += t switch
     {
@@ -28,6 +29,7 @@ foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "
         "hashdb" => FuzzHashDb(iterations, seed, crashDir),
         "frame" => await FuzzFramesAsync(iterations, seed, crashDir),
         "report" => FuzzReport(iterations, seed, crashDir),
+        "content" => FuzzContent(iterations, seed, crashDir),
         _ => throw new ArgumentException($"Unknown target '{t}'."),
     };
 }
@@ -239,6 +241,39 @@ static async Task<int> FuzzFramesAsync(long iterations, int seed, string crashDi
 }
 
 // Reports read back from the service (or from disk). The only acceptable failure is FormatException.
+// Signed content packages: the only acceptable failure is ContentVerificationException.
+static int FuzzContent(long iterations, int seed, string crashDir)
+{
+    using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+    ContentKey trusted = ContentKey.FromSpki(key.ExportSubjectPublicKeyInfo());
+    var now = new DateTimeOffset(2026, 11, 8, 0, 0, 0, TimeSpan.Zero);
+    byte[] seedPackage = ContentPackage.Create("stable", 3, now.AddHours(-1), now.AddDays(10), [("a.hashdb", Encoding.UTF8.GetBytes("# sentinel-hashdb v1\n")), ("b.yar", Encoding.UTF8.GetBytes("rule r { condition: false }"))], key);
+    var mutator = new Mutator(seed);
+    long accepted = 0;
+    int failures = 0;
+    var sw = Stopwatch.StartNew();
+    for (long i = 0; i < iterations; i++)
+    {
+        byte[] input = mutator.Mutate(seedPackage);
+        try
+        {
+            _ = ContentPackage.Verify(input, [trusted], now);
+            accepted++;
+        }
+        catch (ContentVerificationException)
+        {
+            // Expected: refused.
+        }
+        catch (Exception ex)
+        {
+            failures += Save(crashDir, "content", i, input, ex);
+        }
+    }
+
+    Report("content", iterations, failures, sw.Elapsed, $"accepted {accepted:N0}");
+    return failures;
+}
+
 static int FuzzReport(long iterations, int seed, string crashDir)
 {
     var report = new ScanReport

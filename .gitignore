@@ -483,3 +483,8 @@ $RECYCLE.BIN/
 
 # Third-party native binaries fetched by scripts/Get-YaraX.ps1 (hash-pinned, not committed)
 /native/
+
+# Content signing: private keys and built packages never go into the repository.
+*.pem
+*.key
+*.sntu

@@ -12,6 +12,7 @@ public enum CliCommand
     Quarantine,
     Exclusions,
     Audit,
+    Update,
 }
 
 /// <summary>Parsed command line. Hand-written parser: tiny surface, no third-party dependency.</summary>
@@ -77,7 +78,7 @@ public sealed record CliOptions
     public int AuditLast { get; init; } = 50;
 
     public const string HelpText = """
-        Sentinel scanner (milestone 5 prototype)
+        Sentinel scanner (milestone 6 prototype)
 
         Usage:
           sentinel scan <path>... [options]
@@ -87,6 +88,7 @@ public sealed record CliOptions
           sentinel quarantine list | add <file> | restore <id> [--to <path>] | delete <id>   [--service [--dev]]
           sentinel exclusions list | add <path|sha256:...> | remove <path|sha256:...>   --service [--dev]
           sentinel audit [--last <n>] [--service [--dev]]
+          sentinel update import <package.sntu> --service [--dev]
           sentinel version
           sentinel help
 
@@ -150,6 +152,8 @@ public sealed record CliOptions
                 return ParseManagement(args, CliCommand.Exclusions, ["list", "add", "remove"]);
             case "audit":
                 return ParseManagement(args, CliCommand.Audit, []);
+            case "update":
+                return ParseManagement(args, CliCommand.Update, ["import"]);
             default:
                 throw new CliUsageException($"Unknown command '{args[0]}'.");
         }
@@ -342,13 +346,18 @@ public sealed record CliOptions
             throw new CliUsageException("--to is only valid with quarantine restore.");
         }
 
+        if (command == CliCommand.Update && !options.UseService)
+        {
+            throw new CliUsageException("Content updates are installed into the service: add --service.");
+        }
+
         if (command == CliCommand.Exclusions && !options.UseService)
         {
             throw new CliUsageException("Persistent exclusions are managed by the service: add --service. For a single local scan use 'scan --exclude <path>'.");
         }
 
         string? argument = needsArgument ? positional[1] : null;
-        if (argument is not null && (action == "add" && command == CliCommand.Quarantine))
+        if (argument is not null && ((action == "add" && command == CliCommand.Quarantine) || command == CliCommand.Update))
         {
             argument = Path.GetFullPath(argument);
         }

@@ -81,7 +81,7 @@ public class CliMilestone3Tests
     {
         Assert.Contains("--no-sandbox", CliOptions.HelpText, StringComparison.Ordinal);
         Assert.Contains("sentinel status", CliOptions.HelpText, StringComparison.Ordinal);
-        Assert.Contains("milestone 5", CliOptions.HelpText, StringComparison.Ordinal);
+        Assert.Contains("milestone 6", CliOptions.HelpText, StringComparison.Ordinal);
     }
 
     private static string[] Findings(string json)

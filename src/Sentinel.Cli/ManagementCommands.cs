@@ -75,6 +75,20 @@ internal static class ManagementCommands
         return ExitCodes.Clean;
     }
 
+    public static async Task<int> UpdateAsync(CliOptions options, Func<Task<ServiceClient>> connect, TextWriter stdout, TextWriter stderr, CancellationToken ct)
+    {
+        await using ServiceClient client = await connect();
+        ContentImportReplyDto reply = await client.ImportContentAsync(options.Argument!, ct);
+        if (!reply.Succeeded)
+        {
+            await stderr.WriteLineAsync($"error: the content package was refused [{reply.Code}]: {reply.Message}");
+            return ExitCodes.Fatal;
+        }
+
+        await stdout.WriteLineAsync($"{reply.Message} Valid until {reply.ExpiresUtc}.");
+        return ExitCodes.Clean;
+    }
+
     public static async Task<int> AuditAsync(CliOptions options, Func<Task<ServiceClient>> connect, TextWriter stdout, TextWriter stderr, CancellationToken ct)
     {
         IEnumerable<(long Seq, string Time, string User, string Action, string Outcome, string Target, string? Detail)> records;

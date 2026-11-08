@@ -1,4 +1,4 @@
-# Threat model (draft, M5)
+# Threat model (draft, M6)
 
 Scope: the M1–M4 scanner, service, workers and response component, plus threats that later milestones must design for. Reviewed at every milestone.
 
@@ -20,7 +20,8 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 | Client process → service (pipe) | Caller identified by impersonation; scans, quarantine and restore run impersonated; local paths only; restore, exclusions and audit need an elevated administrator (M4) | Client binary verification (M11) |
 | Service → quarantine vault and audit log | Explicit ACL (SYSTEM + Administrators); vault key DPAPI-protected for SYSTEM | Off-machine audit forwarding |
 | Service → client (pipe) (CLI and desktop app) | Client checks the server PID against the SCM before sending anything; the app runs asInvoker and elevates only on request | Signed binaries checked too (M11) |
-| Configuration and signature files → service | Refused unless owned and writable only by SYSTEM/Administrators/TrustedInstaller | Signed manifests with rollback protection (M6) |
+| Configuration and signature files → service | Refused unless owned and writable only by SYSTEM/Administrators/TrustedInstaller | Same |
+| Content packages → service | Signature (ECDSA P-256) verified before parsing; hashes, sizes, expiry, anti-rollback; engines load new content inside the sandbox first (M6) | Key rotation / threshold signing; CDN fetch (M11) |
 
 ## Threats and mitigations
 
@@ -57,6 +58,10 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 | T29 | Quarantined content is executed, leaked or modified in the vault | AES-256-GCM chunks with authenticated header/index/final flag; DPAPI-protected key; vault ACL without Users; integrity failure blocks restore | M4 ✔ |
 | T30 | A standard user restores malware or adds exclusions to blind the scanner | Restore, exclusions and audit reads require an elevated administrator; drive roots and the Windows directory cannot be excluded; excluded items still appear in reports; all attempts audited | M4 ✔ |
 | T31 | Restore is used to plant a file over an existing one | `CREATE_NEW` only (never overwrites); impersonated; target must be a local path | M4 ✔ |
+| T33 | A forged content package blinds the scanner or causes mass false positives | Signature over the manifest checked before parsing; trusted keys compiled in or in protected settings; per-file SHA-256; admin-only, audited import | M6 ✔ |
+| T34 | An old package is replayed to undo protection (rollback) | Sequence must exceed the highest ever installed (protected state file) | M6 ✔ |
+| T35 | Updates are blocked to keep stale content (freeze) | Expired packages refused at import; expired active content flagged in status and the app | M6 ✔ (detection, not prevention) |
+| T36 | A malformed package crashes or exhausts the service | Bounded framing, lengths checked before allocation, strict JSON, fuzzed (1M iterations); engines validate content in sandboxed workers before the swap | M6 ✔ |
 | T32 | Audit records are edited or removed to hide actions (Repudiation) | Hash-chained, flushed per record, ACL SYSTEM + Administrators; verified by `sentinel audit` and `status` | M4 ✔ (tamper-evident only) |
 
 ## Residual risks (M3–M4)
@@ -67,13 +72,14 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 - The service authorizes per user, not per client binary. Since M4 an elevated administrator can restore files and add exclusions through any local client; malware already running elevated can do the same (it could also simply stop the service). Client binary verification is planned with signing (M11).
 - **Running malware is not stopped.** Quarantine of a running program fails with `inUse` and the file stays; process termination and reboot-time removal need a later design (M7/M8).
 - **The audit log is tamper-evident, not tamper-proof.** An administrator can rewrite the whole chain consistently. Off-machine forwarding is future work.
+- **No production content signing key exists yet**; installed services accept only administrator-configured keys. Key rotation and revocation are manual.
 - **Restored files lose their original ACL and alternate data streams** (they inherit the folder's ACL and get a fresh internet-zone mark).
 
 ## Known limitations
 
 - Reading a file may update its last-access time if the volume has last-access updates enabled. Content, size, attributes and write times are never changed.
 - Directory-cycle detection by identity is defence in depth: because links are never followed, the scanner cannot be led into a cycle.
-- Hash databases and rule files are not yet signed.
+- Hash databases and rule files configured directly in service.json are trusted by file ACL, not signature; content delivered as packages is signed.
 - The ZIP central directory is read by `System.IO.Compression` before entry limits apply; its size is bounded by the per-file size limit.
 - Workers hold an item fully in memory (bounded by the size limit and the job memory cap).
 - Mutation fuzzing is unguided; coverage-guided fuzzing is future work.

@@ -6,6 +6,7 @@ using Sentinel.Protocol;
 using Sentinel.Response;
 using Sentinel.Runtime;
 using Sentinel.Runtime.Workers;
+using Sentinel.Updates;
 
 namespace Sentinel.Service;
 
@@ -42,11 +43,18 @@ public sealed class ServiceCore : IDisposable
     private readonly ServiceCoreOptions _options;
     private readonly ILogger _logger;
     private readonly DateTimeOffset _started;
+    private readonly SemaphoreSlim _contentGate = new(1, 1);
+    private readonly ContentStore _contentStore;
+    private readonly IReadOnlyList<ContentKey> _contentKeys;
     private ScheduleState? _scheduleState;
 
-    private ServiceCore(ServiceCoreOptions options, ServiceSettings settings, ScanCoordinator coordinator, ExclusionStore exclusions, QuarantineManager quarantine, ILogger logger)
+    private ServiceCore(ServiceCoreOptions options, ServiceSettings settings, ScanCoordinator coordinator, ExclusionStore exclusions, QuarantineManager quarantine, ILogger logger, ContentStore contentStore, IReadOnlyList<ContentKey> contentKeys, VerifiedContent? content, string? contentProblem)
     {
         _options = options;
+        _contentStore = contentStore;
+        _contentKeys = contentKeys;
+        ActiveContent = content;
+        ContentProblem = contentProblem;
         Settings = settings;
         Coordinator = coordinator;
         Exclusions = exclusions;
@@ -68,6 +76,12 @@ public sealed class ServiceCore : IDisposable
 
     /// <summary>True for the installed service; false for a development service that serves only its own user.</summary>
     public bool IsProduction => _options.Paths.Production;
+
+    /// <summary>The verified content package in use, or null when only built-in content is loaded.</summary>
+    public VerifiedContent? ActiveContent { get; private set; }
+
+    /// <summary>Why installed content could not be loaded, if it could not.</summary>
+    public string? ContentProblem { get; private set; }
 
     /// <summary>Whether management operations require an elevated administrator.</summary>
     public bool RequireAdministrator => _options.RequireAdministrator ?? _options.Paths.Production;
@@ -97,16 +111,33 @@ public sealed class ServiceCore : IDisposable
             ProcessIdentityScope.Instance,
             time: options.Time);
 
-        EngineConfiguration engines = EngineConfiguration.FromFiles(settings.SignatureFiles, settings.RuleFiles) with
+        IReadOnlyList<ContentKey> keys = [.. ContentTrust.ProductionKeys, .. settings.ContentKeys.Select(ContentKey.Parse)];
+        var contentStore = new ContentStore(options.Paths.ContentDirectory, options.Paths.Production);
+        VerifiedContent? content = null;
+        string? contentProblem = null;
+        try
         {
-            Heuristics = settings.Heuristics,
-            HeuristicsIncludeSigned = settings.HeuristicsIncludeSigned,
-            MaxScanBytes = settings.MaxFileSizeBytes,
-        };
+            content = contentStore.LoadActive(keys, options.Time.GetUtcNow());
+        }
+        catch (Exception ex) when (ex is ContentVerificationException or IOException or FormatException or System.Text.Json.JsonException)
+        {
+            // Fail safe: keep protecting with built-in and configured content, and say so loudly.
+            contentProblem = $"Installed content was not loaded: {ex.Message}";
+            Log.ContentProblem(logger, contentProblem);
+        }
 
-        WorkerPoolAnalyzer pool = await WorkerPoolAnalyzer.StartAsync(
-            new WorkerPoolOptions { Engines = engines, WorkerCount = settings.Workers, WorkerPath = options.WorkerPath },
-            cancellationToken);
+        WorkerPoolAnalyzer pool;
+        try
+        {
+            pool = await StartPoolAsync(options, settings, content, cancellationToken);
+        }
+        catch (WorkerStartException ex) when (ex.IsConfigurationError && content is not null)
+        {
+            contentProblem = $"Installed content {content.Manifest.Sequence} could not be loaded by the engines: {ex.Message}";
+            Log.ContentProblem(logger, contentProblem);
+            content = null;
+            pool = await StartPoolAsync(options, settings, null, cancellationToken);
+        }
         foreach (string warning in pool.Warnings)
         {
             Log.EngineWarning(logger, warning);
@@ -117,7 +148,84 @@ public sealed class ServiceCore : IDisposable
             Version,
             options.Paths.Production ? "production" : "development",
             string.Join(", ", pool.Engines.Select(e => $"{e.Id} {e.Version} [{e.ContentVersion}]")));
-        return new ServiceCore(options, settings, new ScanCoordinator(pool, settings, exclusions), exclusions, quarantine, logger);
+        return new ServiceCore(options, settings, new ScanCoordinator(pool, settings, exclusions), exclusions, quarantine, logger, contentStore, keys, content, contentProblem);
+    }
+
+    /// <summary>
+    /// Verifies and activates a content package: signature, hashes, expiry, anti-rollback, then a new
+    /// sandboxed worker pool must build its engines from it before it replaces the running pool. Any
+    /// failure leaves the current content in use.
+    /// </summary>
+    public async Task<VerifiedContent> ImportContentAsync(byte[] package, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(package);
+        await _contentGate.WaitAsync(cancellationToken);
+        try
+        {
+            VerifiedContent content = ContentPackage.Verify(package, _contentKeys, _options.Time.GetUtcNow());
+            _contentStore.CheckForward(content.Manifest);
+            long sequence = content.Manifest.Sequence;
+            _contentStore.Stage(sequence, package);
+            WorkerPoolAnalyzer next;
+            try
+            {
+                next = await StartPoolAsync(_options, Settings, content, cancellationToken);
+            }
+            catch (WorkerStartException ex) when (ex.IsConfigurationError)
+            {
+                _contentStore.Discard(sequence);
+                throw new ContentVerificationException(ContentErrors.ContentInvalid, $"The engines rejected the package content: {ex.Message}");
+            }
+
+            try
+            {
+                await Coordinator.SwapPoolAsync(next, TimeSpan.FromSeconds(30), cancellationToken);
+            }
+            catch
+            {
+                next.Dispose();
+                _contentStore.Discard(sequence);
+                throw;
+            }
+
+            _contentStore.Activate(sequence);
+            ActiveContent = content;
+            ContentProblem = null;
+            Coordinator.Cache.Clear();
+            Log.ContentActivated(_logger, sequence, content.Manifest.Channel, content.KeyId);
+            return content;
+        }
+        finally
+        {
+            _contentGate.Release();
+        }
+    }
+
+    private static async Task<WorkerPoolAnalyzer> StartPoolAsync(ServiceCoreOptions options, ServiceSettings settings, VerifiedContent? content, CancellationToken cancellationToken)
+    {
+        EngineConfiguration engines = EngineConfiguration.FromFiles(settings.SignatureFiles, settings.RuleFiles) with
+        {
+            Heuristics = settings.Heuristics,
+            HeuristicsIncludeSigned = settings.HeuristicsIncludeSigned,
+            MaxScanBytes = settings.MaxFileSizeBytes,
+        };
+        if (content is not null)
+        {
+            string origin = $"content {content.Manifest.Sequence}";
+            TextSource Source(ContentFile f) => new($"{origin}/{f.Name}", System.Text.Encoding.UTF8.GetString(content.Files[f.Name]));
+            TextSource[] hashdbs = [.. content.Manifest.Files.Where(f => f.Kind == "hashdb").Select(Source)];
+            TextSource[] rules = [.. content.Manifest.Files.Where(f => f.Kind == "yara").Select(Source)];
+            engines = engines with
+            {
+                HashDatabases = [.. engines.HashDatabases, .. hashdbs],
+                YaraRules = [.. engines.YaraRules, .. rules],
+                YaraRequired = engines.YaraRequired || rules.Length > 0,
+            };
+        }
+
+        return await WorkerPoolAnalyzer.StartAsync(
+            new WorkerPoolOptions { Engines = engines, WorkerCount = settings.Workers, WorkerPath = options.WorkerPath },
+            cancellationToken);
     }
 
     /// <summary>Serves the pipe and runs the scheduler until cancelled.</summary>
@@ -163,6 +271,14 @@ public sealed class ServiceCore : IDisposable
             QuarantineItems = Quarantine.List().Count,
             Exclusions = Exclusions.Current.Paths.Count + Exclusions.Current.Hashes.Count,
             AuditChainValid = Quarantine.Audit.Verify().Valid,
+            Content = new ContentStatusDto
+            {
+                Sequence = ActiveContent?.Manifest.Sequence ?? 0,
+                Channel = ActiveContent?.Manifest.Channel,
+                ExpiresUtc = ActiveContent is { } c ? Iso(c.Manifest.ExpiresUtc) : null,
+                Expired = ActiveContent is { } a && a.Manifest.ExpiresUtc <= now,
+                Problem = ContentProblem,
+            },
         };
     }
 
@@ -187,7 +303,11 @@ public sealed class ServiceCore : IDisposable
         }
     }
 
-    public void Dispose() => Coordinator.Dispose();
+    public void Dispose()
+    {
+        Coordinator.Dispose();
+        _contentGate.Dispose();
+    }
 
     private static ServiceSettings LoadSettings(ServicePaths paths, ILogger logger)
     {

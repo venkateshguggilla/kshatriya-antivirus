@@ -1,10 +1,10 @@
 # Sentinel
 
-> **Status: Milestone 5 prototype.** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
+> **Status: Milestone 6 prototype.** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
 
 "Sentinel" is a working name and will change before any release.
 
-## What works today (M1–M5)
+## What works today (M1–M6)
 
 - `sentinel scan <path>...`: on-demand, **read-only** scan of files and folders
   - **Sandboxed parsing (M3):** file contents are analysed in separate worker processes. Each worker runs on a restricted token with the account SID deny-only and low integrity, inside a Job Object (one process, memory cap, killed with its parent) with process mitigations. Workers cannot write your files, start programs or read files private to your account. A crashed or hung worker is replaced and the item is reported as not scanned. `--no-sandbox` turns this off for development only.
@@ -34,6 +34,8 @@
 - With the **service**, quarantine and restore act with your own access rights (you can only quarantine files you could delete). Restoring files, managing exclusions and reading the audit log require an elevated administrator.
 
 - **Desktop app (M5):** `Sentinel.App.exe` (WPF, Fluent theme, light/dark/high contrast) with Dashboard (service, engines, workers, schedules, quarantine count, audit status and the Windows antivirus state), Scan (folders, progress, results, opt-in quarantine), Quarantine (restore, restore to, delete), Exclusions, History (audit log with integrity check) and About. It talks only to the service (`Sentinel.App.exe --dev` for a development service) and offers "Restart as administrator" for admin-only actions. Keyboard and screen-reader friendly; no formal accessibility audit yet.
+
+- **Signed content updates (M6):** `sentinel update import <package.sntu> --service` (administrator) installs signature and rule updates. Packages are signed with ECDSA P-256; the service checks the signature before reading the manifest, verifies every file hash, refuses older packages (anti-rollback) and expired ones, and only switches once a fresh sandboxed worker pool has loaded the new content. `status` and the app show the active update and warn when it has expired. `tools/Sentinel.ContentTool` (`sentinel-content keygen|pack|verify`) creates keys and packages. **No production signing key exists yet:** add your own public key to `contentKeys` in `service.json`.
 
 Scans without `--quarantine` (and the service without quarantine requests or schedules) **never modify, move or delete files**.
 
@@ -72,8 +74,9 @@ Optional `%ProgramData%\Sentinel\config\service.json` (development: `%LOCALAPPDA
   "maxConcurrentScans": 2,
   "reportRetention": 30,
   "scheduledScans": [
-    { "name": "weekly-users", "days": ["sunday"], "time": "03:00", "paths": ["C:\\Users"] }
-  ]
+    { "name": "weekly-users", "days": ["sunday"], "time": "03:00", "paths": ["C:\\Users"], "action": "report" }
+  ],
+  "contentKeys": ["<base64 public key from sentinel-content keygen>"]
 }
 ```
 
@@ -117,7 +120,7 @@ UTF-8 text. The header line is required; any malformed line rejects the whole fi
 sha256:<64 hex characters> <Name> [malware|pua|suspicious|test]
 ```
 
-Databases are not yet cryptographically signed; signed content updates are planned for milestone 6.
+Hash databases given directly with `--signatures` or in `service.json` are trusted by their file permissions; updates delivered as `.sntu` packages are signed (see above).
 
 ### YARA rule metadata
 
@@ -166,6 +169,7 @@ Mutation fuzzing (`tools/Sentinel.Fuzz`, unguided, seed 20261108), **1,000,000 i
 | Hash-database parser | 4 s |
 | IPC frames and DTOs (M3) | 9.5 s |
 | JSON report reader (M3; v3 seed with actions in M4) | 15.6 s |
+| Content packages (M6) | 113 s |
 
 CI runs 100,000 iterations per target.
 
@@ -185,17 +189,19 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 | `src/Sentinel.Runtime` | Sandbox launcher, worker pool, engine setup, authenticated service client |
 | `src/Sentinel.Worker` | Sandboxed scan worker process |
 | `src/Sentinel.Response` | Quarantine manager, encrypted vault, hash-chained audit log, quarantine responder |
+| `src/Sentinel.Updates` | Signed content package format, verification and creation |
 | `src/Sentinel.Service` | Windows service: pipe server, scan coordinator, scheduler, exclusion store |
 | `src/Sentinel.App` | WPF desktop app (client of the service) |
 | `src/Sentinel.Cli` | `sentinel` command-line tool |
 | `tests/` | xUnit tests (shared helpers in `tests/Shared`) |
 | `docs/` | [Architecture](docs/architecture.md), [threat model](docs/threat-model.md), [ADRs](docs/adr), [schemas](docs/schemas) |
+| `tools/Sentinel.ContentTool` | `sentinel-content`: signing keys and content packages |
 | `tools/Sentinel.Fuzz` | Mutation fuzz harness for the parsers |
 | `scripts/` | YARA-X fetch (hash-pinned), performance tree generator, service install/uninstall |
 
 ## Roadmap
 
-See [docs/architecture.md](docs/architecture.md#roadmap). Next: M6 adds signed content updates with rollback protection.
+See [docs/architecture.md](docs/architecture.md#roadmap). Next: M7 adds user-mode real-time monitoring.
 
 ## Security
 

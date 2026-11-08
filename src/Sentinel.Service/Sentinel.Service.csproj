@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Sentinel.Runtime\Sentinel.Runtime.csproj" />
     <ProjectReference Include="..\Sentinel.Response\Sentinel.Response.csproj" />
+    <ProjectReference Include="..\Sentinel.Updates\Sentinel.Updates.csproj" />
     <!-- The service launches the worker from its own directory. -->
     <ProjectReference Include="..\Sentinel.Worker\Sentinel.Worker.csproj" />
   </ItemGroup>

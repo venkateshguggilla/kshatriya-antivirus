@@ -183,6 +183,10 @@ public sealed class ServiceClient : IAsyncDisposable
     public Task<AuditReplyDto> GetAuditAsync(int max, CancellationToken cancellationToken = default) =>
         RequestAsync<AuditQueryDto, AuditReplyDto>(MessageType.AuditQuery, new AuditQueryDto { Max = max }, MessageType.AuditReply, cancellationToken);
 
+    /// <summary>Asks the service to verify and install a signed content package (administrator only).</summary>
+    public Task<ContentImportReplyDto> ImportContentAsync(string packagePath, CancellationToken cancellationToken = default) =>
+        RequestAsync<ContentImportDto, ContentImportReplyDto>(MessageType.ContentImport, new ContentImportDto { Path = packagePath }, MessageType.ContentImportReply, cancellationToken);
+
     public ValueTask DisposeAsync() => _pipe.DisposeAsync();
 
     private async Task<TReply> RequestAsync<TRequest, TReply>(byte type, TRequest request, byte replyType, CancellationToken cancellationToken)

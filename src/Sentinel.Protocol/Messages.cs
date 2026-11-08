@@ -35,13 +35,15 @@ public static class MessageType
     public const byte ExclusionsReply = 0x38;
     public const byte AuditQuery = 0x39;
     public const byte AuditReply = 0x3A;
+    public const byte ContentImport = 0x3B;
+    public const byte ContentImportReply = 0x3C;
 }
 
 /// <summary>Protocol versions. A peer that sees a different version refuses to continue.</summary>
 public static class ProtocolVersion
 {
     public const int Worker = 1;
-    public const int Service = 2;
+    public const int Service = 3;
 }
 
 // ---- Shared ----
@@ -264,6 +266,43 @@ public sealed class StatusReplyDto
     public required int Exclusions { get; init; }
 
     public required bool AuditChainValid { get; init; }
+
+    public required ContentStatusDto Content { get; init; }
+}
+
+public sealed class ContentStatusDto
+{
+    /// <summary>Active package sequence; 0 when only built-in and configured content is loaded.</summary>
+    public required long Sequence { get; init; }
+
+    public string? Channel { get; init; }
+
+    public string? ExpiresUtc { get; init; }
+
+    /// <summary>True when the active package has passed its expiry (updates may be blocked).</summary>
+    public required bool Expired { get; init; }
+
+    public string? Problem { get; init; }
+}
+
+public sealed class ContentImportDto
+{
+    /// <summary>Fully qualified local path of a .sntu package; the service reads it as the caller.</summary>
+    public required string Path { get; init; }
+}
+
+public sealed class ContentImportReplyDto
+{
+    public required bool Succeeded { get; init; }
+
+    /// <summary>"none" or a content error code (malformed, untrustedKey, badSignature, hashMismatch, expired, rollback, ...).</summary>
+    public required string Code { get; init; }
+
+    public string? Message { get; init; }
+
+    public long Sequence { get; init; }
+
+    public string? ExpiresUtc { get; init; }
 }
 
 public sealed class ScanRequestDto
@@ -457,6 +496,8 @@ public static class ErrorCodes
 [JsonSerializable(typeof(ExclusionChangeDto))]
 [JsonSerializable(typeof(AuditQueryDto))]
 [JsonSerializable(typeof(AuditReplyDto))]
+[JsonSerializable(typeof(ContentImportDto))]
+[JsonSerializable(typeof(ContentImportReplyDto))]
 internal sealed partial class ProtocolJsonContext : JsonSerializerContext
 {
 }

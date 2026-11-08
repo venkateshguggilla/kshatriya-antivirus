@@ -30,7 +30,7 @@ public sealed class ScanCapacityException : Exception
 /// </summary>
 public sealed class ScanCoordinator : IDisposable
 {
-    private readonly WorkerPoolAnalyzer _pool;
+    private WorkerPoolAnalyzer _pool;
     private readonly ServiceSettings _settings;
     private readonly ITrustProvider _trust = new AuthenticodeTrustProvider();
     private readonly SemaphoreSlim _capacity;
@@ -49,7 +49,7 @@ public sealed class ScanCoordinator : IDisposable
 
     public VerdictCache Cache { get; } = new();
 
-    public WorkerPoolAnalyzer Pool => _pool;
+    public WorkerPoolAnalyzer Pool => Volatile.Read(ref _pool);
 
     public int ActiveScans => _settings.MaxConcurrentScans - _capacity.CurrentCount;
 
@@ -72,7 +72,7 @@ public sealed class ScanCoordinator : IDisposable
                 MaxFileSizeBytes = _settings.MaxFileSizeBytes,
                 MaxDegreeOfParallelism = _settings.Workers,
             };
-            var runner = new ScanRunner(_pool, new ScanOptions
+            var runner = new ScanRunner(Pool, new ScanOptions
             {
                 Limits = limits,
                 IncludeCleanItems = includeClean,
@@ -89,9 +89,40 @@ public sealed class ScanCoordinator : IDisposable
         }
     }
 
+    /// <summary>
+    /// Replaces the worker pool (new content) between scans: waits up to <paramref name="timeout"/> until no
+    /// scan is running, swaps, then disposes the old pool. Throws <see cref="ScanCapacityException"/> if scans
+    /// keep running.
+    /// </summary>
+    public async Task SwapPoolAsync(WorkerPoolAnalyzer next, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+        int acquired = 0;
+        try
+        {
+            for (; acquired < _settings.MaxConcurrentScans; acquired++)
+            {
+                if (!await _capacity.WaitAsync(timeout, cancellationToken))
+                {
+                    throw new ScanCapacityException("Scans are still running; try the update again when they finish.");
+                }
+            }
+
+            WorkerPoolAnalyzer old = Interlocked.Exchange(ref _pool, next);
+            old.Dispose();
+        }
+        finally
+        {
+            if (acquired > 0)
+            {
+                _capacity.Release(acquired);
+            }
+        }
+    }
+
     public void Dispose()
     {
-        _pool.Dispose();
+        Pool.Dispose();
         _capacity.Dispose();
     }
 }

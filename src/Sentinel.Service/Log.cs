@@ -71,6 +71,15 @@ internal static partial class Log
     [LoggerMessage(5004, LogLevel.Warning, "Denied {Action} for {User}: {Reason}")]
     public static partial void Denied(ILogger logger, string action, string user, string reason);
 
+    [LoggerMessage(6000, LogLevel.Information, "Content package {Sequence} (channel {Channel}, key {KeyId}) is now active.")]
+    public static partial void ContentActivated(ILogger logger, long sequence, string channel, string keyId);
+
+    [LoggerMessage(6001, LogLevel.Error, "{Problem}")]
+    public static partial void ContentProblem(ILogger logger, string problem);
+
+    [LoggerMessage(6002, LogLevel.Warning, "Content import by {User} refused: {Code}: {Reason}")]
+    public static partial void ContentRefused(ILogger logger, string user, string code, string reason);
+
     [LoggerMessage(5005, LogLevel.Warning, "{User} {Operation} exclusion '{Value}': {Outcome}.")]
     public static partial void ExclusionChanged(ILogger logger, string user, string operation, string value, string outcome);
 }
