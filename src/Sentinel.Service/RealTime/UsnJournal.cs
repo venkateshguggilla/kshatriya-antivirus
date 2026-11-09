@@ -115,7 +115,9 @@ public sealed partial class UsnJournal : IDisposable
             return null;
         }
 
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Latest state per file id: records arrive in order, so a later delete or rename-away undoes an
+        // earlier create or write of the same file.
+        var paths = new Dictionary<ulong, string>();
         var folders = new Dictionary<ulong, string?>();
         byte[] output = new byte[64 * 1024];
         byte* input = stackalloc byte[40]; // READ_USN_JOURNAL_DATA_V0
@@ -154,9 +156,16 @@ public sealed partial class UsnJournal : IDisposable
             long following = BinaryPrimitives.ReadInt64LittleEndian(output);
             foreach (UsnEntry entry in UsnRecords.Parse(output.AsSpan(8, returned - 8)))
             {
-                if (UsnRecords.IsScannable(entry) && FolderPath(entry.ParentReference, folders) is string parent)
+                if (!UsnRecords.IsScannable(entry))
                 {
-                    paths.Add(Path.Join(parent, entry.Name));
+                    if ((entry.Reason & (UsnRecords.ReasonFileDelete | UsnRecords.ReasonRenameOldName)) != 0)
+                    {
+                        paths.Remove(entry.FileReference);
+                    }
+                }
+                else if (FolderPath(entry.ParentReference, folders) is string parent)
+                {
+                    paths[entry.FileReference] = Path.Join(parent, entry.Name);
                     if (paths.Count > maxPaths)
                     {
                         reason = $"more than {maxPaths} paths changed";
@@ -174,7 +183,7 @@ public sealed partial class UsnJournal : IDisposable
         }
 
         reason = "";
-        return paths;
+        return paths.Values.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     public void Dispose()
