@@ -54,6 +54,13 @@
 
 - **Release hardening (M12):** every push runs a dependency vulnerability audit and release gates (a performance budget through the sandboxed workers, and a false-positive check that fails on any finding in `C:\Windows\System32`); parsers are fuzzed nightly at 1,000,000 iterations each, and the PE, ZIP and content-package parsers also with coverage guidance. [SECURITY.md](SECURITY.md) describes private reporting and response targets. The [release checklist](docs/release-checklist.md) lists what is still missing before a beta label, and records a first real-time cost measurement on one machine (watching `C:\Users`: about 0.1% CPU idle, under 1% during heavy file churn, about 300 MB for the service and workers). That's one machine, not a budget.
 
+- **Browser extension for Edge and Chrome (prototype, [ADR 0018](docs/adr/0018-browser-extension.md)):** the installer puts the extension in `%ProgramFiles%\Kshatriya\browser-extension` and registers a small helper (`Kshatriya.BrowserHost.exe`) that only this extension can start. Load it with "Load unpacked" on `edge://extensions` or `chrome://extensions` (Developer mode). It:
+  - sends every finished download to the Kshatriya service for a scan (report only) and shows the result as a notification;
+  - blocks sites on its local blocklist and shows a warning page with "Go back" and "Continue anyway". **The list holds only a test entry** (`http://blocktest.kshatriya.invalid/`) until a list whose licence allows redistribution is chosen; `./scripts/Build-BrowserBlocklist.ps1` builds one from a domain or hosts file you're entitled to use;
+  - warns (never blocks) about look-alike sites such as `paypa1.com`, names one letter off a well-known brand, a brand's address placed in front of another site, and names mixing Latin with Cyrillic or Greek letters.
+
+  It doesn't read page contents, inject scripts or send URLs anywhere, and it works alongside the browser's own protection (SmartScreen or Safe Browsing), which should stay on. Extension tests: `node --test tests/extension/lib.test.mjs tests/extension/manifest.test.mjs`.
+
 Scans without `--quarantine` (and the service without quarantine requests or schedules) **never modify, move or delete files**.
 
 ## Build and test
@@ -232,12 +239,14 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 | `src/Kshatriya.Service` | Windows service: pipe server, scan coordinator, scheduler, exclusion store |
 | `src/Kshatriya.App` | WPF desktop app (client of the service) |
 | `src/Kshatriya.Cli` | `kshatriya` command-line tool |
+| `src/Kshatriya.BrowserHost` | Native messaging helper for the browser extension (asks the service to scan downloads) |
+| `extension/` | Edge and Chrome extension (Manifest V3, no build step); tests in `tests/extension` |
 | `tests/` | xUnit tests (shared helpers in `tests/Shared`) |
 | `docs/` | [Architecture](docs/architecture.md), [threat model](docs/threat-model.md), [ADRs](docs/adr), [schemas](docs/schemas) |
 | `tools/Kshatriya.ContentTool` | `kshatriya-content`: signing keys and content packages |
 | `tools/Kshatriya.Fuzz` | Mutation fuzz harness for the parsers |
 | `tools/Kshatriya.CoverageFuzz` | Coverage-guided fuzzing (SharpFuzz instrumentation) of the PE, ZIP and content-package parsers |
-| `scripts/` | YARA-X fetch (hash-pinned), performance tree generator, service install/uninstall |
+| `scripts/` | YARA-X fetch (hash-pinned), performance tree generator, service install/uninstall, browser blocklist builder |
 
 ## Roadmap
 
@@ -264,7 +273,8 @@ each signing request is approved by hand. See [docs/code-signing-policy.md](docs
 
 This program will not transfer any information to other networked systems unless specifically requested by
 the user or the person installing or operating it. Scanning, quarantine, real-time monitoring and reports
-all stay on the device. Content updates are imported from files you supply; nothing is downloaded
+all stay on the device. The browser extension checks sites against lists stored with it and sends
+download paths only to the local Kshatriya service. Content updates are imported from files you supply; nothing is downloaded
 automatically.
 
 ## Licence

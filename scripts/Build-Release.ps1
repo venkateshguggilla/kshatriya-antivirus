@@ -54,7 +54,7 @@ if (-not (Test-Path (Join-Path $repo 'native/yara-x/win-x64/yara_x_capi.dll'))) 
 if (Test-Path $folder) { Remove-Item -LiteralPath $folder -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $folder | Out-Null
 
-foreach ($project in 'src/Kshatriya.Service', 'src/Kshatriya.Cli', 'src/Kshatriya.App') {
+foreach ($project in 'src/Kshatriya.Service', 'src/Kshatriya.Cli', 'src/Kshatriya.App', 'src/Kshatriya.BrowserHost') {
     dotnet publish (Join-Path $repo $project) -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=false -o $folder --nologo -v q
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $project." }
 }
@@ -65,7 +65,7 @@ foreach ($doc in 'LICENSE', 'NOTICE', 'THIRD-PARTY-NOTICES.md', 'README.md', 'SE
 }
 
 # Dependency inventory (NuGet packages, including transitive ones, of every shipped project).
-$inventory = foreach ($project in 'src/Kshatriya.Service', 'src/Kshatriya.Cli', 'src/Kshatriya.App') {
+$inventory = foreach ($project in 'src/Kshatriya.Service', 'src/Kshatriya.Cli', 'src/Kshatriya.App', 'src/Kshatriya.BrowserHost') {
     $json = dotnet list (Join-Path $repo $project) package --include-transitive --format json | ConvertFrom-Json
     foreach ($p in $json.projects.frameworks.topLevelPackages + $json.projects.frameworks.transitivePackages) {
         if ($p) { [pscustomobject]@{ id = $p.id; version = $p.resolvedVersion } }
@@ -80,6 +80,8 @@ $yaraVersion = if ($yara -match "\`$Version\s*=\s*'([^']+)'") { $Matches[1] } el
     packages  = $inventory
     native    = @([ordered]@{ id = 'yara-x (yara_x_capi.dll)'; version = $yaraVersion; license = 'BSD-3-Clause' })
 } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $folder 'dependencies.json') -Encoding utf8
+# Browser extension (ADR 0018), loaded unpacked from the install folder.
+Copy-Item (Join-Path $repo 'extension') (Join-Path $folder 'browser-extension') -Recurse
 Copy-Item (Join-Path $repo 'scripts/Install-KshatriyaService.ps1'), (Join-Path $repo 'scripts/Uninstall-KshatriyaService.ps1') $folder
 
 if ($Stage -eq 'Build') {

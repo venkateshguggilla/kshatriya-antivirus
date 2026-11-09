@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Kshatriya.App/Kshatriya.App.csproj" />
+    <Project Path="src/Kshatriya.BrowserHost/Kshatriya.BrowserHost.csproj" />
     <Project Path="src/Kshatriya.Cli/Kshatriya.Cli.csproj" />
     <Project Path="src/Kshatriya.Core/Kshatriya.Core.csproj" />
     <Project Path="src/Kshatriya.Engines.Abstractions/Kshatriya.Engines.Abstractions.csproj" />
@@ -17,6 +18,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Kshatriya.App.Tests/Kshatriya.App.Tests.csproj" />
+    <Project Path="tests/Kshatriya.BrowserHost.Tests/Kshatriya.BrowserHost.Tests.csproj" />
     <Project Path="tests/Kshatriya.Cli.Tests/Kshatriya.Cli.Tests.csproj" />
     <Project Path="tests/Kshatriya.Engines.Hash.Tests/Kshatriya.Engines.Hash.Tests.csproj" />
     <Project Path="tests/Kshatriya.Engines.Pe.Tests/Kshatriya.Engines.Pe.Tests.csproj" />

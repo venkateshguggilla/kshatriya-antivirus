@@ -1,0 +1,6 @@
+{
+  "source": "test",
+  "built": "2026-11-10",
+  "domains": 1,
+  "note": "Test entry only (blocktest.kshatriya.invalid). Build a real list with scripts/Build-BrowserBlocklist.ps1 from a source you are licensed to use."
+}

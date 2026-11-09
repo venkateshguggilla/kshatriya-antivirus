@@ -1,0 +1,6 @@
+{
+  "name": "kshatriya-browser-extension",
+  "private": true,
+  "description": "Marks the extension's scripts as ES modules for the Node test runner (tests/extension). No dependencies.",
+  "type": "module"
+}

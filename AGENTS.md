@@ -29,6 +29,7 @@
 - Public report formats are versioned (`docs/schemas`). Map enum values to wire names explicitly; never serialize enum member names directly.
 - Real-time monitoring is user mode and runs as the service: never follow its events into the service data folder, never terminate processes, keep queues bounded and treat lost events as a reason to rescan ([ADR 0009](docs/adr/0009-user-mode-real-time-monitoring.md)).
 - Behaviour detection (ransomware) produces suspicious findings only and never triggers automatic action ([ADR 0010](docs/adr/0010-ransomware-behaviour-detection.md)). Decoy files are opt-in.
+- The browser extension (`extension/`, [ADR 0018](docs/adr/0018-browser-extension.md)) keeps the permissions fixed in `tests/extension/manifest.test.mjs`, has no host permissions or content scripts, sends no URLs or browsing data off the device, and never blocks on heuristics (look-alike results are warnings). The native host only checks paths and asks the service to scan; it never opens or changes files.
 - Content updates are accepted only as signed `.kstu` packages ([ADR 0008](docs/adr/0008-signed-content-updates.md)): never parse a manifest before its signature is verified, never weaken anti-rollback or expiry checks, never commit private signing keys.
 - Keep the release gates green (`scripts/Test-ReleaseGates.ps1`): no finding on System32, performance budget met. Never raise a budget or exclude a path to make a gate pass without recording why.
 - Record significant design decisions as ADRs in `docs/adr`.

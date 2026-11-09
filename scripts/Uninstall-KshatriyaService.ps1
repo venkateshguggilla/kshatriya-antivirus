@@ -40,6 +40,13 @@ if ($PSCmdlet.ShouldProcess('Explorer context menu', 'Remove "Scan with Kshatriy
     }
 }
 
+if ($PSCmdlet.ShouldProcess('Edge and Chrome', 'Unregister the Kshatriya browser helper')) {
+    foreach ($browserKey in 'SOFTWARE\Google\Chrome\NativeMessagingHosts\com.kshatriya.browser_host',
+                            'SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.kshatriya.browser_host') {
+        [Microsoft.Win32.Registry]::LocalMachine.DeleteSubKeyTree($browserKey, $false)
+    }
+}
+
 if (-not $KeepFiles -and (Test-Path $InstallDirectory)) {
     # The desktop app runs in the notification area of signed-in users and keeps its files open. Close
     # only Kshatriya's own app processes started from this install folder, so the files can be removed.

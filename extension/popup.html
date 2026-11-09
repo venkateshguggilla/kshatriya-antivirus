@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Kshatriya Antivirus</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { width: 340px; padding: 14px 16px 12px; }
+    .status { margin: 12px 0 4px; }
+    label.toggle { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; }
+    ul { list-style: none; margin: 0; padding: 0; max-height: 200px; overflow-y: auto; }
+    li { padding: 6px 0; border-top: 1px solid var(--border); font-size: 12px; word-break: break-word; }
+    li:first-child { border-top: none; }
+    footer { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <div class="brand">
+    <img src="icons/icon-48.png" alt="">
+    <div>
+      <strong>Kshatriya Antivirus</strong>
+      <div class="small muted">Browser protection · prototype</div>
+    </div>
+  </div>
+
+  <p class="status" id="status"><span class="pill info">Checking…</span></p>
+  <p class="small muted" id="blocklist"></p>
+
+  <h2>Protection</h2>
+  <label class="toggle">Scan downloads with Kshatriya <input type="checkbox" id="scanDownloads"></label>
+  <label class="toggle">Warn about look-alike sites <input type="checkbox" id="lookalikeWarnings"></label>
+
+  <h2>Recent activity</h2>
+  <ul id="recent"><li class="muted">Nothing yet in this browser session.</li></ul>
+
+  <footer class="small muted">
+    Works alongside your browser's own protection (Microsoft Defender SmartScreen or Google Safe Browsing). Keep it on.
+    Checks run on your PC; no browsing data leaves it.
+  </footer>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

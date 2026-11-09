@@ -35,6 +35,13 @@ jobs:
         # A hung test fails the run after 5 minutes and names the test, instead of stalling the job.
         run: dotnet test Kshatriya.slnx --no-build -c Release --logger trx --results-directory TestResults --blame-hang-timeout 5m --blame-hang-dump-type mini
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Browser extension tests
+        run: node --test tests/extension/lib.test.mjs tests/extension/manifest.test.mjs
+
       - name: Dependency vulnerability audit
         shell: pwsh
         run: |

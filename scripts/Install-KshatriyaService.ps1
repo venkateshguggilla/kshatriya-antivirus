@@ -79,10 +79,11 @@ try {
         Test-Release $staging
     }
     else {
-        foreach ($project in 'src/Kshatriya.Service', 'src/Kshatriya.Cli', 'src/Kshatriya.App') {
+        foreach ($project in 'src/Kshatriya.Service', 'src/Kshatriya.Cli', 'src/Kshatriya.App', 'src/Kshatriya.BrowserHost') {
             dotnet publish (Join-Path $repo $project) -c Release -r win-x64 --self-contained false -o $staging
             if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $project." }
         }
+        Copy-Item (Join-Path $repo 'extension') (Join-Path $staging 'browser-extension') -Recurse
     }
 
     if ($PSCmdlet.ShouldProcess($InstallDirectory, 'Copy Kshatriya binaries')) {
@@ -126,6 +127,29 @@ if ((Test-Path $app) -and $PSCmdlet.ShouldProcess('Explorer context menu', 'Add 
         }
         finally { $verb.Dispose() }
     }
+}
+
+# Browser extension helper (ADR 0018): register the native messaging host for Edge and Chrome, so the
+# Kshatriya extension - and only that extension ID - can ask the service to scan finished downloads. The
+# manifest lives in the install folder, which only administrators can change.
+$browserHost = Join-Path $InstallDirectory 'Kshatriya.BrowserHost.exe'
+if ((Test-Path $browserHost) -and $PSCmdlet.ShouldProcess('Edge and Chrome', 'Register the Kshatriya browser helper')) {
+    $hostManifest = Join-Path $InstallDirectory 'browser-host.json'
+    $json = [ordered]@{
+        name            = 'com.kshatriya.browser_host'
+        description     = 'Kshatriya Antivirus browser helper: scans finished downloads through the Kshatriya service'
+        path            = $browserHost
+        type            = 'stdio'
+        allowed_origins = @('chrome-extension://lkkpcdfabgihmnhfdmhoellokaobmdah/')
+    } | ConvertTo-Json
+    # UTF-8 without a byte-order mark.
+    [System.IO.File]::WriteAllText($hostManifest, $json, (New-Object System.Text.UTF8Encoding $false))
+    foreach ($browserKey in 'SOFTWARE\Google\Chrome\NativeMessagingHosts\com.kshatriya.browser_host',
+                            'SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.kshatriya.browser_host') {
+        $key = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($browserKey)
+        try { $key.SetValue('', $hostManifest) } finally { $key.Dispose() }
+    }
+    Write-Host "Browser extension: open edge://extensions or chrome://extensions, turn on Developer mode, choose 'Load unpacked' and select $(Join-Path $InstallDirectory 'browser-extension')."
 }
 
 # Start the app in the notification area at sign-in, for every user, so findings from real-time protection
