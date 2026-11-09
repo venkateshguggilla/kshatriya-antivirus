@@ -53,3 +53,10 @@ limit of 64 paths per request, and the same logic for scheduled scans.
   persistence locations.
 - On Windows 11 the Explorer entry appears under "Show more options" (the classic menu). Adding it to the
   new menu needs a packaged app with a shell extension, which ADR 0013 decided against.
+
+## Amendment (2026-11-09): external drives and a desktop shortcut
+
+- **External drive scan** (`"kind": "external"`, CLI `--external`, schedules `"scan": "external"`): every connected external drive. A drive is external when Windows marks it removable or its storage bus (from `IOCTL_STORAGE_QUERY_PROPERTY`, which needs no access rights) is USB, SD/MMC or FireWire. Without this, USB hard disks and SSDs, which Windows reports as fixed, were treated as internal. A user scan with no external drive gets "No external drive is connected"; a schedule with none records "nothing to scan" and waits for its next occurrence. Protocol 9.
+- **Real-time removable-media monitoring** uses the same rule, so a USB hard disk or SSD is scanned when it is attached, not only USB sticks.
+- **App:** an "External drives" button, drive labels showing internal or external with the device name (for example "External drive (USB) SanDisk Ultra"), and a notification when an external drive is plugged in (checked every 3 seconds). If real-time protection scans new drives, the notification says it is being scanned; otherwise clicking it scans that drive. Drives connected when the app starts are not announced.
+- **Desktop shortcut** for all users (Public desktop), removed on uninstall.

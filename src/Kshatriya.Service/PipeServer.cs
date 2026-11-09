@@ -303,6 +303,15 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
             case ScanKind.Full:
                 targets = core.ResolveTargets(ScanKind.Full, QuickScanScope.Machine);
                 break;
+            case ScanKind.External:
+                targets = core.ResolveTargets(ScanKind.External, QuickScanScope.Machine);
+                if (targets.Count == 0)
+                {
+                    await SendErrorAsync(ErrorCodes.InvalidPath, "No external drive (USB drive, memory card) is connected.", cancellationToken);
+                    return;
+                }
+
+                break;
             default:
                 await SendErrorAsync(ErrorCodes.BadRequest, $"Unknown scan kind '{request.Kind}'.", cancellationToken);
                 return;

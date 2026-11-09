@@ -19,6 +19,9 @@ public sealed class ScanKindTests : IDisposable
         _full.Dispose();
     }
 
+    /// <summary>External drives the fake target provider reports (none by default).</summary>
+    private List<string> _external = [];
+
     private Task<RunningService> StartAsync(ServiceSettings? settings = null, TimeProvider? time = null) =>
         RunningService.StartAsync(settings, time, scanTargets: (kind, scope) =>
         {
@@ -27,8 +30,63 @@ public sealed class ScanKindTests : IDisposable
                 _requests.Add((kind, scope));
             }
 
-            return kind == ScanKind.Quick ? [_quick.Path] : [_full.Path];
+            return kind switch
+            {
+                ScanKind.Quick => [_quick.Path],
+                ScanKind.External => [.. _external],
+                _ => [_full.Path],
+            };
         });
+
+    [Fact]
+    public async Task An_external_drive_scan_scans_every_connected_external_drive()
+    {
+        using var usb = new TempDirectory();
+        _external = [usb.Path];
+        await using RunningService service = await StartAsync();
+        string bad = usb.File(@"autorun\payload.bin", service.KnownBad);
+        await using ServiceClient client = await service.ConnectAsync();
+
+        ScanReport report = await client.ScanKindAsync(ScanKinds.External, includeClean: false, quarantine: false);
+
+        Assert.Equal(bad, Assert.Single(report.Items, i => i.Status == ScanStatus.Detected).Path);
+        Assert.Equal(ScanKind.External, Assert.Single(_requests).Kind);
+    }
+
+    [Fact]
+    public async Task Without_external_drives_the_scan_says_so()
+    {
+        await using RunningService service = await StartAsync();
+        await using ServiceClient client = await service.ConnectAsync();
+
+        var ex = await Assert.ThrowsAsync<ServiceException>(() => client.ScanKindAsync(ScanKinds.External, includeClean: false, quarantine: false));
+
+        Assert.Equal(ErrorCodes.InvalidPath, ex.Code);
+        Assert.Contains("No external drive", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_scheduled_external_scan_with_no_drive_connected_does_nothing()
+    {
+        var now = new DateTimeOffset(2026, 11, 4, 12, 0, 0, TimeSpan.Zero);
+        var clock = new FixedTime(now);
+        using var stateDir = new TempDirectory();
+        var settings = new ServiceSettings
+        {
+            ScheduledScans = [new ScheduledScan("usb", Enum.GetValues<DayOfWeek>().ToHashSet(), new TimeOnly(3, 0), [], Kind: ScanKind.External)],
+        };
+        await using RunningService service = await StartAsync(settings, clock);
+        var state = new ScheduleState(stateDir.Path);
+        state.Set("usb", now.AddDays(-2), "clean");
+        string reports = stateDir.Dir("reports");
+        var scheduler = new Scheduler(service.Core, state, new ReportStore(reports, 5), clock, TimeZoneInfo.Utc, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+
+        await scheduler.RunDueAsync(CancellationToken.None);
+
+        Assert.Equal("nothing to scan", state.Get("usb")!.Value.Outcome);
+        Assert.Empty(Directory.GetFiles(reports));
+        Assert.Equal(0, await scheduler.RunDueAsync(CancellationToken.None)); // not retried until the next occurrence
+    }
 
     [Fact]
     public async Task A_quick_scan_scans_the_targets_the_service_chooses_for_the_caller()
@@ -104,10 +162,11 @@ public sealed class ScanKindTests : IDisposable
             { "schemaVersion": 1, "scheduledScans": [
               { "name": "daily-quick", "days": ["daily"], "time": "12:00", "scan": "quick" },
               { "name": "weekly-full", "days": ["sunday"], "time": "03:00", "scan": "full", "action": "quarantine" },
+              { "name": "usb", "days": ["daily"], "time": "18:00", "scan": "external" },
               { "name": "downloads", "days": ["monday"], "time": "09:00", "paths": ["C:\\Users"] } ] }
             """);
 
-        Assert.Equal([ScanKind.Quick, ScanKind.Full, ScanKind.Custom], settings.ScheduledScans.Select(s => s.Kind));
+        Assert.Equal([ScanKind.Quick, ScanKind.Full, ScanKind.External, ScanKind.Custom], settings.ScheduledScans.Select(s => s.Kind));
         Assert.Empty(settings.ScheduledScans[0].Paths);
         Assert.True(settings.ScheduledScans[1].Quarantine);
 

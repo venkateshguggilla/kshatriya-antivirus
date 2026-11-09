@@ -225,6 +225,13 @@ public sealed class Scheduler(ServiceCore core, ScheduleState state, ReportStore
             ran++;
             // Quick and full schedules are resolved when they run (startup entries and processes change).
             IReadOnlyList<string> targets = scan.Kind == ScanKind.Custom ? scan.Paths : core.ResolveTargets(scan.Kind, QuickScanScope.Machine);
+            if (targets.Count == 0)
+            {
+                // For example an external-drive schedule while no drive is connected: nothing to do this time.
+                state.Set(scan.Name, now, "nothing to scan");
+                continue;
+            }
+
             Log.ScheduleStarting(logger, scan.Name, targets.Count);
             string outcome;
             try

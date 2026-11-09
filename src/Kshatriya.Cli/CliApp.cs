@@ -190,6 +190,8 @@ public static class CliApp
 
             case ScanKind.Full:
                 return ScanTargets.FullSystem();
+            case ScanKind.External:
+                return Drives.ExternalRoots();
             default:
                 return options.Targets;
         }
@@ -207,6 +209,7 @@ public static class CliApp
             {
                 ScanKind.Quick => await client.ScanKindAsync(ScanKinds.Quick, options.IncludeClean, options.Quarantine, progress: null, cancellationToken),
                 ScanKind.Full => await client.ScanKindAsync(ScanKinds.Full, options.IncludeClean, options.Quarantine, progress: null, cancellationToken),
+                ScanKind.External => await client.ScanKindAsync(ScanKinds.External, options.IncludeClean, options.Quarantine, progress: null, cancellationToken),
                 _ => await client.ScanAsync(targets, options.IncludeClean, options.Quarantine, progress: null, cancellationToken),
             };
         }

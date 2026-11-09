@@ -97,7 +97,7 @@ public sealed record ServiceSettings
                 _ => throw new FormatException($"Schedule '{s.Name}': action '{s.Action}' must be \"report\" or \"quarantine\"."),
             };
             ScanKind kind = ScanKindNames.Parse(s.Scan)
-                ?? throw new FormatException($"Schedule '{s.Name}': scan '{s.Scan}' must be \"custom\", \"quick\" or \"full\".");
+                ?? throw new FormatException($"Schedule '{s.Name}': scan '{s.Scan}' must be \"custom\", \"quick\", \"full\" or \"external\".");
             string[] paths = kind == ScanKind.Custom
                 ? ValidatePaths(s.Name, s.Paths ?? [])
                 : s.Paths is { Count: > 0 }
@@ -358,7 +358,7 @@ internal sealed class ScheduleDto
     /// <summary>Required for custom scans; must be absent or empty for quick and full scans.</summary>
     public List<string>? Paths { get; init; }
 
-    /// <summary>"custom" (default), "quick" or "full".</summary>
+    /// <summary>"custom" (default), "quick", "full" or "external".</summary>
     public string? Scan { get; init; }
 
     public string? Action { get; init; }

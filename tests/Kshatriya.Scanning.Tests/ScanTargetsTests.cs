@@ -88,6 +88,32 @@ public class ScanTargetsTests
         Assert.Equal([@"C:\", @"D:\"], roots);
     }
 
+    [Theory]
+    [InlineData(DriveType.Removable, 0, true)]   // USB stick: Windows reports removable media
+    [InlineData(DriveType.Fixed, 7, true)]       // USB hard disk or SSD: fixed, but on the USB bus
+    [InlineData(DriveType.Fixed, 0xC, true)]     // SD card reader
+    [InlineData(DriveType.Fixed, 0xD, true)]     // MMC
+    [InlineData(DriveType.Fixed, 4, true)]       // FireWire
+    [InlineData(DriveType.Fixed, 0x11, false)]   // NVMe system disk
+    [InlineData(DriveType.Fixed, 0xB, false)]    // SATA
+    [InlineData(DriveType.Fixed, 0, false)]      // unknown bus
+    public void External_drives_are_recognised_by_media_type_or_bus(DriveType type, int bus, bool external)
+    {
+        Assert.Equal(external, Drives.IsExternal(type, bus));
+    }
+
+    [Fact]
+    public void This_machines_drives_are_listed_with_local_roots_and_labels()
+    {
+        IReadOnlyList<DriveDescription> drives = Drives.Local();
+
+        Assert.NotEmpty(drives);
+        Assert.All(drives, d => Assert.True(PathPolicy.IsLocalAbsolutePath(d.Root), d.Root));
+        Assert.All(drives, d => Assert.StartsWith(d.Root.TrimEnd('\\'), d.Label, StringComparison.Ordinal));
+        Assert.Contains(drives, d => !d.IsExternal); // the system drive is internal
+        Assert.Equal(drives.Where(d => d.IsExternal).Select(d => d.Root), Drives.ExternalRoots());
+    }
+
     [Fact]
     public void Scan_kind_names_round_trip_and_unknown_names_are_refused()
     {

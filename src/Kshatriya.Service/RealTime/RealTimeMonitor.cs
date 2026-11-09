@@ -159,7 +159,7 @@ public sealed class RealTimeMonitor : IDisposable
             }
         }
 
-        _removableState = _options.RemovableMedia ? "watching for removable drives" : "off";
+        _removableState = _options.RemovableMedia ? "watching for external drives (USB, memory cards)" : "off";
         foreach (string drive in SafeDrives())
         {
             _knownDrives.Add(drive); // drives already present at start are covered by schedules, not rescanned
@@ -413,8 +413,11 @@ public sealed class RealTimeMonitor : IDisposable
         }
     }
 
-    private static IEnumerable<string> DefaultRemovableDrives() =>
-        DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Removable && d.IsReady).Select(d => d.RootDirectory.FullName);
+    /// <summary>
+    /// External drives: removable media and disks attached over USB, SD/MMC or FireWire (USB hard disks and
+    /// SSDs report themselves as fixed drives, so the bus type decides).
+    /// </summary>
+    private static IEnumerable<string> DefaultRemovableDrives() => Kshatriya.Scanning.Targets.Drives.ExternalRoots();
 
     private async Task ProcessQueueAsync(CancellationToken cancellationToken)
     {

@@ -45,7 +45,7 @@ public static class MessageType
 public static class ProtocolVersion
 {
     public const int Worker = 3;
-    public const int Service = 8;
+    public const int Service = 9;
 }
 
 // ---- Shared ----
@@ -385,7 +385,7 @@ public sealed class ScanRequestDto
     /// <summary>Paths for a custom scan; empty for "quick" and "full", whose targets the service determines.</summary>
     public required List<string> Paths { get; init; }
 
-    /// <summary>"custom" (default when absent), "quick" or "full".</summary>
+    /// <summary>"custom" (default when absent), "quick", "full" or "external".</summary>
     public string? Kind { get; init; }
 
     public required bool IncludeClean { get; init; }
@@ -400,6 +400,7 @@ public static class ScanKinds
     public const string Custom = "custom";
     public const string Quick = "quick";
     public const string Full = "full";
+    public const string External = "external";
 }
 
 /// <summary>Values of <see cref="ScanRequestDto.Action"/>.</summary>

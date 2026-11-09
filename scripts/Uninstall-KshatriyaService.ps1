@@ -27,7 +27,8 @@ if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
 }
 
 foreach ($shortcut in (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Kshatriya Antivirus.lnk'),
-                      (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp\Kshatriya Antivirus.lnk')) {
+                      (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp\Kshatriya Antivirus.lnk'),
+                      (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Kshatriya Antivirus.lnk')) {
     if ((Test-Path $shortcut) -and $PSCmdlet.ShouldProcess($shortcut, 'Remove shortcut')) {
         Remove-Item -LiteralPath $shortcut -Force
     }

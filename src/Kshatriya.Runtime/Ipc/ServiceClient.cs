@@ -121,7 +121,7 @@ public sealed class ServiceClient : IAsyncDisposable
     /// </summary>
     public Task<ScanReport> ScanKindAsync(string kind, bool includeClean, bool quarantine, IProgress<ScanProgressDto>? progress = null, CancellationToken cancellationToken = default)
     {
-        if (kind is not (ScanKinds.Quick or ScanKinds.Full))
+        if (kind is not (ScanKinds.Quick or ScanKinds.Full or ScanKinds.External))
         {
             throw new ArgumentException($"Unknown scan kind '{kind}'.", nameof(kind));
         }

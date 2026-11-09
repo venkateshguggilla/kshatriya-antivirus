@@ -83,8 +83,12 @@ public sealed class ServiceCore : IDisposable
     /// <summary>The paths of a quick or full scan for <paramref name="scope"/> (custom scans carry their own paths).</summary>
     public IReadOnlyList<string> ResolveTargets(ScanKind kind, QuickScanScope scope) =>
         _options.ScanTargetProvider is { } provider ? provider(kind, scope)
-        : kind == ScanKind.Full ? ScanTargets.FullSystem()
-        : ScanTargets.Quick(scope);
+        : kind switch
+        {
+            ScanKind.Full => ScanTargets.FullSystem(),
+            ScanKind.External => Drives.ExternalRoots(),
+            _ => ScanTargets.Quick(scope),
+        };
 
     public ScanCoordinator Coordinator { get; }
 

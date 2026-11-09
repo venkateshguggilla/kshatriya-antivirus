@@ -8,6 +8,7 @@ using Kshatriya.App.Services;
 using Kshatriya.App.ViewModels;
 using Kshatriya.Protocol;
 using Kshatriya.Runtime.Ipc;
+using Kshatriya.Scanning.Targets;
 
 namespace Kshatriya.App;
 
@@ -16,6 +17,7 @@ public sealed partial class App : Application, IAppHost, IDisposable
     private const string InstanceName = @"Local\Kshatriya.App.Instance";
     private const string ShowSignalName = @"Local\Kshatriya.App.Show";
     private static readonly TimeSpan s_pollInterval = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan s_driveInterval = TimeSpan.FromSeconds(3);
 
     private string[] _args = [];
     private Mutex? _instance;
@@ -26,7 +28,12 @@ public sealed partial class App : Application, IAppHost, IDisposable
     private DetectionWatcher? _watcher;
     private AppPreferences? _preferences;
     private DispatcherTimer? _timer;
+    private DispatcherTimer? _driveTimer;
+    private IServiceGateway? _gateway;
+    private readonly ExternalDriveWatcher _drives = new();
+    private Action? _clickAction;
     private bool _polling;
+    private bool _checkingDrives;
     private bool _exiting;
 
     public bool IsElevated { get; } = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
@@ -95,14 +102,20 @@ public sealed partial class App : Application, IAppHost, IDisposable
         };
         MainWindow = window;
 
+        _gateway = gateway;
         _preferences = new AppPreferences();
         _watcher = new DetectionWatcher(gateway);
         _tray = new TrayIcon(_preferences.Notifications, () => ShowMainWindow(detections: false), _preferences.SetNotifications, ExitApp);
-        _tray.NotificationClicked += () => ShowMainWindow(detections: true);
+        // Each notification decides what clicking it does (open Detections, or scan a newly attached drive).
+        _tray.NotificationClicked += () => (_clickAction ?? (() => ShowMainWindow(detections: true)))();
         _timer = new DispatcherTimer { Interval = s_pollInterval };
         _timer.Tick += async (_, _) => await PollAsync();
         _timer.Start();
         _ = PollAsync(); // sets the starting point, so older findings are not announced
+        _driveTimer = new DispatcherTimer { Interval = s_driveInterval };
+        _driveTimer.Tick += async (_, _) => await CheckDrivesAsync();
+        _driveTimer.Start();
+        _ = CheckDrivesAsync(); // records the drives already connected
 
         if (!background)
         {
@@ -120,6 +133,7 @@ public sealed partial class App : Application, IAppHost, IDisposable
     public void Dispose()
     {
         _timer?.Stop();
+        _driveTimer?.Stop();
         _tray?.Dispose();
         _tray = null;
         _showWait?.Unregister(null);
@@ -222,6 +236,62 @@ public sealed partial class App : Application, IAppHost, IDisposable
         Shutdown();
     }
 
+    /// <summary>Announces external drives (USB, memory cards) plugged in since the last check.</summary>
+    private async Task CheckDrivesAsync()
+    {
+        if (_checkingDrives || _tray is null || _preferences is null || _gateway is null)
+        {
+            return;
+        }
+
+        _checkingDrives = true;
+        try
+        {
+            IReadOnlyList<DriveDescription> current = await Task.Run(Drives.Local);
+            IReadOnlyList<DriveDescription> attached = _drives.Update(current);
+            if (attached.Count == 0 || !_preferences.Notifications)
+            {
+                return;
+            }
+
+            bool automatic = await RealTimeScansExternalDrivesAsync(_gateway);
+            DriveDescription drive = attached[^1];
+            FindingNotice notice = ExternalDriveWatcher.Describe(drive, automatic);
+            _clickAction = automatic ? () => ShowMainWindow(detections: false) : () => ScanDrive(drive.Root);
+            _tray.Notify(notice.Title, notice.Message, warning: false);
+        }
+        finally
+        {
+            _checkingDrives = false;
+        }
+    }
+
+    /// <summary>True when real-time protection scans newly attached external drives by itself.</summary>
+    private static async Task<bool> RealTimeScansExternalDrivesAsync(IServiceGateway gateway)
+    {
+        try
+        {
+            (_, StatusReplyDto status) = await gateway.GetStatusAsync(CancellationToken.None);
+            return status.RealTime.Enabled && status.RealTime.RemovableMedia != "off";
+        }
+        catch (Exception ex) when (ex is IOException or TimeoutException or UnauthorizedAccessException or ServiceException or ServiceAuthenticationException or ProtocolException)
+        {
+            return false;
+        }
+    }
+
+    private void ScanDrive(string root)
+    {
+        if (_main is null)
+        {
+            return;
+        }
+
+        ShowMainWindow(detections: false);
+        _main.Current = _main.Scan;
+        _ = _main.Scan.ScanDriveAsync(root);
+    }
+
     private async Task PollAsync()
     {
         if (_polling || _watcher is null || _tray is null || _preferences is null)
@@ -237,6 +307,7 @@ public sealed partial class App : Application, IAppHost, IDisposable
             if (fresh.Count > 0 && _preferences.Notifications)
             {
                 FindingNotice notice = DetectionWatcher.Describe(fresh);
+                _clickAction = () => ShowMainWindow(detections: true);
                 _tray.Notify(notice.Title, notice.Message, notice.IsThreat);
             }
         }

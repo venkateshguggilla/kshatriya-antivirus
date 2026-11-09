@@ -7,7 +7,8 @@ public class ScanKindOptionTests
     [Theory]
     [InlineData("--quick", ScanKind.Quick)]
     [InlineData("--full", ScanKind.Full)]
-    public void Quick_and_full_scans_need_no_paths(string option, ScanKind expected)
+    [InlineData("--external", ScanKind.External)]
+    public void Quick_full_and_external_scans_need_no_paths(string option, ScanKind expected)
     {
         Assert.Equal(expected, CliOptions.Parse(["scan", option]).ScanKind);
         CliOptions service = CliOptions.Parse(["scan", option, "--service", "--json"]);
@@ -26,6 +27,8 @@ public class ScanKindOptionTests
 
     [Theory]
     [InlineData("scan", "--quick", "--full")]
+    [InlineData("scan", "--external", "--quick")]
+    [InlineData("scan", "--external", @"E:\")]
     [InlineData("scan", "--quick", @"C:\Users")]
     [InlineData("scan", "--full", "--stdin")]
     [InlineData("scan")]
@@ -39,6 +42,7 @@ public class ScanKindOptionTests
     {
         Assert.Contains("--quick", CliOptions.HelpText, StringComparison.Ordinal);
         Assert.Contains("--full", CliOptions.HelpText, StringComparison.Ordinal);
+        Assert.Contains("--external", CliOptions.HelpText, StringComparison.Ordinal);
         Assert.Contains("drive root", CliOptions.HelpText, StringComparison.Ordinal);
     }
 }

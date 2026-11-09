@@ -91,7 +91,7 @@ public sealed record CliOptions
           kshatriya scan <path>... [options]
           kshatriya scan --stdin [--name <label>] [options]
           kshatriya scan --service [--dev] <path>... [--quarantine] [--json] [--output <file>] [--include-clean] [--quiet]
-          kshatriya scan --quick | --full [--service [--dev]] [options]
+          kshatriya scan --quick | --full | --external [--service [--dev]] [options]
           kshatriya status [--dev]
           kshatriya quarantine list | add <file> | restore <id> [--to <path>] | delete <id>   [--service [--dev]]
           kshatriya exclusions list | add <path|sha256:...> | remove <path|sha256:...>   --service [--dev]
@@ -106,6 +106,7 @@ public sealed record CliOptions
           --quick                Quick scan: startup entries, running programs and services, and the Downloads,
                                  Desktop, Temp and Startup folders (your own profile only)
           --full                 Full scan of every fixed drive (can take a long time)
+          --external             Scan every connected external drive (USB drives and disks, memory cards)
 
         Options:
           --quarantine           Move confirmed high-confidence detections (malware, test files) into the
@@ -247,11 +248,16 @@ public sealed record CliOptions
                 case "--quarantine":
                     options = options with { Quarantine = true };
                     break;
-                case "--quick" or "--full":
-                    var kind = arg == "--quick" ? Scanning.Targets.ScanKind.Quick : Scanning.Targets.ScanKind.Full;
+                case "--quick" or "--full" or "--external":
+                    var kind = arg switch
+                    {
+                        "--quick" => Scanning.Targets.ScanKind.Quick,
+                        "--full" => Scanning.Targets.ScanKind.Full,
+                        _ => Scanning.Targets.ScanKind.External,
+                    };
                     if (options.ScanKind != Scanning.Targets.ScanKind.Custom && options.ScanKind != kind)
                     {
-                        throw new CliUsageException("Use either --quick or --full, not both.");
+                        throw new CliUsageException("Use only one of --quick, --full and --external.");
                     }
 
                     options = options with { ScanKind = kind };
@@ -277,7 +283,7 @@ public sealed record CliOptions
 
         if (options.ScanKind != Scanning.Targets.ScanKind.Custom && (targets.Count > 0 || options.ReadStdin))
         {
-            throw new CliUsageException("--quick and --full choose their own targets; do not give paths or --stdin.");
+            throw new CliUsageException("--quick, --full and --external choose their own targets; do not give paths or --stdin.");
         }
 
         if (options.ReadStdin && targets.Count > 0)
@@ -287,7 +293,7 @@ public sealed record CliOptions
 
         if (!options.ReadStdin && targets.Count == 0 && options.ScanKind == Scanning.Targets.ScanKind.Custom)
         {
-            throw new CliUsageException("No scan targets given. Give paths (a file, folder or drive such as D:\\), --quick or --full.");
+            throw new CliUsageException("No scan targets given. Give paths (a file, folder or drive such as D:\\), --quick, --full or --external.");
         }
 
         if (options.DevService && !options.UseService)

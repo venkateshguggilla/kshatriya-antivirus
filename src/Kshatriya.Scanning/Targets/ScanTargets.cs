@@ -15,6 +15,9 @@ public enum ScanKind
 
     /// <summary>Every fixed drive.</summary>
     Full,
+
+    /// <summary>Every connected external drive (USB, memory card, FireWire, removable media).</summary>
+    External,
 }
 
 /// <summary>Wire names for <see cref="ScanKind"/>.</summary>
@@ -23,11 +26,13 @@ public static class ScanKindNames
     public const string Custom = "custom";
     public const string Quick = "quick";
     public const string Full = "full";
+    public const string External = "external";
 
     public static string Of(ScanKind kind) => kind switch
     {
         ScanKind.Quick => Quick,
         ScanKind.Full => Full,
+        ScanKind.External => External,
         _ => Custom,
     };
 
@@ -37,6 +42,7 @@ public static class ScanKindNames
         null or Custom => ScanKind.Custom,
         Quick => ScanKind.Quick,
         Full => ScanKind.Full,
+        External => ScanKind.External,
         _ => null,
     };
 }

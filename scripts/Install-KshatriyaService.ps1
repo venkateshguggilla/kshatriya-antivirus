@@ -104,6 +104,14 @@ if ((Test-Path $app) -and $PSCmdlet.ShouldProcess('Start menu', 'Add Kshatriya s
     $shortcut.Save()
 }
 
+# Desktop shortcut for every user (the Public desktop).
+if ((Test-Path $app) -and $PSCmdlet.ShouldProcess('Desktop', 'Add Kshatriya Antivirus shortcut')) {
+    $desktop = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'Kshatriya Antivirus.lnk'))
+    $desktop.TargetPath = $app
+    $desktop.Description = 'Kshatriya Antivirus (prototype) - runs alongside Microsoft Defender'
+    $desktop.Save()
+}
+
 # Explorer right-click "Scan with Kshatriya Antivirus" for files, folders and drives (on Windows 11 it is
 # under "Show more options"). Each item opens its own scan window; the service scans with the user's rights.
 if ((Test-Path $app) -and $PSCmdlet.ShouldProcess('Explorer context menu', 'Add "Scan with Kshatriya Antivirus"')) {

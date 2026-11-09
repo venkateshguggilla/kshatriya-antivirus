@@ -216,7 +216,7 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
 public sealed record ResultRow(string Status, string Path, string Detail, string Action);
 
 /// <summary>A drive offered for a drive scan.</summary>
-public sealed record DriveChoice(string Root, string Label)
+public sealed record DriveChoice(string Root, string Label, bool IsExternal = false)
 {
     public override string ToString() => Label;
 }
@@ -248,6 +248,10 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
         StartCommand = new AsyncCommand(_ => RunScanAsync("Custom scan", (progress, token) => _gateway.ScanAsync([.. Targets], Quarantine, progress, token)), _ => !IsScanning && Targets.Count > 0, ShowError);
         QuickScanCommand = new AsyncCommand(_ => RunScanAsync("Quick scan", (progress, token) => _gateway.ScanKindAsync(ScanKinds.Quick, Quarantine, progress, token)), _ => !IsScanning, ShowError);
         FullScanCommand = new AsyncCommand(_ => RunScanAsync("Full scan", (progress, token) => _gateway.ScanKindAsync(ScanKinds.Full, Quarantine, progress, token)), _ => !IsScanning, ShowError);
+        ExternalScanCommand = new AsyncCommand(
+            _ => RunScanAsync("External drive scan", (progress, token) => _gateway.ScanKindAsync(ScanKinds.External, Quarantine, progress, token)),
+            _ => !IsScanning && Drives.Any(d => d.IsExternal),
+            ShowError);
         DriveScanCommand = new AsyncCommand(
             _ => RunScanAsync($"Scan of {SelectedDrive!.Root}", (progress, token) => _gateway.ScanAsync([SelectedDrive!.Root], Quarantine, progress, token)),
             _ => !IsScanning && SelectedDrive is not null,
@@ -263,6 +267,22 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
     public AsyncCommand QuickScanCommand { get; }
 
     public AsyncCommand FullScanCommand { get; }
+
+    /// <summary>Scans every connected external drive (USB drives and disks, memory cards).</summary>
+    public AsyncCommand ExternalScanCommand { get; }
+
+    /// <summary>Selects <paramref name="root"/> (after re-reading the drive list) and scans it, unless a scan is running.</summary>
+    public Task ScanDriveAsync(string root)
+    {
+        LoadDrives();
+        if (IsScanning || Drives.FirstOrDefault(d => string.Equals(d.Root, root, StringComparison.OrdinalIgnoreCase)) is not { } drive)
+        {
+            return Task.CompletedTask;
+        }
+
+        SelectedDrive = drive;
+        return DriveScanCommand.ExecuteAsync(null);
+    }
 
     public AsyncCommand DriveScanCommand { get; }
 
@@ -310,31 +330,9 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
         return Task.CompletedTask;
     }
 
-    /// <summary>Ready fixed and removable drives, labelled with their type, name and size.</summary>
-    internal static IReadOnlyList<DriveChoice> LocalDrives()
-    {
-        var choices = new List<DriveChoice>();
-        foreach (DriveInfo drive in DriveInfo.GetDrives().Where(d => d.DriveType is DriveType.Fixed or DriveType.Removable))
-        {
-            try
-            {
-                if (!drive.IsReady)
-                {
-                    continue;
-                }
-
-                string type = drive.DriveType == DriveType.Removable ? "Removable drive" : "Local disk";
-                string name = string.IsNullOrWhiteSpace(drive.VolumeLabel) ? string.Empty : $" \"{drive.VolumeLabel}\"";
-                choices.Add(new DriveChoice(drive.RootDirectory.FullName, $"{drive.Name}  {type}{name}, {drive.TotalSize / 1e9:N0} GB"));
-            }
-            catch (IOException)
-            {
-                // Not ready after all (removed while listing).
-            }
-        }
-
-        return choices;
-    }
+    /// <summary>Ready fixed and removable drives, labelled internal or external (USB, memory card) with name and size.</summary>
+    internal static IReadOnlyList<DriveChoice> LocalDrives() =>
+        [.. Kshatriya.Scanning.Targets.Drives.Local().Select(d => new DriveChoice(d.Root, d.Label, d.IsExternal))];
 
     private void LoadDrives()
     {
