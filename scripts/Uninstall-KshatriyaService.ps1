@@ -46,11 +46,27 @@ if (-not $KeepFiles -and (Test-Path $InstallDirectory)) {
     $apps = @(Get-Process -Name 'Kshatriya.App' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($installed, [StringComparison]::OrdinalIgnoreCase) })
     if ($apps.Count -gt 0 -and $PSCmdlet.ShouldProcess("$($apps.Count) running Kshatriya Antivirus app window(s)", 'Close')) {
         $apps | Stop-Process -Force
-        $apps | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+    }
+
+    # The service and its sandboxed workers can take a moment to exit after the service reports "stopped";
+    # wait for every process started from the install folder before deleting files (none is terminated here).
+    $ours = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($installed, [StringComparison]::OrdinalIgnoreCase) })
+    if ($ours.Count -gt 0) {
+        $ours | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
     }
 
     if ($PSCmdlet.ShouldProcess($InstallDirectory, 'Remove binaries')) {
-        Remove-Item -LiteralPath $InstallDirectory -Recurse -Force
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                Remove-Item -LiteralPath $InstallDirectory -Recurse -Force
+                break
+            }
+            catch {
+                # A file can stay locked briefly after its process exits (for example while it is being scanned).
+                if ($attempt -ge 5) { throw }
+                Start-Sleep -Seconds 2
+            }
+        }
     }
 }
 
