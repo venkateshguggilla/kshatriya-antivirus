@@ -45,7 +45,7 @@ public static class MessageType
 public static class ProtocolVersion
 {
     public const int Worker = 2;
-    public const int Service = 6;
+    public const int Service = 7;
 }
 
 // ---- Shared ----

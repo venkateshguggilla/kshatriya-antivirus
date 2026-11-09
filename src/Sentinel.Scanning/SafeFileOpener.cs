@@ -80,8 +80,19 @@ public static class SafeFileOpener
         NativeMethods.ErrorFileNotFound or NativeMethods.ErrorPathNotFound or NativeMethods.ErrorInvalidName => ScanReason.NotFound,
         NativeMethods.ErrorAccessDenied or NativeMethods.ErrorCantAccessFile => ScanReason.AccessDenied,
         NativeMethods.ErrorSharingViolation or NativeMethods.ErrorLockViolation => ScanReason.Locked,
+        NativeMethods.ErrorVirusInfected or NativeMethods.ErrorVirusDeleted => ScanReason.BlockedBySecurityProduct,
         _ => ScanReason.IoError,
     };
+
+    /// <summary>Maps an I/O exception raised while reading an open file to a scan reason.</summary>
+    public static ScanReason MapIOException(IOException ex) => (ex.HResult & unchecked((int)0xFFFF0000)) == unchecked((int)0x80070000)
+        ? MapError(ex.HResult & 0xFFFF) switch
+        {
+            ScanReason.Locked => ScanReason.Locked,
+            ScanReason.BlockedBySecurityProduct => ScanReason.BlockedBySecurityProduct,
+            _ => ScanReason.IoError,
+        }
+        : ScanReason.IoError;
 
     /// <summary>
     /// Reads the identity and change stamps of an open file. Returns null if the file system does not

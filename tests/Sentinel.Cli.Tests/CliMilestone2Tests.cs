@@ -8,7 +8,7 @@ namespace Sentinel.Cli.Tests;
 public class CliMilestone2Tests
 {
     private static readonly Lazy<JsonSchema> s_schema = new(() =>
-        JsonSchema.FromFileAsync(Path.Combine(AppContext.BaseDirectory, "schemas", "scan-report.v3.schema.json")).GetAwaiter().GetResult());
+        JsonSchema.FromFileAsync(Path.Combine(AppContext.BaseDirectory, "schemas", "scan-report.v4.schema.json")).GetAwaiter().GetResult());
 
     private static async Task<(int Code, string Out, string Err)> Run(params string[] args)
     {

@@ -39,7 +39,7 @@ public sealed class CliMilestone4Tests : IDisposable
         Assert.Equal(ExitCodes.Detections, scan.Code);
         Assert.False(File.Exists(bad));
         using JsonDocument doc = JsonDocument.Parse(scan.Out);
-        Assert.Equal(3, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(4, doc.RootElement.GetProperty("schemaVersion").GetInt32());
         JsonElement action = doc.RootElement.GetProperty("items")[0].GetProperty("action");
         Assert.Equal("quarantined", action.GetProperty("outcome").GetString());
         string id = action.GetProperty("quarantineId").GetString()!;

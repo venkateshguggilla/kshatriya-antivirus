@@ -101,7 +101,7 @@ public sealed record CliOptions
           --quarantine           Move confirmed high-confidence detections (malware, test files) into the
                                  encrypted quarantine. Suspicious and PUA findings are only reported.
           --exclude <path>       Do not scan this file or folder in this scan (repeatable; local scans only)
-          --json                 Write the report as JSON (schema: docs/schemas/scan-report.v3.schema.json)
+          --json                 Write the report as JSON (schema: docs/schemas/scan-report.v4.schema.json)
           --output <file>        Write the report to a file instead of standard output
           --include-clean        List clean items in the report (counts are always included)
           --signatures <file>    Load an additional hash database (repeatable)

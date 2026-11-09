@@ -1,0 +1,345 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sentinel.invalid/schemas/scan-report.v4.schema.json",
+  "title": "Sentinel scan report",
+  "description": "Report produced by 'sentinel scan --json'. Version 4 (adds the 'blockedBySecurityProduct' reason for files that Windows refused to open because a security product such as Microsoft Defender detected them; otherwise identical to version 3). New optional properties may be added in minor revisions; removals or meaning changes require a new schemaVersion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "tool",
+    "startedUtc",
+    "finishedUtc",
+    "durationMs",
+    "complete",
+    "cleanItemsIncluded",
+    "targets",
+    "engines",
+    "summary",
+    "items"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 4
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "const": "Sentinel"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "startedUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedUtc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "durationMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "complete": {
+      "type": "boolean",
+      "description": "False when at least one item has status 'notScanned' or is a partially scanned item with findings."
+    },
+    "cleanItemsIncluded": {
+      "type": "boolean",
+      "description": "When false, clean items are counted in 'summary' but omitted from 'items'."
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "engines": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version",
+          "contentVersion"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contentVersion": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "itemsSeen",
+        "filesScanned",
+        "detected",
+        "suspicious",
+        "skipped",
+        "notScanned",
+        "partial",
+        "bytesScanned",
+        "quarantined",
+        "quarantineFailed"
+      ],
+      "properties": {
+        "itemsSeen": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "filesScanned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "detected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "suspicious": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "notScanned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partial": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bytesScanned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quarantined": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quarantineFailed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/item"
+      }
+    }
+  },
+  "definitions": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "kind",
+        "status",
+        "incomplete",
+        "detections"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "file",
+            "directory",
+            "stream"
+          ]
+        },
+        "status": {
+          "enum": [
+            "clean",
+            "detected",
+            "suspicious",
+            "skipped",
+            "notScanned"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "reparsePoint",
+            "cloudPlaceholder",
+            "loopDetected",
+            "tooLarge",
+            "timeout",
+            "accessDenied",
+            "locked",
+            "notFound",
+            "ioError",
+            "engineError",
+            "archiveLimit",
+            "archiveEncrypted",
+            "archiveError",
+            "excluded",
+            "blockedBySecurityProduct"
+          ]
+        },
+        "incomplete": {
+          "type": "boolean",
+          "description": "True when the item was not scanned, or has findings but was only partially scanned."
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "message": {
+          "type": "string"
+        },
+        "trust": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "notSigned",
+                "valid",
+                "invalid"
+              ]
+            },
+            "source": {
+              "enum": [
+                "embedded",
+                "catalog"
+              ]
+            },
+            "signer": {
+              "type": "string"
+            }
+          }
+        },
+        "action": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "outcome"
+          ],
+          "description": "Response action attempted for this item. Present only when quarantine was requested and the item was eligible.",
+          "properties": {
+            "kind": {
+              "const": "quarantine"
+            },
+            "outcome": {
+              "enum": [
+                "quarantined",
+                "failed"
+              ]
+            },
+            "quarantineId": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            "failure": {
+              "enum": [
+                "changed",
+                "locked",
+                "inUse",
+                "accessDenied",
+                "notFound",
+                "hardLinked",
+                "tooLarge",
+                "notRegularFile",
+                "vaultError",
+                "ioError"
+              ]
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        "detections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/detection"
+          }
+        }
+      }
+    },
+    "detection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "engine",
+        "name",
+        "category",
+        "confidence"
+      ],
+      "properties": {
+        "engine": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "malware",
+            "pua",
+            "suspicious",
+            "test"
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path inside a container, nested levels separated by '>'."
+        }
+      }
+    }
+  }
+}

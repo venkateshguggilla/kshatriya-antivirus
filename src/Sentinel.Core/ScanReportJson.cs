@@ -11,7 +11,7 @@ namespace Sentinel.Core;
 /// </summary>
 public static class ScanReportJson
 {
-    public const int SchemaVersion = 3;
+    public const int SchemaVersion = 4;
 
     /// <summary>Oldest schema version <see cref="Read"/> accepts (v2 reports simply have no actions).</summary>
     public const int MinReadableSchemaVersion = 2;

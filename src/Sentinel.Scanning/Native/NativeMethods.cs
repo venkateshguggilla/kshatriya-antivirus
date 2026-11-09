@@ -26,6 +26,8 @@ internal static partial class NativeMethods
     internal const int ErrorSharingViolation = 32;
     internal const int ErrorLockViolation = 33;
     internal const int ErrorInvalidName = 123;
+    internal const int ErrorVirusInfected = 225;
+    internal const int ErrorVirusDeleted = 226;
     internal const int ErrorCantAccessFile = 1920;
 
     /// <summary>FILE_INFO_BY_HANDLE_CLASS.FileBasicInfo.</summary>

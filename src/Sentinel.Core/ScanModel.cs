@@ -53,6 +53,12 @@ public enum ScanReason
 
     /// <summary>Matched a path or SHA-256 exclusion (status <see cref="ScanStatus.Skipped"/>).</summary>
     Excluded,
+
+    /// <summary>
+    /// Windows refused to open or read the file because a security product (normally Microsoft Defender)
+    /// detected it: ERROR_VIRUS_INFECTED or ERROR_VIRUS_DELETED.
+    /// </summary>
+    BlockedBySecurityProduct,
 }
 
 /// <summary>Why a response action (quarantine) could not be completed.</summary>

@@ -17,7 +17,7 @@
   - Never reads cloud placeholders (OneDrive "online-only" files), so it cannot trigger downloads
   - Supports paths longer than 260 characters
   - Per-file size limit and time limit; locked, denied, oversized or timed-out files are reported as **not scanned**, never silently ignored
-  - Text output for people, versioned JSON output for tools ([schema v3](docs/schemas/scan-report.v3.schema.json))
+  - Text output for people, versioned JSON output for tools ([schema v4](docs/schemas/scan-report.v4.schema.json))
 - `sentinel scan --stdin`: scans piped data (useful for the EICAR test string without writing it to disk)
 - **Windows service (M3):** `Sentinel.Service` runs as LocalSystem with a shared worker pool, a verdict cache for unchanged clean files and scheduled scans
   - `sentinel scan --service <path>` asks the service to scan. The service scans **with your own access rights** (pipe impersonation), so it can't be used to read files you can't read.
@@ -96,7 +96,7 @@ Optional `%ProgramData%\Sentinel\config\service.json` (development: `%LOCALAPPDA
 }
 ```
 
-Scheduled scans run in local time and skip the verdict cache. Add `"action": "quarantine"` to a schedule to quarantine high-confidence detections (default `"report"`). Reports (schema v3) are written to `reports\`. Persistent exclusions live in `config\exclusions.json` and are managed with `sentinel exclusions ... --service`; the quarantine vault is `quarantine\` and the audit log `audit\`. A run missed while the machine was off happens once the service is running again; a new schedule waits for its first occurrence.
+Scheduled scans run in local time and skip the verdict cache. Add `"action": "quarantine"` to a schedule to quarantine high-confidence detections (default `"report"`). Reports (schema v4) are written to `reports\`. Persistent exclusions live in `config\exclusions.json` and are managed with `sentinel exclusions ... --service`; the quarantine vault is `quarantine\` and the audit log `audit\`. A run missed while the machine was off happens once the service is running again; a new schedule waits for its first occurrence.
 
 ### CLI
 
@@ -125,6 +125,8 @@ sentinel version | help
 | 4 | Fatal error (for example an invalid signature database, workers that cannot be started, or an unreachable service), or a failed quarantine/restore/delete command or audit integrity check |
 
 Items skipped **by policy** (links, cloud placeholders, exclusions) are listed but do not make a scan incomplete.
+
+Files that Windows refuses to open because Microsoft Defender (or another security product) has detected them are reported as not scanned with the reason `blockedBySecurityProduct`. That is expected in companion mode: Defender acted first, and Sentinel never asks for a Defender exclusion.
 
 Without `--service`, quarantine uses a per-user vault and audit log in `%LOCALAPPDATA%\Sentinel\local`.
 

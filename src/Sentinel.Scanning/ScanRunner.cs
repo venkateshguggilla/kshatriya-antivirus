@@ -282,8 +282,7 @@ public sealed class ScanRunner
         }
         catch (IOException ex)
         {
-            ScanReason reason = ex.HResult is unchecked((int)0x80070020) or unchecked((int)0x80070021) ? ScanReason.Locked : ScanReason.IoError;
-            return ToResult(path, ScanItemKind.File, length, sha256, trust, AnalysisResult.Failed(reason, ex.Message));
+            return ToResult(path, ScanItemKind.File, length, sha256, trust, AnalysisResult.Failed(SafeFileOpener.MapIOException(ex), ex.Message));
         }
     }
 
