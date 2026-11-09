@@ -96,5 +96,5 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 - Hash databases and rule files configured directly in service.json are trusted by file ACL, not signature; content delivered as packages is signed.
 - The ZIP central directory is read by `System.IO.Compression` before entry limits apply; its size is bounded by the per-file size limit.
 - Workers hold an item fully in memory (bounded by the size limit and the job memory cap).
-- Mutation fuzzing is unguided; coverage-guided fuzzing is future work.
+- Coverage-guided fuzzing (SharpFuzz edge coverage, in-process AFL-style loop) covers the PE, ZIP and content-package parsers; the hash-database, IPC, report and model parsers are fuzzed unguided only. The content-package target rarely gets past the signature check, so the signed manifest parser is mostly reached through unit tests.
 - The service has been exercised in development mode (as the current user) by automated tests. Installing it as LocalSystem is scripted (`scripts/Install-SentinelService.ps1`) but was not run on the development machine.

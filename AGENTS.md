@@ -13,7 +13,7 @@
 
 - Setup: run `./scripts/Get-YaraX.ps1` once (downloads the hash-pinned YARA-X DLL into the git-ignored `native/` folder).
 - Build: `dotnet build Sentinel.slnx` must have **zero warnings** (warnings are errors). Test: `dotnet test Sentinel.slnx`.
-- Fuzz: `dotnet run -c Release --project tools/Sentinel.Fuzz -- all 1000000` before changing a parser.
+- Fuzz: `dotnet run -c Release --project tools/Sentinel.Fuzz -- all 1000000` before changing a parser; for the PE, ZIP and content-package parsers also `dotnet run -c Release --project tools/Sentinel.CoverageFuzz -- all 300` (coverage-guided).
 - Package versions live only in `Directory.Packages.props`.
 - Code that handles files must open them through `SafeFileOpener` / `SafeFileEnumerator`: never follow reparse points, never read cloud placeholders, always enforce size and time limits, and report every item that was not scanned.
 - Scanning code is read-only. Anything that changes user files belongs in `Sentinel.Response`, must act on the same handle it verified, must keep a verified copy before removing anything, and must be reversible ([ADR 0006](docs/adr/0006-quarantine-and-response.md)).

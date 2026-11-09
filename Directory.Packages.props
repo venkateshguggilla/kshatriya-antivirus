@@ -7,6 +7,7 @@
     <!-- Shipped dependencies (MIT, Microsoft) -->
     <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.14" />
     <PackageVersion Include="System.Management" Version="10.0.14" />
+    <PackageVersion Include="SharpFuzz" Version="2.3.0" />
   </ItemGroup>
   <ItemGroup>
     <!-- Test-only dependencies (not shipped) -->

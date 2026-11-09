@@ -14,7 +14,8 @@ missing before anyone should call a build "beta", let alone production.
     not a claim; the development machine measured 7,474 files/s);
   - false positives: every file in `%SystemRoot%\System32` scanned with archives (depth 1); any
     detected or suspicious item fails the build.
-- Mutation fuzzing, 100,000 iterations per parser; nightly 1,000,000 per parser with a fresh seed.
+- Mutation fuzzing, 100,000 iterations per parser; nightly 1,000,000 per parser with a fresh seed, plus
+  coverage-guided fuzzing of the PE, ZIP and content-package parsers.
 
 ## Before each release
 
@@ -43,7 +44,7 @@ missing before anyone should call a build "beta", let alone production.
 - [ ] Measured performance budgets on reference hardware (CPU, memory, disk I/O during real-time
       monitoring), including the cost of watching `C:\Users`.
 - [ ] Accessibility audit of the app with screen readers (Narrator, NVDA) and keyboard-only use.
-- [ ] Coverage-guided fuzzing (for example SharpFuzz with libFuzzer) for the PE, ZIP and package parsers.
+- [x] Coverage-guided fuzzing for the PE, ZIP and package parsers (`tools/Sentinel.CoverageFuzz`, nightly 10 minutes each with a carried-over corpus). Not yet: the signed manifest past signature verification, and the text/JSON parsers.
 - [ ] A staffed false-positive response and content-revocation process.
 
 Production status would additionally require independent lab testing and, to act as a primary

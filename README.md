@@ -47,7 +47,7 @@
 
 - **Release packaging (M11):** `./scripts/Build-Release.ps1` builds a self-contained `Sentinel-<version>-win-x64.zip` (service, worker, CLI, app) with `SHA256SUMS.txt`, a dependency inventory and the licence files. Binaries are Authenticode-signed only when a certificate is supplied; otherwise the release is marked **UNSIGNED**. `Install-SentinelService.ps1 -FromRelease <folder> [-RequireSignature]` verifies every file before installing. The zip and install script are the chosen installer; there is deliberately no MSI/MSIX ([ADR 0013](docs/adr/0013-packaging-and-signing.md)). Automatic product updates are not built yet (they need certificate and hosting decisions).
 
-- **Release hardening (M12):** every push runs a dependency vulnerability audit and release gates (a performance budget through the sandboxed workers, and a false-positive check that fails on any finding in `C:\Windows\System32`); parsers are fuzzed nightly at 1,000,000 iterations each. [SECURITY.md](SECURITY.md) describes private reporting and response targets. The [release checklist](docs/release-checklist.md) lists what is still missing before a beta label.
+- **Release hardening (M12):** every push runs a dependency vulnerability audit and release gates (a performance budget through the sandboxed workers, and a false-positive check that fails on any finding in `C:\Windows\System32`); parsers are fuzzed nightly at 1,000,000 iterations each, and the PE, ZIP and content-package parsers also with coverage guidance. [SECURITY.md](SECURITY.md) describes private reporting and response targets. The [release checklist](docs/release-checklist.md) lists what is still missing before a beta label.
 
 Scans without `--quarantine` (and the service without quarantine requests or schedules) **never modify, move or delete files**.
 
@@ -194,6 +194,16 @@ Mutation fuzzing (`tools/Sentinel.Fuzz`, unguided, seed 20261108), **1,000,000 i
 
 CI runs 100,000 iterations per target.
 
+Coverage-guided fuzzing (`tools/Sentinel.CoverageFuzz`: SharpFuzz edge instrumentation, in-process AFL-style loop, seed 20261109), **5 minutes per target, 0 failures**:
+
+| Target | Executions | Edges (seeds → end) | Corpus |
+|---|---|---|---|
+| PE parser, heuristics and ML features | 3.0 M (10,024/s) | 431 → 574 | 199 |
+| ZIP expansion through the scan pipeline | 5.6 M (18,518/s) | 229 → 292 | 51 |
+| Content-package container | 4.3 M (14,261/s) | 173 → 208 | 20 |
+
+Coverage levels off within the first minute (the PE target reached 567 edges after 20 s), so longer runs mostly re-check the same paths. The content target almost never passes the signature check, so the signed manifest parser is covered by unit tests rather than by this fuzzer.
+
 Sandbox properties verified by tests with real worker processes: low integrity; writes to the user's files denied; child processes blocked; files private to the account unreadable; memory cap enforced; a crash or hang mid-item recovered; diagnostics refused without test hooks. One residual is also stated as a test: world-readable files remain readable from inside the sandbox ([threat model](docs/threat-model.md#residual-risks-m3)).
 
 ## Repository layout
@@ -218,6 +228,7 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 | `docs/` | [Architecture](docs/architecture.md), [threat model](docs/threat-model.md), [ADRs](docs/adr), [schemas](docs/schemas) |
 | `tools/Sentinel.ContentTool` | `sentinel-content`: signing keys and content packages |
 | `tools/Sentinel.Fuzz` | Mutation fuzz harness for the parsers |
+| `tools/Sentinel.CoverageFuzz` | Coverage-guided fuzzing (SharpFuzz instrumentation) of the PE, ZIP and content-package parsers |
 | `scripts/` | YARA-X fetch (hash-pinned), performance tree generator, service install/uninstall |
 
 ## Roadmap

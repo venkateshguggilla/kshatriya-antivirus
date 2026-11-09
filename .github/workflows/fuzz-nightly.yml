@@ -1,7 +1,9 @@
 name: fuzz-nightly
 
 # Longer mutation fuzzing than the per-push smoke run: 1,000,000 iterations per target with a
-# date-based seed, so every night explores different inputs. Crashing inputs are uploaded.
+# date-based seed, so every night explores different inputs, then coverage-guided fuzzing of the
+# PE, ZIP and content-package parsers with a corpus carried over from previous nights.
+# Crashing inputs are uploaded.
 on:
   schedule:
     - cron: '17 2 * * *'
@@ -27,9 +29,24 @@ jobs:
         run: |
           $seed = [int](Get-Date -Format 'yyyyMMdd')
           dotnet run -c Release --project tools/Sentinel.Fuzz -- all 1000000 $seed "$env:RUNNER_TEMP/fuzz-crashes"
+      # The coverage corpus grows night by night: restore the latest one, save the new one.
+      - name: Restore coverage corpus
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/coverage-fuzz/corpus
+          key: coverage-corpus-${{ github.run_id }}
+          restore-keys: coverage-corpus-
+      - name: Coverage-guided fuzzing (10 minutes per parser)
+        if: always()
+        shell: pwsh
+        run: |
+          $seed = [int](Get-Date -Format 'yyyyMMdd')
+          dotnet run -c Release --project tools/Sentinel.CoverageFuzz -- all 600 $seed "$env:RUNNER_TEMP/coverage-fuzz"
       - name: Upload crashing inputs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: fuzz-crashes
-          path: ${{ runner.temp }}/fuzz-crashes
+          path: |
+            ${{ runner.temp }}/fuzz-crashes
+            ${{ runner.temp }}/coverage-fuzz/crashes

@@ -19,6 +19,7 @@ Licensing policy: only permissive licenses (MIT, BSD, Apache-2.0, or similar) ma
 | Microsoft.NET.Test.Sdk | MIT |
 | coverlet.collector | MIT |
 | NJsonSchema | MIT |
+| SharpFuzz, SharpFuzz.Common, dnlib (coverage instrumentation for `tools/Sentinel.CoverageFuzz`) | MIT |
 
 ## Data
 
