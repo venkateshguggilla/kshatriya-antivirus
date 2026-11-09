@@ -154,7 +154,7 @@ public sealed class ScanRunner
 
         var clock = Stopwatch.StartNew();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_options.Limits.PerItemTimeout);
+        timeout.CancelAfter(_options.Limits.TimeoutFor(ScanLimits.MaxStreamBytes));
 
         using var buffer = new MemoryStream();
         long? size = null;
@@ -167,9 +167,9 @@ public sealed class ScanRunner
                 int read;
                 while ((read = await input.ReadAsync(chunk.AsMemory(0, BufferSize), timeout.Token)) > 0)
                 {
-                    if (buffer.Length + read > _options.Limits.MaxFileSizeBytes)
+                    if (buffer.Length + read > Math.Min(_options.Limits.MaxFileSizeBytes, ScanLimits.MaxStreamBytes))
                     {
-                        return ScanItemResult.Fail(displayName, ScanItemKind.Stream, ScanReason.TooLarge, "Stream exceeds the maximum scan size.");
+                        return ScanItemResult.Fail(displayName, ScanItemKind.Stream, ScanReason.TooLarge, "Stream exceeds the maximum scan size (piped content is held in memory and limited to 1 GiB).");
                     }
 
                     buffer.Write(chunk, 0, read);
@@ -209,7 +209,7 @@ public sealed class ScanRunner
 
         var clock = Stopwatch.StartNew();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_options.Limits.PerItemTimeout);
+        timeout.CancelAfter(_options.Limits.TimeoutFor(enumeratedLength));
 
         OpenResult open = SafeFileOpener.Open(path);
         if (!open.Success)
@@ -260,7 +260,7 @@ public sealed class ScanRunner
             trust = EvaluateTrust(handle, stream, path);
             stream.Position = 0;
 
-            AnalysisResult analysis = await AnalyzeAsync(path, length, sha256, stream, trust, clock, timeout.Token, cancellationToken);
+            AnalysisResult analysis = await AnalyzeAsync(path, length, sha256, stream, trust, clock, timeout.Token, cancellationToken, handle);
             ScanItemResult result = ToResult(path, ScanItemKind.File, length, sha256, trust, analysis);
 
             // Cache only complete clean results, and only if the file did not change while it was read.
@@ -294,15 +294,16 @@ public sealed class ScanRunner
         FileTrust? trust,
         Stopwatch clock,
         CancellationToken itemToken,
-        CancellationToken scanToken)
+        CancellationToken scanToken,
+        SafeFileHandle? file = null)
     {
-        TimeSpan budget = _options.Limits.PerItemTimeout - clock.Elapsed;
+        TimeSpan budget = _options.Limits.TimeoutFor(length) - clock.Elapsed;
         if (budget <= TimeSpan.Zero)
         {
             return AnalysisResult.Failed(ScanReason.Timeout, "Per-item time limit exceeded.");
         }
 
-        AnalysisResult result = await _analyzer.AnalyzeAsync(new AnalysisRequest(path, length, sha256, content, trust, budget), itemToken);
+        AnalysisResult result = await _analyzer.AnalyzeAsync(new AnalysisRequest(path, length, sha256, content, trust, budget, file), itemToken);
 
         // Analyzers report cancellation as a timeout; if the whole scan was cancelled, stop instead.
         scanToken.ThrowIfCancellationRequested();

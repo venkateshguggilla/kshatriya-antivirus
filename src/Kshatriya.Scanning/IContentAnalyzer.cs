@@ -11,7 +11,18 @@ namespace Kshatriya.Scanning;
 /// <param name="Content">Readable, seekable stream positioned anywhere; analyzers rewind it.</param>
 /// <param name="Trust">Authenticode result for the top-level file, if checked.</param>
 /// <param name="TimeBudget">Time left for this item. Analyzers should stop and report partial results within it.</param>
-public sealed record AnalysisRequest(string DisplayPath, long Length, string Sha256, Stream Content, FileTrust? Trust, TimeSpan TimeBudget);
+/// <param name="File">The opened file behind <paramref name="Content"/>, when there is one: analyzers map it read-only
+/// instead of copying it (required for content larger than a byte array can hold). Never used to reopen the path.</param>
+/// <param name="Memory">The content already mapped into this process (inside a worker).</param>
+public sealed record AnalysisRequest(
+    string DisplayPath,
+    long Length,
+    string Sha256,
+    Stream Content,
+    FileTrust? Trust,
+    TimeSpan TimeBudget,
+    Microsoft.Win32.SafeHandles.SafeFileHandle? File = null,
+    Kshatriya.Engines.ContentMemory? Memory = null);
 
 /// <summary>
 /// Findings for one item plus the reason it could only be partially analysed (or

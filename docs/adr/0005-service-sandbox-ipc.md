@@ -108,3 +108,7 @@ Only administrators and SYSTEM may create named window stations; a standard user
 falls back to the inherited interactive station. `SandboxTests.Worker_runs_on_a_private_window_station`
 covers both cases. The service also now reports a failed start to the Service Control Manager as an
 error, and the install script sets `failureflag`, so the restart actions apply.
+
+## Amendment (2026-11-09): files are shared as read-only mapped sections
+
+Files on disk are no longer streamed through the worker's pipe. The broker creates a read-only section from the handle it opened and duplicates it into the worker with FILE_MAP_READ as the only right; the worker maps it, still without a path, token change or weaker job limit. Piped content keeps the old path (1 GiB). See [ADR 0017](0017-large-file-scanning.md).

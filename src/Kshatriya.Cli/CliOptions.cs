@@ -121,7 +121,7 @@ public sealed record CliOptions
           --no-heuristics        Disable static PE heuristics
           --heuristics-include-signed  Also score validly signed files (for false-positive evaluation)
           --archive-depth <n>    Nested archive depth to inspect, 0-10 (default 3; 0 disables)
-          --max-file-size <MiB>  Skip files larger than this (default 256)
+          --max-file-size <MiB>  Skip files larger than this (default 10240, i.e. 10 GiB; piped input up to 1 GiB)
           --timeout <seconds>    Per-item time limit (default 60)
           --parallelism <n>      Items scanned concurrently (default: CPU count, max 16)
           --quiet                Print only the summary in text mode
@@ -315,10 +315,6 @@ public sealed record CliOptions
             {
                 throw new CliUsageException("With --service only --json, --output, --include-clean, --quiet and --dev can be used; the service applies its own engines and limits.");
             }
-        }
-        else if (!options.NoSandbox && options.MaxFileSizeBytes > 1024L * 1024 * 1024)
-        {
-            throw new CliUsageException("Sandboxed scanning supports files up to 1024 MiB; use a smaller --max-file-size.");
         }
 
         return options with { Targets = targets, SignatureFiles = signatures, RuleFiles = rules, ModelFiles = models, Excludes = excludes };

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kshatriya.Core;
 using Kshatriya.Scanning.Targets;
 
 namespace Kshatriya.Service;
@@ -29,7 +30,7 @@ public sealed record ServiceSettings
 
     public bool HeuristicsIncludeSigned { get; init; }
 
-    public long MaxFileSizeBytes { get; init; } = 256L * 1024 * 1024;
+    public long MaxFileSizeBytes { get; init; } = ScanLimits.DefaultMaxFileSizeBytes;
 
     public int ReportRetention { get; init; } = 30;
 
@@ -112,7 +113,7 @@ public sealed record ServiceSettings
             RuleFiles = ValidateFiles(dto.RuleFiles, "ruleFiles"),
             Heuristics = dto.Heuristics ?? defaults.Heuristics,
             HeuristicsIncludeSigned = dto.HeuristicsIncludeSigned ?? defaults.HeuristicsIncludeSigned,
-            MaxFileSizeBytes = Range(dto.MaxFileSizeMiB, (int)(defaults.MaxFileSizeBytes >> 20), 1, 1024, "maxFileSizeMiB") * 1024L * 1024,
+            MaxFileSizeBytes = Range(dto.MaxFileSizeMiB, (int)(defaults.MaxFileSizeBytes >> 20), 1, 65536, "maxFileSizeMiB") * 1024L * 1024,
             ReportRetention = Range(dto.ReportRetention, defaults.ReportRetention, 1, 1000, "reportRetention"),
             MaxConcurrentScans = Range(dto.MaxConcurrentScans, defaults.MaxConcurrentScans, 1, 8, "maxConcurrentScans"),
             ScheduledScans = schedules,

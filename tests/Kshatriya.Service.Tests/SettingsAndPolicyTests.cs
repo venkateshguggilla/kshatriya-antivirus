@@ -49,7 +49,7 @@ public class SettingsAndPolicyTests
     [InlineData("""{ "schemaVersion": 2 }""", "schemaVersion")]
     [InlineData("""{ "schemaVersion": 1, "unknown": true }""", "not valid")]
     [InlineData("""{ "schemaVersion": 1, "workers": 0 }""", "workers")]
-    [InlineData("""{ "schemaVersion": 1, "maxFileSizeMiB": 4096 }""", "maxFileSizeMiB")]
+    [InlineData("""{ "schemaVersion": 1, "maxFileSizeMiB": 65537 }""", "maxFileSizeMiB")]
     [InlineData("""{ "schemaVersion": 1, "signatureFiles": ["\\\\server\\share\\x.hashdb"] }""", "local path")]
     [InlineData("""{ "schemaVersion": 1, "scheduledScans": [{ "name": "a", "days": ["funday"], "time": "03:00", "paths": ["C:\\"] }] }""", "unknown day")]
     [InlineData("""{ "schemaVersion": 1, "scheduledScans": [{ "name": "a", "days": ["daily"], "time": "3pm", "paths": ["C:\\"] }] }""", "HH:mm")]

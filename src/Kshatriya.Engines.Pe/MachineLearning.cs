@@ -252,16 +252,28 @@ public sealed class MlEngine : IDetectionEngine
             return [];
         }
 
+        if (subject.Memory is { } memory)
+        {
+            // A mapped file is examined in place.
+            cancellationToken.ThrowIfCancellationRequested();
+            return Evaluate(memory.Prefix(), subject.Trust);
+        }
+
         byte[] data = GC.AllocateUninitializedArray<byte>((int)subject.Length);
         subject.Content.Position = 0;
         await subject.Content.ReadExactlyAsync(data, cancellationToken);
-        if (data[0] != 'M' || data[1] != 'Z' || !PeImage.TryParse(data, out PeImage? image, out _))
+        cancellationToken.ThrowIfCancellationRequested();
+        return Evaluate(data, subject.Trust);
+    }
+
+    private IReadOnlyList<Detection> Evaluate(ReadOnlySpan<byte> data, FileTrust? trust)
+    {
+        if (data.Length < 2 || data[0] != 'M' || data[1] != 'Z' || !PeImage.TryParse(data, out PeImage? image, out _))
         {
             return [];
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        double score = _model.Score(PeFeatures.Extract(data, image!, subject.Trust));
+        double score = _model.Score(PeFeatures.Extract(data, image!, trust));
         if (score < _model.Threshold)
         {
             return [];

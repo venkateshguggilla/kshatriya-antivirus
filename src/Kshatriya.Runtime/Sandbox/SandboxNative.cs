@@ -163,6 +163,13 @@ internal static unsafe partial class SandboxNative
     [LibraryImport("kernel32.dll")]
     internal static partial IntPtr GetCurrentProcess();
 
+    /// <summary>FILE_MAP_READ: the only right a worker gets on a shared section.</summary>
+    internal const uint FileMapRead = 0x0004;
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool DuplicateHandle(IntPtr sourceProcess, IntPtr source, SafeKernelHandle targetProcess, out IntPtr target, uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint options);
+
     internal const uint HandleFlagInherit = 0x1;
 
     [LibraryImport("kernel32.dll", SetLastError = true)]

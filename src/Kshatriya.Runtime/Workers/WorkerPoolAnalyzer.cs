@@ -3,6 +3,7 @@ using Kshatriya.Core;
 using Kshatriya.Protocol;
 using Kshatriya.Runtime.Sandbox;
 using Kshatriya.Scanning;
+using Kshatriya.Scanning.Native;
 
 namespace Kshatriya.Runtime.Workers;
 
@@ -81,7 +82,8 @@ public sealed class WorkerPoolAnalyzer : IContentAnalyzer, IDisposable
         _options = options;
         _config = config;
         _slots = new SemaphoreSlim(options.WorkerCount, options.WorkerCount);
-        _maxFrameBytes = (int)Math.Min(FrameIO.AbsoluteMaxFrameBytes, options.Engines.MaxScanBytes + (2L << 20));
+        // Frames carry only content that is not a file (standard input); files are shared as mapped sections.
+        _maxFrameBytes = (int)Math.Min(FrameIO.AbsoluteMaxFrameBytes, Math.Min(options.Engines.MaxScanBytes, ScanLimits.MaxStreamBytes) + (2L << 20));
         Engines = [];
         ConfigurationFingerprint = string.Empty;
     }
@@ -100,11 +102,6 @@ public sealed class WorkerPoolAnalyzer : IContentAnalyzer, IDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentOutOfRangeException.ThrowIfLessThan(options.WorkerCount, 1);
-        if (options.Engines.MaxScanBytes > FrameIO.AbsoluteMaxFrameBytes - (2L << 20))
-        {
-            throw new WorkerStartException("The maximum file size for sandboxed scanning is 1 GiB.");
-        }
-
         var pool = new WorkerPoolAnalyzer(options, options.Engines.ToDto());
         try
         {
@@ -126,9 +123,10 @@ public sealed class WorkerPoolAnalyzer : IContentAnalyzer, IDisposable
     {
         ArgumentNullException.ThrowIfNull(request);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        if (request.Length + (1L << 20) > _maxFrameBytes)
+        bool canMap = request.File is not null && request.Length > 0;
+        if (!canMap && request.Length + (1L << 20) > _maxFrameBytes)
         {
-            return AnalysisResult.Failed(ScanReason.TooLarge, "Content is larger than the sandboxed worker limit.");
+            return AnalysisResult.Failed(ScanReason.TooLarge, "Content is larger than the sandboxed worker limit for content that is not a file (1 GiB).");
         }
 
         try
@@ -319,6 +317,35 @@ public sealed class WorkerPoolAnalyzer : IContentAnalyzer, IDisposable
                 soft = TimeSpan.FromMilliseconds(100);
             }
 
+            // A file on disk is shared as a read-only mapped section (any size, no copy through the pipe);
+            // other content is streamed in the frame. Either way the worker never sees a path.
+            long? section = null;
+            if (request.File is { } file && request.Length > 0)
+            {
+                try
+                {
+                    using SafeSectionHandle mapping = FileMapping.CreateReadOnlySection(file);
+                    if (RandomAccess.GetLength(file) != request.Length)
+                    {
+                        return (AnalysisResult.Failed(ScanReason.IoError, "The file changed size while it was being scanned."), WorkerOutcome.Healthy);
+                    }
+
+                    section = process.ShareReadOnlySection(mapping);
+                }
+                catch (IOException) when (request.Length + (1L << 20) <= maxFrameBytes)
+                {
+                    // Not mappable here (some network or virtual file systems): stream it instead.
+                }
+                catch (IOException ex)
+                {
+                    return (AnalysisResult.Failed(ScanReason.IoError, ex.Message), WorkerOutcome.Healthy);
+                }
+                catch (SandboxException ex)
+                {
+                    return (AnalysisResult.Failed(ScanReason.EngineError, $"Could not share the file with the scan worker: {ex.Message}"), WorkerOutcome.Recycle);
+                }
+            }
+
             var header = new AnalyzeDto
             {
                 Id = id,
@@ -327,14 +354,22 @@ public sealed class WorkerPoolAnalyzer : IContentAnalyzer, IDisposable
                 Sha256 = request.Sha256,
                 Trust = request.Trust?.ToDto(),
                 BudgetMs = (long)soft.TotalMilliseconds,
+                Section = section,
             };
 
             // Past the item deadline the worker is killed: nothing it does can hold the scan hostage.
             CancellationTokenRegistration kill = cancellationToken.Register(process.Kill);
             try
             {
-                request.Content.Position = 0;
-                await FrameIO.WriteAsync(process.Input, MessageType.Analyze, ProtocolJson.Serialize(header), request.Content, request.Length, CancellationToken.None);
+                if (section is not null)
+                {
+                    await FrameIO.WriteAsync(process.Input, MessageType.Analyze, ProtocolJson.Serialize(header), cancellationToken: CancellationToken.None);
+                }
+                else
+                {
+                    request.Content.Position = 0;
+                    await FrameIO.WriteAsync(process.Input, MessageType.Analyze, ProtocolJson.Serialize(header), request.Content, request.Length, CancellationToken.None);
+                }
             }
             catch (Exception ex) when (ex is IOException or ProtocolException or ObjectDisposedException)
             {

@@ -4,6 +4,7 @@ using Kshatriya.Protocol;
 using Kshatriya.Runtime;
 using Kshatriya.Runtime.Sandbox;
 using Kshatriya.Scanning;
+using Kshatriya.Scanning.Native;
 
 namespace Kshatriya.Worker;
 
@@ -78,7 +79,8 @@ internal static class Program
             var analyzer = new InProcessAnalyzer(engines.Engines, configuration.Archives, configuration.MaxScanBytes);
             await ReplyInitAsync(output, analyzer.Engines, analyzer.ConfigurationFingerprint, integrity, engines.Warnings, error: null);
 
-            var limits = new FrameLimits((int)Math.Min(FrameIO.AbsoluteMaxFrameBytes, configuration.MaxScanBytes + (2L << 20)), 1 << 20);
+            // Frames carry only content that is not a file; files arrive as read-only mapped sections.
+            var limits = new FrameLimits((int)Math.Min(FrameIO.AbsoluteMaxFrameBytes, Math.Min(configuration.MaxScanBytes, ScanLimits.MaxStreamBytes) + (2L << 20)), 1 << 20);
             while (true)
             {
                 Frame? frame = await FrameIO.ReadAsync(input, limits);
@@ -102,9 +104,11 @@ internal static class Program
     private static async Task AnalyzeAsync(InProcessAnalyzer analyzer, Frame frame, Stream output, bool testHooks)
     {
         AnalyzeDto header = ProtocolJson.Deserialize<AnalyzeDto>(frame.Json);
-        if (header.Length != frame.Binary.Length || header.BudgetMs <= 0)
+        bool mapped = header.Section is not null;
+        if (header.BudgetMs <= 0 || header.Length < 0
+            || (mapped ? frame.Binary.Length != 0 || header.Length == 0 : header.Length != frame.Binary.Length))
         {
-            throw new ProtocolException("Analyze request has an inconsistent length or budget.");
+            throw new ProtocolException("Analyze request has an inconsistent length, budget or content.");
         }
 
         if (testHooks)
@@ -121,21 +125,54 @@ internal static class Program
             }
         }
 
-        using MemoryStream content = frame.OpenBinary();
         TimeSpan budget = TimeSpan.FromMilliseconds(header.BudgetMs);
         using var deadline = new CancellationTokenSource(budget);
-        AnalysisResult result = await analyzer.AnalyzeAsync(
-            new AnalysisRequest(header.DisplayPath, header.Length, header.Sha256, content, header.Trust?.ToDomain(), budget),
-            deadline.Token);
+        AnalysisResult result;
+        if (header.Section is long value)
+        {
+            // The broker shared a read-only section (FILE_MAP_READ only). Map it, check that the view covers
+            // the stated length, and close the handle when done.
+            using var section = new SafeSectionHandle(checked((IntPtr)value), ownsHandle: true);
+            MappedView view;
+            try
+            {
+                view = MappedView.Map(section, header.Length);
+            }
+            catch (IOException ex)
+            {
+                await ReplyAsync(output, header.Id, new AnalysisResult([], ScanReason.IoError, ex.Message));
+                return;
+            }
 
+            using (view)
+            {
+                using UnmanagedMemoryStream content = view.OpenStream();
+                result = await analyzer.AnalyzeAsync(
+                    new AnalysisRequest(header.DisplayPath, header.Length, header.Sha256, content, header.Trust?.ToDomain(), budget, Memory: view.Memory),
+                    deadline.Token);
+            }
+        }
+        else
+        {
+            using MemoryStream content = frame.OpenBinary();
+            result = await analyzer.AnalyzeAsync(
+                new AnalysisRequest(header.DisplayPath, header.Length, header.Sha256, content, header.Trust?.ToDomain(), budget),
+                deadline.Token);
+        }
+
+        await ReplyAsync(output, header.Id, result);
+    }
+
+    private static Task ReplyAsync(Stream output, long id, AnalysisResult result)
+    {
         var reply = new AnalyzeReplyDto
         {
-            Id = header.Id,
+            Id = id,
             Detections = [.. result.Detections.Select(d => d.ToDto())],
             Reason = WireNames.Of(result.Reason),
             Message = result.Message,
         };
-        await FrameIO.WriteAsync(output, MessageType.AnalyzeReply, ProtocolJson.Serialize(reply));
+        return FrameIO.WriteAsync(output, MessageType.AnalyzeReply, ProtocolJson.Serialize(reply));
     }
 
     private static Task ReplyInitAsync(Stream output, IReadOnlyList<EngineInfo> engines, string fingerprint, string integrity, IReadOnlyList<string> warnings, string? error)

@@ -20,7 +20,7 @@ public sealed record YaraEngineOptions
     public TimeSpan ScanTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>Content larger than this is not scanned by YARA (the item is then reported incomplete).</summary>
-    public long MaxScanBytes { get; init; } = 256L * 1024 * 1024;
+    public long MaxScanBytes { get; init; } = ScanLimits.DefaultMaxFileSizeBytes;
 }
 
 /// <summary>Raised when YARA sources fail to compile.</summary>
@@ -148,6 +148,18 @@ public sealed class YaraEngine : IDetectionEngine, IDisposable
             throw new InvalidOperationException($"Content exceeds the YARA scan limit of {_options.MaxScanBytes} bytes.");
         }
 
+        if (subject.Memory is { } memory)
+        {
+            // A mapped file: scanned in place, whatever its size, without a copy.
+            cancellationToken.ThrowIfCancellationRequested();
+            return ScanMemory(memory);
+        }
+
+        if (subject.Length > ContentMemory.MaxSpanLength)
+        {
+            throw new InvalidOperationException("Content larger than 2 GiB can only be scanned from a mapped file.");
+        }
+
         byte[] data = GC.AllocateUninitializedArray<byte>((int)subject.Length);
         subject.Content.Position = 0;
         await subject.Content.ReadExactlyAsync(data, cancellationToken);
@@ -158,21 +170,35 @@ public sealed class YaraEngine : IDetectionEngine, IDisposable
     /// <summary>Scans a buffer synchronously.</summary>
     public unsafe IReadOnlyList<Detection> Scan(ReadOnlySpan<byte> data)
     {
+        fixed (byte* p = data)
+        {
+            return ScanPointer(p, data.Length);
+        }
+    }
+
+    /// <summary>Scans content already in memory (for example a mapped file) synchronously.</summary>
+    public unsafe IReadOnlyList<Detection> ScanMemory(ContentMemory memory)
+    {
+        ArgumentNullException.ThrowIfNull(memory);
+        return ScanPointer(memory.Start, memory.Length);
+    }
+
+    private unsafe List<Detection> ScanPointer(byte* data, long length)
+    {
         IntPtr scanner = RentScanner();
         var collector = new MatchCollector();
         GCHandle handle = GCHandle.Alloc(collector);
         try
         {
+            // The time limit grows with the content: the base limit plus one second per 32 MiB.
+            TimeSpan limit = _options.ScanTimeout + TimeSpan.FromSeconds(length / (32.0 * 1024 * 1024));
+            Check(ScannerSetTimeout(scanner, (ulong)Math.Max(1, Math.Ceiling(limit.TotalSeconds))), "set the scan timeout");
             Check(ScannerOnMatchingRule(scanner, &OnMatchingRule, GCHandle.ToIntPtr(handle)), "register the match callback");
-            int result;
-            fixed (byte* p = data)
-            {
-                result = ScannerScan(scanner, p, (nuint)data.Length);
-            }
+            int result = ScannerScan(scanner, data, (nuint)length);
 
             if (result == ScanTimeout)
             {
-                throw new EngineTimeoutException($"YARA scan exceeded {_options.ScanTimeout.TotalSeconds:F0}s.");
+                throw new EngineTimeoutException($"YARA scan exceeded {limit.TotalSeconds:F0}s.");
             }
 
             Check(result, "scan");

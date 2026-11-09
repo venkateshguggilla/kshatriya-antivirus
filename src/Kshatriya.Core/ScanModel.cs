@@ -207,11 +207,26 @@ public sealed record ScanItemResult
 /// <summary>Resource limits applied to every scanned item.</summary>
 public sealed record ScanLimits
 {
-    /// <summary>Files larger than this are reported as <see cref="ScanReason.TooLarge"/> instead of being read.</summary>
-    public long MaxFileSizeBytes { get; init; } = 256L * 1024 * 1024;
+    /// <summary>Default <see cref="MaxFileSizeBytes"/>: 10 GiB.</summary>
+    public const long DefaultMaxFileSizeBytes = 10L * 1024 * 1024 * 1024;
 
-    /// <summary>Wall-clock budget for reading and scanning one item.</summary>
+    /// <summary>
+    /// Largest content that is not a file on disk (standard input, archive members): it has to be held in
+    /// memory and sent to a worker in one message. Files are mapped instead and can be much larger.
+    /// </summary>
+    public const long MaxStreamBytes = 1L << 30;
+
+    /// <summary>Files larger than this are reported as <see cref="ScanReason.TooLarge"/> instead of being read.</summary>
+    public long MaxFileSizeBytes { get; init; } = DefaultMaxFileSizeBytes;
+
+    /// <summary>Wall-clock budget for reading and scanning one item, plus <see cref="SecondsPerGiB"/> per GiB of it.</summary>
     public TimeSpan PerItemTimeout { get; init; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>Extra time per GiB of an item (default 30 s, about 34 MiB/s), so large files are not cut off.</summary>
+    public double SecondsPerGiB { get; init; } = 30;
+
+    /// <summary>The time limit for an item of <paramref name="length"/> bytes.</summary>
+    public TimeSpan TimeoutFor(long length) => PerItemTimeout + TimeSpan.FromSeconds(SecondsPerGiB * Math.Max(0, length) / (1L << 30));
 
     /// <summary>Number of items scanned concurrently.</summary>
     public int MaxDegreeOfParallelism { get; init; } = Math.Clamp(Environment.ProcessorCount, 1, 16);

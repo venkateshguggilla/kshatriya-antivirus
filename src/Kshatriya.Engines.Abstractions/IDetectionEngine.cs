@@ -14,7 +14,7 @@ public sealed record EngineDescriptor(string Id, string Version, string ContentV
 /// </summary>
 public sealed class ScanSubject
 {
-    public ScanSubject(string displayPath, long length, string sha256, Stream content, FileTrust? trust = null, string? location = null)
+    public ScanSubject(string displayPath, long length, string sha256, Stream content, FileTrust? trust = null, string? location = null, ContentMemory? memory = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(displayPath);
         ArgumentException.ThrowIfNullOrEmpty(sha256);
@@ -30,7 +30,14 @@ public sealed class ScanSubject
         Content = content;
         Trust = trust;
         Location = location;
+        Memory = memory is not null && memory.Length == length ? memory : null;
     }
+
+    /// <summary>
+    /// The same content as one block of memory when it is available (a mapped file): engines should prefer
+    /// it to copying <see cref="Content"/>, and must use it for content larger than a byte array can hold.
+    /// </summary>
+    public ContentMemory? Memory { get; }
 
     /// <summary>Path or name used only for reporting. Engines must not open this path themselves.</summary>
     public string DisplayPath { get; }

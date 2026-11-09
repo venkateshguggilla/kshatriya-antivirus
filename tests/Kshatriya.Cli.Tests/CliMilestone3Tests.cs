@@ -22,7 +22,6 @@ public class CliMilestone3Tests
     [InlineData("scan", "--service", "--stdin")]
     [InlineData("scan", "--dev", "C:\\x")]
     [InlineData("status", "--json")]
-    [InlineData("scan", "C:\\x", "--max-file-size", "2048")]
     public async Task Invalid_milestone_3_option_combinations_are_usage_errors(params string[] args)
     {
         var (code, _, err) = await Run(args);
@@ -31,13 +30,15 @@ public class CliMilestone3Tests
         Assert.StartsWith("error:", err, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void Large_files_are_allowed_without_the_sandbox()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Large_files_are_allowed_with_or_without_the_sandbox(bool noSandbox)
     {
-        CliOptions options = CliOptions.Parse(["scan", @"C:\x", "--max-file-size", "2048", "--no-sandbox"]);
+        CliOptions options = CliOptions.Parse(noSandbox ? ["scan", @"C:\x", "--max-file-size", "20480", "--no-sandbox"] : ["scan", @"C:\x", "--max-file-size", "20480"]);
 
-        Assert.True(options.NoSandbox);
-        Assert.Equal(2048L * 1024 * 1024, options.MaxFileSizeBytes);
+        Assert.Equal(noSandbox, options.NoSandbox);
+        Assert.Equal(20480L * 1024 * 1024, options.MaxFileSizeBytes);
     }
 
     [Fact]

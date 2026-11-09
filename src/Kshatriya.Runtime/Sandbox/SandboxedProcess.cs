@@ -91,6 +91,30 @@ public sealed class SandboxedProcess : IDisposable
 
     public int ProcessId { get; }
 
+    /// <summary>
+    /// Gives the child read-only access to a file-mapping section: the handle is duplicated into the child
+    /// with FILE_MAP_READ as its only right (it cannot map for writing, change the section or reach the file).
+    /// Returns the handle value as seen by the child, which closes it when done.
+    /// </summary>
+    public long ShareReadOnlySection(SafeHandle section)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        bool added = false;
+        try
+        {
+            section.DangerousAddRef(ref added);
+            Check(SandboxNative.DuplicateHandle(SandboxNative.GetCurrentProcess(), section.DangerousGetHandle(), _process, out IntPtr target, SandboxNative.FileMapRead, false, 0), "DuplicateHandle");
+            return target;
+        }
+        finally
+        {
+            if (added)
+            {
+                section.DangerousRelease();
+            }
+        }
+    }
+
     /// <summary>Writes to the child's standard input.</summary>
     public Stream Input => _stdin;
 

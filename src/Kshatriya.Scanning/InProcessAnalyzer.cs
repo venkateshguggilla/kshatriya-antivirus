@@ -1,6 +1,7 @@
 using Kshatriya.Core;
 using Kshatriya.Engines;
 using Kshatriya.Scanning.Archives;
+using Kshatriya.Scanning.Native;
 
 namespace Kshatriya.Scanning;
 
@@ -35,14 +36,46 @@ public sealed class InProcessAnalyzer : IContentAnalyzer
     {
         ArgumentNullException.ThrowIfNull(request);
         var collector = new Collector();
-        var subject = new ScanSubject(request.DisplayPath, request.Length, request.Sha256, request.Content, request.Trust);
-        try
+
+        // Engines read the content in place when it is mapped: given by the worker host, or mapped here from
+        // the already-opened file. Without a mapping they read the stream, which works up to 2 GiB.
+        MappedView? view = null;
+        ContentMemory? memory = request.Memory;
+        if (memory is null && request.File is { } file && request.Length > 0)
         {
-            await AnalyzeAsync(subject, depth: 0, new ArchiveBudget(_archives), collector, cancellationToken);
+            try
+            {
+                using SafeSectionHandle section = FileMapping.CreateReadOnlySection(file);
+                view = MappedView.Map(section, request.Length);
+                memory = view.Memory;
+            }
+            catch (IOException) when (request.Length <= ContentMemory.MaxSpanLength)
+            {
+                // Mapping is not available here (for example some network or virtual file systems).
+            }
+            catch (IOException ex)
+            {
+                return AnalysisResult.Failed(ScanReason.IoError, ex.Message);
+            }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+
+        using (view)
         {
-            collector.SetFailure(ScanReason.Timeout, "Per-item time limit exceeded.");
+            if (memory is null && request.Length > ContentMemory.MaxSpanLength)
+            {
+                return AnalysisResult.Failed(ScanReason.TooLarge, "Content larger than 2 GiB can only be scanned from a file that can be mapped.");
+            }
+
+            using UnmanagedMemoryStream? mappedStream = view?.OpenStream();
+            var subject = new ScanSubject(request.DisplayPath, request.Length, request.Sha256, mappedStream ?? request.Content, request.Trust, memory: memory);
+            try
+            {
+                await AnalyzeAsync(subject, depth: 0, new ArchiveBudget(_archives), collector, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                collector.SetFailure(ScanReason.Timeout, "Per-item time limit exceeded.");
+            }
         }
 
         return collector.ToResult();

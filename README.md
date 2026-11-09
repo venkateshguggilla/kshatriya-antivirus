@@ -16,7 +16,7 @@
   - Never follows symbolic links, junctions or other reparse points inside a tree (they are reported as skipped)
   - Never reads cloud placeholders (OneDrive "online-only" files), so it cannot trigger downloads
   - Supports paths longer than 260 characters
-  - Per-file size limit and time limit; locked, denied, oversized or timed-out files are reported as **not scanned**, never silently ignored
+  - Per-file size limit (default **10 GiB**, `maxFileSizeMiB` up to 64 GiB) and a time limit that grows with file size (60 s plus 30 s per GiB); locked, denied, oversized or timed-out files are reported as **not scanned**, never silently ignored. Files are mapped read-only and shared with the sandboxed worker instead of being copied, so a 10 GB file does not need 10 GB of memory ([ADR 0017](docs/adr/0017-large-file-scanning.md)); piped input (`--stdin`) is limited to 1 GiB
   - Text output for people, versioned JSON output for tools ([schema v4](docs/schemas/scan-report.v4.schema.json))
 - `kshatriya scan --stdin`: scans piped data (useful for the EICAR test string without writing it to disk)
 - **Scan types:** **quick** (`--quick`: startup entries from the Run keys and Startup folders, running programs, Windows services, and your Downloads, Desktop, Temp and Startup folders; minutes), **full** (`--full`: every fixed drive; can take hours), **drive** (give a drive root such as `E:\`, including USB drives) and **custom** (any files and folders). The app offers the same four, and Explorer's right-click menu has "Scan with Kshatriya Antivirus" for files, folders and drives (on Windows 11 under "Show more options"). A quick scan you start covers your own profile and system locations, never other users' profiles; scheduled quick scans cover all profiles ([ADR 0016](docs/adr/0016-scan-types.md)).
@@ -84,7 +84,7 @@ Optional `%ProgramData%\Kshatriya\config\service.json` (development: `%LOCALAPPD
   "workers": 4,
   "signatureFiles": ["C:\\ProgramData\\Kshatriya\\signatures\\extra.hashdb"],
   "ruleFiles": [],
-  "maxFileSizeMiB": 256,
+  "maxFileSizeMiB": 10240,
   "maxConcurrentScans": 2,
   "reportRetention": 30,
   "scheduledScans": [

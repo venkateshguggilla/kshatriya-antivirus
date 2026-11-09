@@ -47,6 +47,13 @@ public sealed class PeHeuristicEngine : IDetectionEngine
             return [];
         }
 
+        if (subject.Memory is { } memory)
+        {
+            // A mapped file is examined in place.
+            cancellationToken.ThrowIfCancellationRequested();
+            return Evaluate(memory.Prefix());
+        }
+
         byte[] header = new byte[2];
         subject.Content.Position = 0;
         if (await subject.Content.ReadAtLeastAsync(header, 2, throwOnEndOfStream: false, cancellationToken) < 2 || header[0] != 'M' || header[1] != 'Z')
@@ -58,8 +65,12 @@ public sealed class PeHeuristicEngine : IDetectionEngine
         subject.Content.Position = 0;
         await subject.Content.ReadExactlyAsync(data, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
+        return Evaluate(data);
+    }
 
-        if (!PeImage.TryParse(data, out PeImage? image, out _))
+    private IReadOnlyList<Detection> Evaluate(ReadOnlySpan<byte> data)
+    {
+        if (data.Length < 2 || data[0] != 'M' || data[1] != 'Z' || !PeImage.TryParse(data, out PeImage? image, out _))
         {
             return []; // Not a well-formed PE; other engines still examine the bytes.
         }

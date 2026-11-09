@@ -44,7 +44,7 @@ public static class MessageType
 /// <summary>Protocol versions. A peer that sees a different version refuses to continue.</summary>
 public static class ProtocolVersion
 {
-    public const int Worker = 2;
+    public const int Worker = 3;
     public const int Service = 8;
 }
 
@@ -161,6 +161,12 @@ public sealed class AnalyzeDto
     public TrustDto? Trust { get; init; }
 
     public required long BudgetMs { get; init; }
+
+    /// <summary>
+    /// A read-only file-mapping handle the broker duplicated into the worker (FILE_MAP_READ only). When set,
+    /// the content is mapped from it and the frame carries no bytes; the worker closes the handle.
+    /// </summary>
+    public long? Section { get; init; }
 }
 
 public sealed class AnalyzeReplyDto
