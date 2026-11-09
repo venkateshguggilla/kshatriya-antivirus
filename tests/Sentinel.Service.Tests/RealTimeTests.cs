@@ -106,8 +106,10 @@ public sealed class RealTimeTests : IDisposable
     {
         var source = new FakeProcessSource();
         await using RunningService service = await RunningService.StartAsync(Settings(processes: true), processes: source);
-        string image = _watched.File(@"apps\tool.exe", service.KnownBad);
-        await Task.Delay(300);
+        // Outside the watched folders, so only the process source can report it (the file watcher would
+        // otherwise race it and record the detection as "real-time (file)").
+        using var unwatched = new TempDirectory();
+        string image = unwatched.File(@"apps\tool.exe", service.KnownBad);
 
         source.Raise(image);
 
