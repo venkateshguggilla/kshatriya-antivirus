@@ -48,7 +48,7 @@ The owner wants Kshatriya to be open source with free signing.
   (`KshatriyaService`), folders (`%ProgramFiles%\Kshatriya`, `%ProgramData%\Kshatriya`) and format identifiers
   (`.kstu` content packages, `KSTU`/`KSTQ` magic). Nothing was released under the old name, so the old formats
   are not read. A web search found no antivirus product with this name; no formal trademark search was done.
-  The GitHub repository is still named `sentinel-antivirus`; renaming it is the owner's choice (GitHub
+  The GitHub repository was renamed from `sentinel-antivirus` to `kshatriya-antivirus` the same day (GitHub
   redirects old links).
 - Publish a first release, then apply at signpath.org. After acceptance, create the SignPath project,
   signing policy (product name and version restrictions) and artifact configuration. Then set the

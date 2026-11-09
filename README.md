@@ -246,7 +246,7 @@ Releases are not signed yet. Signing through SignPath Foundation has been applie
 
 Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
 
-- Committers and reviewers: [repository members](https://github.com/venkateshguggilla/sentinel-antivirus/graphs/contributors)
+- Committers and reviewers: [repository members](https://github.com/venkateshguggilla/kshatriya-antivirus/graphs/contributors)
 - Approvers: [repository owner](https://github.com/venkateshguggilla)
 
 Only binaries built by this repository's GitHub Actions release workflow from a tagged commit are signed, and

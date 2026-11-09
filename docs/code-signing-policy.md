@@ -9,7 +9,7 @@ Free code signing provided by [SignPath.io](https://about.signpath.io), certific
 
 | Role | Who | Responsibility |
 |---|---|---|
-| Committers and reviewers | [repository members](https://github.com/venkateshguggilla/sentinel-antivirus/graphs/contributors) | Write and review changes; changes from non-members are reviewed before merging |
+| Committers and reviewers | [repository members](https://github.com/venkateshguggilla/kshatriya-antivirus/graphs/contributors) | Write and review changes; changes from non-members are reviewed before merging |
 | Approvers | [repository owner](https://github.com/venkateshguggilla) | Approve each signing request in SignPath by hand |
 
 Everyone in these roles uses multi-factor authentication for GitHub and SignPath.
