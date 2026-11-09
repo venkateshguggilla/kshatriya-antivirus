@@ -5,6 +5,7 @@
         Title="{Binding Title}"
         Width="1180" Height="780" MinWidth="560" MinHeight="480"
         WindowStartupLocation="CenterScreen"
+        Icon="pack://application:,,,/Kshatriya.App;component/Assets/kshatriya.ico"
         Background="{DynamicResource ApplicationBackgroundBrush}">
   <Grid>
     <Grid.ColumnDefinitions>
@@ -19,9 +20,10 @@
       <DockPanel Margin="8,18,8,14">
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10,0,0,22"
                     AutomationProperties.Name="Kshatriya Antivirus">
-          <Border Width="34" Height="34" CornerRadius="8" Background="{DynamicResource AccentFillColorDefaultBrush}">
-            <TextBlock Style="{StaticResource Glyph}" Text="{x:Static vm:Glyphs.Shield}" FontSize="18"
-                       HorizontalAlignment="Center" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+          <Border Width="40" Height="40" CornerRadius="8" ClipToBounds="True">
+            <Border.Background>
+              <ImageBrush ImageSource="pack://application:,,,/Kshatriya.App;component/Assets/emblem-256.png" Stretch="UniformToFill" />
+            </Border.Background>
           </Border>
           <StackPanel x:Name="Wordmark" Margin="12,0,0,0" VerticalAlignment="Center">
             <TextBlock Text="Kshatriya" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />

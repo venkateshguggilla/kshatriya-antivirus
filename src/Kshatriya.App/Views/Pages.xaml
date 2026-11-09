@@ -350,11 +350,19 @@
     <StackPanel MaxWidth="760" HorizontalAlignment="Left">
       <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PageHeader}" Focusable="False" />
       <Border Style="{StaticResource Surface}" Margin="0,20,0,0">
-        <StackPanel>
+        <DockPanel>
+          <Border DockPanel.Dock="Left" Width="112" Height="112" CornerRadius="12" Margin="0,0,20,0" ClipToBounds="True"
+                  AutomationProperties.Name="Kshatriya emblem: an archer drawing a bow">
+            <Border.Background>
+              <ImageBrush ImageSource="pack://application:,,,/Kshatriya.App;component/Assets/emblem-256.png" Stretch="UniformToFill" />
+            </Border.Background>
+          </Border>
+        <StackPanel VerticalAlignment="Center">
           <TextBlock Text="{Binding Version}" FontWeight="SemiBold" FontSize="15" />
           <TextBlock Text="{Binding Endpoint}" Style="{StaticResource Secondary}" Margin="0,4,0,0" />
           <TextBlock Text="Open source under the Apache License 2.0." Style="{StaticResource Secondary}" Margin="0,4,0,0" />
         </StackPanel>
+        </DockPanel>
       </Border>
       <TextBlock Text="Status" Style="{StaticResource SectionTitle}" />
       <TextBlock Text="{Binding Status}" Style="{StaticResource Secondary}" />

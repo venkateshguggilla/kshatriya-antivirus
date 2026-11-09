@@ -1,8 +1,10 @@
+<p align="center"><img src="assets/brand/kshatriya-icon-512.png" alt="Kshatriya emblem: an archer drawing a bow" width="160"></p>
+
 # Kshatriya Antivirus
 
 > **Status: Milestone 12 prototype (roadmap M1–M12 complete as prototypes).** Kshatriya is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
 
-"Kshatriya" is a working name and will change before any release.
+"Kshatriya" means warrior; the emblem is an archer drawing a bow ([brand assets](assets/brand/README.md)).
 
 ## What works today (M1–M12)
 

@@ -8,6 +8,7 @@
     <RootNamespace>Kshatriya.App</RootNamespace>
     <AssemblyName>Kshatriya.App</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\kshatriya.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- WPF data binding needs culture data; the rest of the solution runs with invariant globalization. -->
     <InvariantGlobalization>false</InvariantGlobalization>
@@ -21,6 +22,10 @@
     <!-- Keep WPF's Application, MessageBox etc. unambiguous. -->
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\kshatriya.ico" />
+    <Resource Include="Assets\emblem-256.png" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Kshatriya.App.Tests" />

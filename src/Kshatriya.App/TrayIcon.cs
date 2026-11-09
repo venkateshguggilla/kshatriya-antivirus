@@ -27,13 +27,32 @@ internal sealed class TrayIcon : IDisposable
 
         _icon = new Forms.NotifyIcon
         {
-            Icon = System.Drawing.SystemIcons.Shield,
+            Icon = LoadIcon(),
             Text = "Kshatriya Antivirus",
             ContextMenuStrip = menu,
             Visible = true,
         };
         _icon.DoubleClick += (_, _) => open();
         _icon.BalloonTipClicked += (_, _) => NotificationClicked?.Invoke();
+    }
+
+    /// <summary>The app icon at the notification-area size, or the system shield if the resource is unavailable.</summary>
+    internal static System.Drawing.Icon LoadIcon()
+    {
+        try
+        {
+            var resource = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Kshatriya.App;component/Assets/kshatriya.ico"));
+            if (resource is not null)
+            {
+                using var stream = resource.Stream;
+                return new System.Drawing.Icon(stream, Forms.SystemInformation.SmallIconSize);
+            }
+        }
+        catch (IOException)
+        {
+        }
+
+        return System.Drawing.SystemIcons.Shield;
     }
 
     /// <summary>Raised when the user clicks the latest notification.</summary>
