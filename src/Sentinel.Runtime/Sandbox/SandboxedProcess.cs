@@ -40,7 +40,8 @@ public sealed class SandboxException : Exception
 /// <b>low</b> integrity, inside a Job Object that kills it when the parent goes away, forbids child
 /// processes, caps memory and blocks UI/clipboard access, with process mitigations (no extension points,
 /// no remote or low-label images, no non-system fonts, heap termination, ASLR). Only its standard
-/// handles are inherited; they are the only channel to the parent.
+/// handles are inherited; they are the only channel to the parent. It runs on a private window station
+/// and desktop (<see cref="WorkerDesktop"/>) whenever the broker may create one.
 /// </summary>
 /// <remarks>
 /// Low integrity blocks writes to almost every file, registry key and process of the user, but does not
@@ -212,10 +213,15 @@ public sealed class SandboxedProcess : IDisposable
                 // The child-process policy forbids that, and the worker would fail to initialise (0xC0000142).
                 char[] commandLine = $"\"{fullPath}\" {arguments}\0".ToCharArray();
                 char[] environment = BuildEnvironmentBlock();
+                // A private desktop the restricted, low-integrity token can connect to (see WorkerDesktop).
+                string? desktopPath = WorkerDesktop.Path;
+                char[] desktop = ((desktopPath ?? string.Empty) + "\0").ToCharArray();
                 SandboxNative.ProcessInformation info;
                 fixed (char* commandLinePtr = commandLine)
                 fixed (char* environmentPtr = environment)
+                fixed (char* desktopPtr = desktop)
                 {
+                    startup.StartupInfo.Desktop = desktopPath is null ? IntPtr.Zero : (IntPtr)desktopPtr;
                     Check(
                         SandboxNative.CreateProcessAsUser(
                             token,

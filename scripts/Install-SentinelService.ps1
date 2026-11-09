@@ -117,6 +117,8 @@ if ($PSCmdlet.ShouldProcess($serviceName, 'Register and start service')) {
 
     # Restart after a crash (5 s, 30 s, then every 5 minutes); reset the failure count after a day.
     sc.exe failure $serviceName reset= 86400 actions= restart/5000/restart/30000/restart/300000 | Out-Null
+    # Apply them also when the service stops itself with an error (for example a failed start).
+    sc.exe failureflag $serviceName 1 | Out-Null
     # Give the service its own SID so its resources can be ACLed to it specifically.
     sc.exe sidtype $serviceName unrestricted | Out-Null
 

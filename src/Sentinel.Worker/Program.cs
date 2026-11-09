@@ -158,6 +158,7 @@ internal static class Program
         (bool ok, string detail) = !testHooks ? (false, "probes-disabled") : probe.Kind switch
         {
             "integrity" => (true, TokenInfo.CurrentIntegrityLevel()),
+            "station" => (true, TokenInfo.CurrentWindowStation()),
             "write" => Try(() => File.WriteAllText(probe.Argument ?? throw new ArgumentException("path required"), "sandbox write probe")),
             "read" => Try(() => _ = File.ReadAllBytes(probe.Argument ?? throw new ArgumentException("path required"))),
             "spawn" => Try(() =>

@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.WindowsServices;
+using Microsoft.Extensions.Options;
 using Sentinel.Runtime.Ipc;
 
 namespace Sentinel.Service;
@@ -22,6 +24,11 @@ internal static class Program
             ContentRootPath = AppContext.BaseDirectory,
         });
         builder.Services.AddWindowsService(o => o.ServiceName = ServiceEndpoint.DefaultServiceName);
+        if (WindowsServiceHelpers.IsWindowsService())
+        {
+            builder.Services.AddSingleton<IHostLifetime, SentinelServiceLifetime>();
+        }
+
         builder.Services.AddSingleton(new ServiceCoreOptions
         {
             Paths = dev ? ServicePaths.ForDevelopment() : ServicePaths.ForProduction(),
@@ -32,6 +39,26 @@ internal static class Program
         using IHost host = builder.Build();
         await host.RunAsync();
         return Environment.ExitCode;
+    }
+}
+
+/// <summary>
+/// Reports <see cref="Environment.ExitCode"/> to the Service Control Manager when the service stops, so a
+/// failed start is a service failure (and triggers the restart actions set by the install script)
+/// rather than a clean stop.
+/// </summary>
+internal sealed class SentinelServiceLifetime(
+    IHostEnvironment environment,
+    IHostApplicationLifetime applicationLifetime,
+    ILoggerFactory loggerFactory,
+    IOptions<HostOptions> hostOptions,
+    IOptions<WindowsServiceLifetimeOptions> serviceOptions)
+    : WindowsServiceLifetime(environment, applicationLifetime, loggerFactory, hostOptions, serviceOptions)
+{
+    protected override void OnStop()
+    {
+        ExitCode = Environment.ExitCode;
+        base.OnStop();
     }
 }
 

@@ -26,6 +26,29 @@ public class SandboxTests
     }
 
     [Fact]
+    public async Task Worker_runs_on_a_private_window_station()
+    {
+        // Under LocalSystem the service's own window station admits only SYSTEM and Administrators, which
+        // the worker token makes deny-only; the worker must use a station of its own (0xC0000142 otherwise).
+        using WorkerPoolAnalyzer pool = await StartAsync(testHooks: true);
+
+        ProbeReplyDto reply = await pool.ProbeAsync(new ProbeDto { Kind = "station" }, ProbeTimeout);
+
+        Assert.True(reply.Succeeded);
+        // Only administrators and SYSTEM may create window stations (CI runs elevated); a standard user's
+        // workers inherit the interactive station, which grants the logon SID the worker keeps.
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        if (new System.Security.Principal.WindowsPrincipal(identity).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator))
+        {
+            Assert.StartsWith($"SentinelWorker-{Environment.ProcessId}-", reply.Detail, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Equal(TokenInfo.CurrentWindowStation(), reply.Detail);
+        }
+    }
+
+    [Fact]
     public async Task Worker_cannot_write_to_the_users_files()
     {
         using var temp = new TempDirectory();

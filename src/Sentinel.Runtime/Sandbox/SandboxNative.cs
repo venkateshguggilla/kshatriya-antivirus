@@ -259,6 +259,62 @@ internal static unsafe partial class SandboxNative
         ref StartupInfoEx startupInfo,
         out ProcessInformation processInformation);
 
+    // Window stations and desktops (winuser.h)
+    internal const uint WinstaAllAccess = 0x037F;
+    internal const uint ReadControl = 0x00020000;
+    internal const uint WriteOwner = 0x00080000;
+    internal const uint GenericAll = 0x10000000;
+    internal const uint CreateWindowStationFlagsNone = 0;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SecurityAttributes
+    {
+        public uint Length;
+        public IntPtr SecurityDescriptor;
+        public int InheritHandle;
+    }
+
+    [LibraryImport("user32.dll", EntryPoint = "CreateWindowStationW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial IntPtr CreateWindowStation(string name, uint flags, uint desiredAccess, SecurityAttributes* attributes);
+
+    [LibraryImport("user32.dll", EntryPoint = "CreateDesktopW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial IntPtr CreateDesktop(string name, IntPtr device, IntPtr deviceMode, uint flags, uint desiredAccess, SecurityAttributes* attributes);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    internal static partial IntPtr GetProcessWindowStation();
+
+    internal const int UoiName = 2;
+
+    internal const int SeWindowObject = 7;
+    internal const uint LabelSecurityInformation = 0x00000010;
+
+    [LibraryImport("advapi32.dll")]
+    internal static partial uint SetSecurityInfo(IntPtr handle, int objectType, uint securityInfo, IntPtr owner, IntPtr group, IntPtr dacl, IntPtr sacl);
+
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetSecurityDescriptorSacl(IntPtr securityDescriptor, [MarshalAs(UnmanagedType.Bool)] out bool saclPresent, out IntPtr sacl, [MarshalAs(UnmanagedType.Bool)] out bool saclDefaulted);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetUserObjectInformationW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetUserObjectInformation(IntPtr obj, int index, void* information, uint length, out uint lengthNeeded);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetProcessWindowStation(IntPtr windowStation);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool CloseWindowStation(IntPtr windowStation);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool CloseDesktop(IntPtr desktop);
+
+    [LibraryImport("advapi32.dll", EntryPoint = "ConvertStringSecurityDescriptorToSecurityDescriptorW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ConvertStringSecurityDescriptorToSecurityDescriptor(string sddl, uint revision, out IntPtr securityDescriptor, IntPtr size);
+
     [LibraryImport("kernel32.dll", SetLastError = true)]
     internal static partial uint ResumeThread(SafeKernelHandle thread);
 

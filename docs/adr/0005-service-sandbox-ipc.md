@@ -93,3 +93,18 @@ three things must hold:
   parsing attacker-controlled input with the broker's privileges.
 - No operation that weakens protection exists yet. Such operations arrive with quarantine in M4 and
   will require an elevated administrator caller.
+
+## Amendment (2026-11-09): private window station for workers
+
+Installing the service as LocalSystem showed every worker failing with `0xC0000142`
+(STATUS_DLL_INIT_FAILED). user32 connects each process to its window station during start-up; workers
+inherited the service's `Service-0x0-3e7$` station, whose DACL grants only SYSTEM and Administrators,
+both deny-only in the worker token. Development mode and CI never saw it, because the interactive
+station also grants the logon SID, which the worker keeps.
+
+The broker now creates one private window station and desktop per process (`WorkerDesktop`), with a
+DACL for SYSTEM, the broker's account and Everyone and a low mandatory label, and starts workers on it.
+Only administrators and SYSTEM may create named window stations; a standard user (development mode)
+falls back to the inherited interactive station. `SandboxTests.Worker_runs_on_a_private_window_station`
+covers both cases. The service also now reports a failed start to the Service Control Manager as an
+error, and the install script sets `failureflag`, so the restart actions apply.

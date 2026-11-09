@@ -22,6 +22,16 @@ public static class TokenInfo
         return Name(new SecurityIdentifier(((SandboxNative.SidAndAttributes*)buffer)->Sid).Value);
     }
 
+    /// <summary>The name of the current process's window station, or "unknown".</summary>
+    public static unsafe string CurrentWindowStation()
+    {
+        char* name = stackalloc char[256];
+        IntPtr station = SandboxNative.GetProcessWindowStation();
+        return station != IntPtr.Zero && SandboxNative.GetUserObjectInformation(station, SandboxNative.UoiName, name, 256 * sizeof(char), out _)
+            ? new string(name)
+            : "unknown";
+    }
+
     /// <summary>The user SID of another process, or null if it cannot be queried.</summary>
     public static SecurityIdentifier? ProcessUser(int processId)
     {
