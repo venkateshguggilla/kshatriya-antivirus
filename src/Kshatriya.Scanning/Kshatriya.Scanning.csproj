@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>Kshatriya.Scanning</RootNamespace>
+    <!-- Required by LibraryImport-generated P/Invoke marshalling. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Kshatriya.Engines.Abstractions\Kshatriya.Engines.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Kshatriya.Scanning.Tests" />
+  </ItemGroup>
+</Project>

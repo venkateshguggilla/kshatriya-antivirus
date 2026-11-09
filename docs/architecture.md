@@ -25,11 +25,11 @@ This document describes the target architecture and what exists today. Planned p
 
 ## What exists (M1–M5)
 
-`Sentinel.App.exe` (M5) is a WPF client of the same pipe: it never touches scanned files itself.
+`Kshatriya.App.exe` (M5) is a WPF client of the same pipe: it never touches scanned files itself.
 
 ```
-sentinel.exe (Sentinel.Cli) ─────────────┐        Sentinel.Service.exe (LocalSystem, or --dev as the user)
-  scan <paths>      local broker         │          ├─ PipeServer  \\.\pipe\Sentinel.Service.v1
+kshatriya.exe (Kshatriya.Cli) ─────────────┐        Kshatriya.Service.exe (LocalSystem, or --dev as the user)
+  scan <paths>      local broker         │          ├─ PipeServer  \\.\pipe\Kshatriya.Service.v1
   scan --service ───────────── named pipe ─────────►│    caller identified by impersonation; scans run AS the caller
   status, quarantine, client checks server PID = SCM│  ├─ ScanCoordinator (shared worker pool, verdict cache, exclusions, scan cap)
   exclusions, audit                                 │  ├─ Scheduler (local-time schedules, reports, catch-up, optional quarantine)
@@ -38,16 +38,16 @@ sentinel.exe (Sentinel.Cli) ─────────────┐        Se
                                                     │       drives → debounced background scans (shared pool, cache, exclusions)
                                                     │       └─ RansomwareDetector: behaviour alerts (suspicious only, no action)
                                                     │  ├─ NetworkProtection (opt-in): WFP block filters (ALE connect, dynamic session)
-                                                    │  └─ ContentStore: signed .sntu packages (ECDSA P-256), anti-rollback, expiry;
+                                                    │  └─ ContentStore: signed .kstu packages (ECDSA P-256), anti-rollback, expiry;
                                                     │       new content → new sandboxed pool → swapped between scans
         broker (CLI or service)
-          └─ ScanRunner (Sentinel.Scanning)
+          └─ ScanRunner (Kshatriya.Scanning)
                ├─ SafeFileEnumerator  → never follows reparse points; skips cloud placeholders; long paths; exclusions
                ├─ SafeFileOpener      → read-only, share-all, OPEN_REPARSE_POINT; handle attributes re-checked
                ├─ VerdictCache        → unchanged clean files (file ID + size + write/change times + engine fingerprint)
                ├─ SHA-256 · AuthenticodeTrustProvider (WinVerifyTrust on the open handle, offline)
                └─ IContentAnalyzer
-                    ├─ WorkerPoolAnalyzer (default) ── bytes over overlapped pipes ──► Sentinel.Worker.exe ×N
+                    ├─ WorkerPoolAnalyzer (default) ── bytes over overlapped pipes ──► Kshatriya.Worker.exe ×N
                     │                                   restricted token · account SID deny-only · low integrity
                     │                                   Job Object (1 process, memory cap, kill on close, UI limits)
                     │                                   mitigations (no child processes, no extension points, ...)
@@ -55,7 +55,7 @@ sentinel.exe (Sentinel.Cli) ─────────────┐        Se
                     └─ InProcessAnalyzer (--no-sandbox, development only)
                           ├─ HashEngine · YaraEngine · PeHeuristicEngine   (IDetectionEngine)
                           └─ ZipExpander (metered, per-item budget, every engine on every entry)
-               └─ IItemResponder (optional, Sentinel.Response) → QuarantineResponder for detected files
+               └─ IItemResponder (optional, Kshatriya.Response) → QuarantineResponder for detected files
                     open share-read + DELETE, no reparse → verify links/size → encrypt into vault while
                     re-hashing → mark the same handle for deletion → audit
 ```
@@ -105,7 +105,7 @@ Detections carry a category (`malware`, `pua`, `suspicious`, `test`) and a confi
 - Pipe ACL: SYSTEM and Administrators full control; Authenticated Users read/write but **not**
   `FILE_CREATE_PIPE_INSTANCE`; network logons denied. The first instance uses `FILE_FLAG_FIRST_PIPE_INSTANCE`.
 - The **client verifies the server before sending anything**: the pipe server's PID must be the
-  PID that the SCM reports for `SentinelService` (development: same user).
+  PID that the SCM reports for `KshatriyaService` (development: same user).
 - The **service identifies the client only via impersonation** and runs that client's scans
   impersonated, so a caller can scan only what it can read. Clients therefore connect at the
   Impersonation level; Identification-only clients are refused.

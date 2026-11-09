@@ -16,15 +16,15 @@ Everyone in these roles uses multi-factor authentication for GitHub and SignPath
 
 ## What is signed
 
-- Only Sentinel's own binaries (`Sentinel.*.exe`, `Sentinel.*.dll`, `sentinel.exe`, `sentinel.dll`), as listed
+- Only Kshatriya's own binaries (`Kshatriya.*.exe`, `Kshatriya.*.dll`, `kshatriya.exe`, `kshatriya.dll`), as listed
   in [.signpath/artifact-configuration.xml](../.signpath/artifact-configuration.xml). Third-party files (the
   .NET runtime, `yara_x_capi.dll`) are shipped as published by their authors and never re-signed.
 - Only builds made by the repository's [release workflow](../.github/workflows/release.yml) on GitHub
   Actions, from source in this repository, after the full build (warnings are errors) and test suite pass.
-- Every signed binary has product name `Sentinel` and the release's product version; the signing policy
+- Every signed binary has product name `Kshatriya Antivirus` and the release's product version; the signing policy
   enforces both.
 - Each signing request is approved manually. The workflow then refuses to package the release unless every
-  Sentinel binary has a valid signature, writes the checksums of the signed files and builds the zip.
+  Kshatriya binary has a valid signature, writes the checksums of the signed files and builds the zip.
 
 Nothing is signed from a developer machine, and no certificate or private key exists in the repository or
 on build runners: the key stays in SignPath's hardware security module.
@@ -38,5 +38,5 @@ downloaded automatically. Signature checks run with revocation and network retri
 
 ## Reporting misuse
 
-If you find a signed Sentinel binary that does something this policy or the README does not describe,
+If you find a signed Kshatriya binary that does something this policy or the README does not describe,
 report it as described in [SECURITY.md](../SECURITY.md), and to SignPath Foundation.

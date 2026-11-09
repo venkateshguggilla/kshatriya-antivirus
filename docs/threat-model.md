@@ -40,14 +40,14 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 | T11 | Local malware spoofs the service to a client, or a client to the service (Spoofing) | Client checks the pipe server PID against the SCM before writing; first-instance claim; Authenticated Users lack `CREATE_PIPE_INSTANCE`; the caller's identity comes only from impersonation | M3 ✔ |
 | T12 | Quarantine or restore is abused to move or delete arbitrary files | Act on the verified handle only; re-validate restore paths; SYSTEM-only vault | M4 |
 | T13 | Update tampering, rollback or freeze attacks | Ed25519-signed manifests, monotonic versions, expiry, offline root key | M6 |
-| T14 | Admin-level malware stops Sentinel (Tampering) | Out of scope without PPL/ELAM (requires MVI); we report "protection off" rather than claim tamper-proofing | Accepted limitation |
+| T14 | Admin-level malware stops Kshatriya (Tampering) | Out of scope without PPL/ELAM (requires MVI); we report "protection off" rather than claim tamper-proofing | Accepted limitation |
 | T15 | A false positive leads to data loss | Heuristic and ML verdicts never delete; quarantine is reversible; extra checks for OS and trusted-signed files | M4 |
 | T16 | Compromised third-party native library (supply chain) | YARA-X DLL fetched from the official release and verified against a pinned SHA-256; not committed | M2 ✔ (signing M11) |
 | T17 | Signed malware abuses the "skip heuristics for signed files" rule | Hash and YARA engines still scan signed files; trust is verified offline through the scanned handle | Accepted trade-off |
 | T18 | Trust verification triggers network access (privacy, hangs) | WinVerifyTrust runs with revocation checks off and cache-only URL retrieval | M2 ✔ |
 | T19 | Confused deputy: a standard user asks the SYSTEM service to scan, and so read, files they cannot read (Information disclosure) | Each client scan runs impersonating the caller; the cache is consulted only after the file was opened with the caller's rights; Identification-only clients are refused | M3 ✔ |
 | T20 | The service is pointed at network shares or device namespaces on a caller's behalf | Only fully qualified local drive paths; UNC, `\\?\`, device paths, ADS and wildcards refused; 64 paths per request | M3 ✔ |
-| T21 | A standard user edits service configuration or adds signature/rule files to change what SYSTEM scans | Protected ACL on `%ProgramData%\Sentinel`; settings and signature/rule files refused unless owned and writable only by SYSTEM/Administrators/TrustedInstaller; strict settings parser | M3 ✔ |
+| T21 | A standard user edits service configuration or adds signature/rule files to change what SYSTEM scans | Protected ACL on `%ProgramData%\Kshatriya`; settings and signature/rule files refused unless owned and writable only by SYSTEM/Administrators/TrustedInstaller; strict settings parser | M3 ✔ |
 | T22 | A client floods the service (DoS) | Frame size limits before allocation; capped concurrent scans (`busy`); a fixed number of listeners | M3 ✔ (per-user quotas later) |
 | T23 | A stale verdict-cache entry hides a modified file | Only complete clean results cached; key = file ID + size + last-write + change time + engine fingerprint; files changed in the last 2 s never cached; scheduled scans bypass the cache | M3 ✔ (see residual risks) |
 | T24 | Code-loading environment variables reach the worker | Startup-hook and profiler variables stripped; diagnostics IPC disabled; extension points and non-system fonts blocked by mitigation policy | M3 ✔ |
@@ -72,7 +72,7 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 | T44 | Malware reaches known command-and-control addresses | WFP block filters from signed blocklists at the ALE connect layers | M10 ✔ (IP only) |
 | T45 | A bad blocklist cuts the machine off the network | Guardrails (no loopback/link-local/multicast/unspecified, no ranges broader than /16 or /48); dynamic WFP session removes all filters if the service stops | M10 ✔ |
 | T46 | A tampered release is installed | Install from release verifies SHA256SUMS.txt (missing, modified or unlisted binaries abort); optional Authenticode requirement | M11 ✔ (checksums alone give integrity, not publisher authenticity) |
-| T32 | Audit records are edited or removed to hide actions (Repudiation) | Hash-chained, flushed per record, ACL SYSTEM + Administrators; verified by `sentinel audit` and `status` | M4 ✔ (tamper-evident only) |
+| T32 | Audit records are edited or removed to hide actions (Repudiation) | Hash-chained, flushed per record, ACL SYSTEM + Administrators; verified by `kshatriya audit` and `status` | M4 ✔ (tamper-evident only) |
 
 ## Residual risks (M3–M4)
 
@@ -97,4 +97,4 @@ Scope: the M1–M4 scanner, service, workers and response component, plus threat
 - The ZIP central directory is read by `System.IO.Compression` before entry limits apply; its size is bounded by the per-file size limit.
 - Workers hold an item fully in memory (bounded by the size limit and the job memory cap).
 - Coverage-guided fuzzing (SharpFuzz edge coverage, in-process AFL-style loop) covers the PE, ZIP and content-package parsers; the hash-database, IPC, report and model parsers are fuzzed unguided only. The content-package target rarely gets past the signature check, so the signed manifest parser is mostly reached through unit tests.
-- The service has been exercised in development mode (as the current user) by automated tests. Installing it as LocalSystem is scripted (`scripts/Install-SentinelService.ps1`) but was not run on the development machine.
+- The service has been exercised in development mode (as the current user) by automated tests. Installing it as LocalSystem is scripted (`scripts/Install-KshatriyaService.ps1`) but was not run on the development machine.

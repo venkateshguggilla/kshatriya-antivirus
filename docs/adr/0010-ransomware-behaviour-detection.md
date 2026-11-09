@@ -6,7 +6,7 @@
 ## Context
 
 Signatures miss new ransomware. Behaviour gives earlier warning, but in user mode file events carry no
-process identity, and Sentinel may not terminate processes without a reviewed design (AGENTS.md).
+process identity, and Kshatriya may not terminate processes without a reviewed design (AGENTS.md).
 Microsoft Defender already offers real blocking for protected folders (Controlled folder access).
 
 ## Decision
@@ -28,7 +28,7 @@ and raises **suspicious** behaviour findings only:
 - Content entropy is computed in the service from the first 4 KiB, read through `SafeFileOpener`
   (no parsing; same class of operation as hashing).
 - The app shows Defender's Controlled folder access state (read-only, WMI `MSFT_MpPreference`) and
-  recommends turning it on. Sentinel never changes it.
+  recommends turning it on. Kshatriya never changes it.
 - Decoys are opt-in (`ransomware.canaryFolders`, inside real-time paths) because they create files in
   user folders.
 

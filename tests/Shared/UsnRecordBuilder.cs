@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 
-namespace Sentinel.Tests.Shared;
+namespace Kshatriya.Tests.Shared;
 
 /// <summary>Builds synthetic NTFS change-journal records (USN_RECORD_V2 layout) for parser tests and fuzzing.</summary>
 internal static class UsnRecordBuilder

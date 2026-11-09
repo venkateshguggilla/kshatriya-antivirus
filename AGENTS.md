@@ -3,7 +3,7 @@
 ## Product rules (non-negotiable)
 
 1. Defensive only: no stealth, evasion, credential theft, exploit delivery, or monitoring without the device owner's consent.
-2. Never disable, weaken, or add exclusions to Microsoft Defender or other Windows security controls. Sentinel runs in **companion mode** alongside Defender ([ADR 0002](docs/adr/0002-defender-companion-mode.md)).
+2. Never disable, weaken, or add exclusions to Microsoft Defender or other Windows security controls. Kshatriya runs in **companion mode** alongside Defender ([ADR 0002](docs/adr/0002-defender-companion-mode.md)).
 3. Never claim production readiness or parity with commercial antivirus without evidence. Label work as prototype, beta, or production honestly.
 4. Never commit live malware. Use the in-memory EICAR helper (`tests/Shared/TestData.cs`) and generated benign files.
 5. Dependencies must be MIT/BSD/Apache-2.0 compatible; no GPL linking ([ADR 0003](docs/adr/0003-dependency-licensing.md)).
@@ -12,15 +12,15 @@
 ## Engineering rules
 
 - Setup: run `./scripts/Get-YaraX.ps1` once (downloads the hash-pinned YARA-X DLL into the git-ignored `native/` folder).
-- Build: `dotnet build Sentinel.slnx` must have **zero warnings** (warnings are errors). Test: `dotnet test Sentinel.slnx`.
-- Fuzz: `dotnet run -c Release --project tools/Sentinel.Fuzz -- all 1000000` before changing a parser; for the PE, ZIP and content-package parsers also `dotnet run -c Release --project tools/Sentinel.CoverageFuzz -- all 300` (coverage-guided).
+- Build: `dotnet build Kshatriya.slnx` must have **zero warnings** (warnings are errors). Test: `dotnet test Kshatriya.slnx`.
+- Fuzz: `dotnet run -c Release --project tools/Kshatriya.Fuzz -- all 1000000` before changing a parser; for the PE, ZIP and content-package parsers also `dotnet run -c Release --project tools/Kshatriya.CoverageFuzz -- all 300` (coverage-guided).
 - Package versions live only in `Directory.Packages.props`.
 - Code that handles files must open them through `SafeFileOpener` / `SafeFileEnumerator`: never follow reparse points, never read cloud placeholders, always enforce size and time limits, and report every item that was not scanned.
-- Scanning code is read-only. Anything that changes user files belongs in `Sentinel.Response`, must act on the same handle it verified, must keep a verified copy before removing anything, and must be reversible ([ADR 0006](docs/adr/0006-quarantine-and-response.md)).
+- Scanning code is read-only. Anything that changes user files belongs in `Kshatriya.Response`, must act on the same handle it verified, must keep a verified copy before removing anything, and must be reversible ([ADR 0006](docs/adr/0006-quarantine-and-response.md)).
 - Only `malware`/`test` detections with `high` confidence may be actioned automatically, and only when the user asked for it. Never terminate processes or schedule reboot-time deletion without a reviewed design.
 - Service operations that weaken protection (restore, exclusions) or reveal other users' data (audit log, others' quarantine items) require an elevated administrator and must write an audit record, including on refusal.
 - Engines implement `IDetectionEngine` and must be pure: no file system, network, or global state access.
-- Untrusted content is parsed only inside `Sentinel.Worker` (sandboxed). The broker (CLI/service) opens files and streams bytes; never give a worker a path to open, and never weaken the worker token, job limits or mitigations ([ADR 0005](docs/adr/0005-service-sandbox-ipc.md)). Sandbox properties are covered by `SandboxTests`; keep them passing.
+- Untrusted content is parsed only inside `Kshatriya.Worker` (sandboxed). The broker (CLI/service) opens files and streams bytes; never give a worker a path to open, and never weaken the worker token, job limits or mitigations ([ADR 0005](docs/adr/0005-service-sandbox-ipc.md)). Sandbox properties are covered by `SandboxTests`; keep them passing.
 - The service must act on a client's behalf only while impersonating that client, accept only local absolute paths, and identify clients only through the pipe, never from message contents.
 - Every message read from a pipe is untrusted: enforce frame limits before allocating, deserialize strictly, and treat any violation as a reason to drop the connection.
 - Logging in the service uses the source-generated `Log` class with stable event IDs.
@@ -29,6 +29,6 @@
 - Public report formats are versioned (`docs/schemas`). Map enum values to wire names explicitly; never serialize enum member names directly.
 - Real-time monitoring is user mode and runs as the service: never follow its events into the service data folder, never terminate processes, keep queues bounded and treat lost events as a reason to rescan ([ADR 0009](docs/adr/0009-user-mode-real-time-monitoring.md)).
 - Behaviour detection (ransomware) produces suspicious findings only and never triggers automatic action ([ADR 0010](docs/adr/0010-ransomware-behaviour-detection.md)). Decoy files are opt-in.
-- Content updates are accepted only as signed `.sntu` packages ([ADR 0008](docs/adr/0008-signed-content-updates.md)): never parse a manifest before its signature is verified, never weaken anti-rollback or expiry checks, never commit private signing keys.
+- Content updates are accepted only as signed `.kstu` packages ([ADR 0008](docs/adr/0008-signed-content-updates.md)): never parse a manifest before its signature is verified, never weaken anti-rollback or expiry checks, never commit private signing keys.
 - Keep the release gates green (`scripts/Test-ReleaseGates.ps1`): no finding on System32, performance budget met. Never raise a budget or exclude a path to make a gate pass without recording why.
 - Record significant design decisions as ADRs in `docs/adr`.

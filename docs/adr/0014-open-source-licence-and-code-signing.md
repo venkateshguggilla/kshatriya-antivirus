@@ -21,17 +21,17 @@ signing guidance (August 2026) and SignPath Foundation's terms on 2026-11-09:
   statement on the project's home page. Antivirus software is allowed: only finding or exploiting
   vulnerabilities and getting around security measures are excluded.
 
-The owner wants Sentinel to be open source with free signing.
+The owner wants Kshatriya to be open source with free signing.
 
 ## Decision
 
-1. **Licence: Apache-2.0** for all Sentinel code (`LICENSE` is the official text; `NOTICE` added). It is
+1. **Licence: Apache-2.0** for all Kshatriya code (`LICENSE` is the official text; `NOTICE` added). It is
    compatible with every dependency (MIT, BSD, Apache-2.0; ADR 0003), includes a patent grant, and keeps
    the project name out of the licence (trademark rights are not granted).
 2. **Signing: SignPath Foundation** through the GitHub Actions release workflow. The workflow builds and
    tests, uploads the unsigned folder, submits it to SignPath, waits for a project approver to approve the
    request by hand, puts the signed binaries back, and packages with `-RequireSignature`. Signing is only
-   counted as done when every Sentinel binary has a valid Authenticode signature. Only Sentinel's own
+   counted as done when every Kshatriya binary has a valid Authenticode signature. Only Kshatriya's own
    binaries are signed (`.signpath/artifact-configuration.xml`); third-party files are never re-signed.
    Until SignPath is configured the workflow builds an UNSIGNED release, labelled as such.
 3. `Build-Release.ps1` has two stages (`Build`, `Package`) so the checksums cover the signed files. Its
@@ -42,7 +42,14 @@ The owner wants Sentinel to be open source with free signing.
 
 - Make the GitHub repository public. Commit metadata includes the author's email address, which becomes
   public too; rewriting history to a no-reply address would change every commit id.
-- Consider whether the name "Sentinel" conflicts with existing security products before a public release.
+- Product name: renamed from "Sentinel" to **Kshatriya Antivirus** on 2026-11-09, before any public
+  release, because "Sentinel" is used by existing security products (Microsoft Sentinel, SentinelOne). Everything
+  was renamed: code namespaces, projects, executables (`kshatriya.exe`), the Windows service
+  (`KshatriyaService`), folders (`%ProgramFiles%\Kshatriya`, `%ProgramData%\Kshatriya`) and format identifiers
+  (`.kstu` content packages, `KSTU`/`KSTQ` magic). Nothing was released under the old name, so the old formats
+  are not read. A web search found no antivirus product with this name; no formal trademark search was done.
+  The GitHub repository is still named `sentinel-antivirus`; renaming it is the owner's choice (GitHub
+  redirects old links).
 - Publish a first release, then apply at signpath.org. After acceptance, create the SignPath project,
   signing policy (product name and version restrictions) and artifact configuration. Then set the
   repository variable `SIGNPATH_ORGANIZATION_ID` (and optionally `SIGNPATH_PROJECT_SLUG`,
@@ -51,7 +58,7 @@ The owner wants Sentinel to be open source with free signing.
 
 ## Consequences
 
-- Anyone may use, modify and redistribute Sentinel, including commercially. Versions already released stay
+- Anyone may use, modify and redistribute Kshatriya, including commercially. Versions already released stay
   Apache-2.0 even if the licence changes later.
 - Signed releases depend on SignPath Foundation accepting the project, at its discretion and without an
   appeal. The fallback is an OV certificate on a hardware token or cloud HSM (`-Stage Build`, sign,

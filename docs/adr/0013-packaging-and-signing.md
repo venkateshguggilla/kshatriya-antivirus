@@ -24,11 +24,11 @@ or assets that only the project owner can provide:
   win-x64 into one folder. It adds the licence files, a dependency inventory (`dependencies.json`: NuGet
   packages, including transitive ones, plus the pinned YARA-X DLL), `RELEASE.txt` and `SHA256SUMS.txt`
   for every file, then zips it and writes the zip's SHA-256.
-- **Signing is optional and explicit.** With a certificate (`SENTINEL_SIGN_PFX` / `SENTINEL_SIGN_PASSWORD`,
-  or the CI secrets `SIGNING_CERT_PFX_BASE64` / `SIGNING_CERT_PASSWORD`) every Sentinel binary is signed
+- **Signing is optional and explicit.** With a certificate (`KSHATRIYA_SIGN_PFX` / `KSHATRIYA_SIGN_PASSWORD`,
+  or the CI secrets `SIGNING_CERT_PFX_BASE64` / `SIGNING_CERT_PASSWORD`) every Kshatriya binary is signed
   with SHA-256 and an RFC 3161 timestamp. Without one, the release says **UNSIGNED** in `RELEASE.txt` and
   in the build output. No certificate or key is stored in the repository.
-- `Install-SentinelService.ps1 -FromRelease <folder>` verifies every file against `SHA256SUMS.txt`,
+- `Install-KshatriyaService.ps1 -FromRelease <folder>` verifies every file against `SHA256SUMS.txt`,
   refuses missing, modified or unlisted binaries, and with `-RequireSignature` also requires valid
   Authenticode signatures. It adds a Start-menu shortcut for the app; uninstall removes it.
 - `.github/workflows/release.yml` builds, tests and packages on version tags or on demand, and uploads
@@ -36,14 +36,14 @@ or assets that only the project owner can provide:
 
 ## Installer decision (owner, 2026-11-09)
 
-The project owner chose to **keep the self-contained zip plus `Install-SentinelService.ps1`** as the
+The project owner chose to **keep the self-contained zip plus `Install-KshatriyaService.ps1`** as the
 only installer, and not to adopt WiX or MSIX for now.
 
 - Why: it keeps every build dependency within [ADR 0003](0003-dependency-licensing.md) (no MS-RL toolset,
   no maintenance fee) and avoids MSIX restricted capabilities. The script already verifies checksums
   and, with `-RequireSignature`, Authenticode signatures before installing.
 - Consequences: installing requires an elevated PowerShell session; there is no Add/Remove Programs
-  entry, repair, or Group Policy/Intune MSI deployment. Uninstall is `Uninstall-SentinelService.ps1`.
+  entry, repair, or Group Policy/Intune MSI deployment. Uninstall is `Uninstall-KshatriyaService.ps1`.
 - Revisit when managed (enterprise) deployment is needed, or when an installer toolset with a
   compatible licence is available.
 

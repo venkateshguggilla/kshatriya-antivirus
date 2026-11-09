@@ -12,9 +12,9 @@ can keep a device on stale content (freeze). The product is offline-first ([ADR 
 
 ## Decision
 
-- **Package (`.sntu`):** `"SNTU" | version | manifest JSON | signature JSON | file bytes`, every length
+- **Package (`.kstu`):** `"KSTU" | version | manifest JSON | signature JSON | file bytes`, every length
   bounded before allocation (manifest 64 KiB, signature 4 KiB, 64 files, 128 MiB per file, 256 MiB total).
-  A custom framing instead of ZIP keeps the parser small and fuzzable (`Sentinel.Fuzz content`).
+  A custom framing instead of ZIP keeps the parser small and fuzzable (`Kshatriya.Fuzz content`).
 - **Signature:** ECDSA P-256 / SHA-256 (IEEE P1363) over the exact manifest bytes, from .NET's built-in
   cryptography (no new dependency). It is verified **before** the manifest is parsed. Key ids are the
   first 16 hex digits of SHA-256(SubjectPublicKeyInfo).
@@ -32,9 +32,9 @@ can keep a device on stale content (freeze). The product is offline-first ([ADR 
   service still starts with built-in and configured content and reports the problem.
 - **Trust roots:** `ContentTrust.ProductionKeys` is **empty**: no production signing key has been
   provisioned. Administrators can trust their own keys via `contentKeys` in the protected
-  `service.json`. `tools/Sentinel.ContentTool` (`sentinel-content`) creates keys and packages; private
+  `service.json`. `tools/Kshatriya.ContentTool` (`kshatriya-content`) creates keys and packages; private
   keys stay with the publisher and are git-ignored.
-- **Who:** importing (`sentinel update import <file> --service`) requires an elevated administrator on
+- **Who:** importing (`kshatriya update import <file> --service`) requires an elevated administrator on
   the installed service and is audited. The service reads the package file while impersonating the caller.
 
 ## Consequences

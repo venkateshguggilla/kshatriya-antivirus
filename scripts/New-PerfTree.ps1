@@ -2,8 +2,8 @@
 .SYNOPSIS
   Creates a synthetic tree of small benign files for scanner performance baselines.
 .EXAMPLE
-  ./scripts/New-PerfTree.ps1 -Path $env:TEMP\sentinel-perf -Files 50000
-  dotnet run -c Release --project src/Sentinel.Cli -- scan $env:TEMP\sentinel-perf --quiet
+  ./scripts/New-PerfTree.ps1 -Path $env:TEMP\kshatriya-perf -Files 50000
+  dotnet run -c Release --project src/Kshatriya.Cli -- scan $env:TEMP\kshatriya-perf --quiet
 #>
 [CmdletBinding()]
 param(

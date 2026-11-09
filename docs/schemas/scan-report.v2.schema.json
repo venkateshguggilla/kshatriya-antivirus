@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://sentinel.invalid/schemas/scan-report.v2.schema.json",
-  "title": "Sentinel scan report",
-  "description": "Report produced by 'sentinel scan --json'. Version 2 (adds suspicious status, archive reasons, per-item trust and incompleteness, detection locations). New optional properties may be added in minor revisions; removals or meaning changes require a new schemaVersion.",
+  "$id": "https://kshatriya.invalid/schemas/scan-report.v2.schema.json",
+  "title": "Kshatriya scan report",
+  "description": "Report produced by 'kshatriya scan --json'. Version 2 (adds suspicious status, archive reasons, per-item trust and incompleteness, detection locations). New optional properties may be added in minor revisions; removals or meaning changes require a new schemaVersion.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -31,7 +31,7 @@
       ],
       "properties": {
         "name": {
-          "const": "Sentinel"
+          "const": "Kshatriya"
         },
         "version": {
           "type": "string",

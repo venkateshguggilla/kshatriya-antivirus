@@ -12,12 +12,12 @@
     they are regression tripwires, not performance claims.
 
 .EXAMPLE
-    dotnet build src/Sentinel.Cli -c Release
+    dotnet build src/Kshatriya.Cli -c Release
     ./scripts/Test-ReleaseGates.ps1
 #>
 [CmdletBinding()]
 param(
-    [string] $Sentinel = (Join-Path (Split-Path -Parent $PSScriptRoot) 'src/Sentinel.Cli/bin/Release/net10.0-windows/sentinel.exe'),
+    [string] $Kshatriya = (Join-Path (Split-Path -Parent $PSScriptRoot) 'src/Kshatriya.Cli/bin/Release/net10.0-windows/kshatriya.exe'),
     [int] $Files = 5000,
     [double] $MinFilesPerSecond = 500,
     [string[]] $BenignPaths = @((Join-Path $env:SystemRoot 'System32')),
@@ -25,18 +25,18 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if (-not (Test-Path $Sentinel)) { throw "sentinel.exe not found at $Sentinel (build src/Sentinel.Cli in Release first)." }
+if (-not (Test-Path $Kshatriya)) { throw "kshatriya.exe not found at $Kshatriya (build src/Kshatriya.Cli in Release first)." }
 $failures = New-Object System.Collections.Generic.List[string]
 
 function Invoke-Scan([string[]] $arguments) {
-    $output = & $Sentinel @arguments
+    $output = & $Kshatriya @arguments
     $code = $LASTEXITCODE
-    if ($code -in 3, 4) { throw "sentinel failed (exit $code) for: $($arguments -join ' ')" }
+    if ($code -in 3, 4) { throw "kshatriya failed (exit $code) for: $($arguments -join ' ')" }
     return ($output -join "`n" | ConvertFrom-Json)
 }
 
 # 1. Performance budget
-$tree = Join-Path ([System.IO.Path]::GetTempPath()) "sentinel-gate-$([guid]::NewGuid().ToString('N'))"
+$tree = Join-Path ([System.IO.Path]::GetTempPath()) "kshatriya-gate-$([guid]::NewGuid().ToString('N'))"
 & (Join-Path $PSScriptRoot 'New-PerfTree.ps1') -Path $tree -Files $Files | Out-Null
 try {
     $null = Invoke-Scan @('scan', $tree, '--json', '--quiet') # warm-up (workers, file cache)

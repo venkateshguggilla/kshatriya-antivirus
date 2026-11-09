@@ -487,4 +487,4 @@ $RECYCLE.BIN/
 # Content signing: private keys and built packages never go into the repository.
 *.pem
 *.key
-*.sntu
+*.kstu

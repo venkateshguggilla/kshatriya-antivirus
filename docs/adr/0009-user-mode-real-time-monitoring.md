@@ -39,7 +39,7 @@ intercept an open or an execution, so this milestone *detects soon after*; it do
 - Watching `C:\Users` recursively sees a lot of churn; the debounce, cache and batch size bound the
   cost. A first measurement on one machine is in the [release checklist](../release-checklist.md); no budget is set yet.
 - The history does not survive a restart; reports and the event log remain the durable record.
-- No user notification (toast) yet; findings appear in the app, `sentinel detections` and the event log.
+- No user notification (toast) yet; findings appear in the app, `kshatriya detections` and the event log.
 
 ## Amendment (2026-11-09): folder events and scan lanes
 
@@ -78,7 +78,7 @@ paths queued.
   opened later by the normal scan through `SafeFileOpener`, and paths outside the watched root or in the
   service data folder are dropped.
 - **Parser:** journal records come from the kernel, but the parser (`UsnRecords`) is bounds-checked
-  anyway, unit-tested with malformed records and fuzzed (`Sentinel.Fuzz usn`).
+  anyway, unit-tested with malformed records and fuzzed (`Kshatriya.Fuzz usn`).
 - **Limits:** the 30-second margin assumes notifications are lost within seconds of being raised, which
   matches how a buffer overflow happens. Only 64-bit file ids (NTFS) are handled; ReFS falls back to
   the full rescan.

@@ -4,7 +4,7 @@
 
 ## Context
 
-Sentinel is a Windows-first security suite. Its engines parse hostile files, it needs reliable background services, deep Win32 integration, a native-feeling accessible UI, and long-term maintainability by a small team.
+Kshatriya is a Windows-first security suite. Its engines parse hostile files, it needs reliable background services, deep Win32 integration, a native-feeling accessible UI, and long-term maintainability by a small team.
 
 ## Decision
 

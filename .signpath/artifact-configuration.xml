@@ -2,17 +2,17 @@
 <!--
   SignPath artifact configuration for the release workflow (.github/workflows/release.yml).
   Copy it into the SignPath project as the artifact configuration. The GitHub artifact is the unsigned
-  release folder, which SignPath receives as a zip. Only Sentinel's own binaries are signed; the .NET
+  release folder, which SignPath receives as a zip. Only Kshatriya's own binaries are signed; the .NET
   runtime files and yara_x_capi.dll keep their upstream signatures (or none) and are never re-signed.
-  Product name and version restrictions (Sentinel, one version per release) are set in the signing policy.
+  Product name and version restrictions (Kshatriya Antivirus, one version per release) are set in the signing policy.
 -->
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
   <zip-file>
     <pe-file-set>
-      <include path="Sentinel.*.exe" />
-      <include path="Sentinel.*.dll" />
-      <include path="sentinel.exe" />
-      <include path="sentinel.dll" />
+      <include path="Kshatriya.*.exe" />
+      <include path="Kshatriya.*.dll" />
+      <include path="kshatriya.exe" />
+      <include path="kshatriya.dll" />
       <for-each>
         <authenticode-sign />
       </for-each>

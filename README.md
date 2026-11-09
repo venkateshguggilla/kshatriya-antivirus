@@ -1,12 +1,12 @@
-# Sentinel
+# Kshatriya Antivirus
 
-> **Status: Milestone 12 prototype (roadmap M1–M12 complete as prototypes).** Sentinel is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
+> **Status: Milestone 12 prototype (roadmap M1–M12 complete as prototypes).** Kshatriya is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
 
-"Sentinel" is a working name and will change before any release.
+"Kshatriya" is a working name and will change before any release.
 
 ## What works today (M1–M12)
 
-- `sentinel scan <path>...`: on-demand, **read-only** scan of files and folders
+- `kshatriya scan <path>...`: on-demand, **read-only** scan of files and folders
   - **Sandboxed parsing (M3):** file contents are analysed in separate worker processes. Each worker runs on a restricted token with the account SID deny-only and low integrity, inside a Job Object (one process, memory cap, killed with its parent) with process mitigations. Workers cannot write your files, start programs or read files private to your account. A crashed or hung worker is replaced and the item is reported as not scanned. `--no-sandbox` turns this off for development only.
   - **Hash engine:** SHA-256 signatures (built-in EICAR test signature, plus your own databases via `--signatures`)
   - **YARA engine:** YARA-X rules (one built-in test rule, plus your own via `--rules`; `include` is disabled)
@@ -18,34 +18,34 @@
   - Supports paths longer than 260 characters
   - Per-file size limit and time limit; locked, denied, oversized or timed-out files are reported as **not scanned**, never silently ignored
   - Text output for people, versioned JSON output for tools ([schema v4](docs/schemas/scan-report.v4.schema.json))
-- `sentinel scan --stdin`: scans piped data (useful for the EICAR test string without writing it to disk)
-- **Windows service (M3):** `Sentinel.Service` runs as LocalSystem with a shared worker pool, a verdict cache for unchanged clean files and scheduled scans
-  - `sentinel scan --service <path>` asks the service to scan. The service scans **with your own access rights** (pipe impersonation), so it can't be used to read files you can't read.
-  - `sentinel status` shows the engines, workers, cache, schedules and active scans.
+- `kshatriya scan --stdin`: scans piped data (useful for the EICAR test string without writing it to disk)
+- **Windows service (M3):** `Kshatriya.Service` runs as LocalSystem with a shared worker pool, a verdict cache for unchanged clean files and scheduled scans
+  - `kshatriya scan --service <path>` asks the service to scan. The service scans **with your own access rights** (pipe impersonation), so it can't be used to read files you can't read.
+  - `kshatriya status` shows the engines, workers, cache, schedules and active scans.
   - The client verifies that the pipe really belongs to the installed service before sending anything.
 
-- **Quarantine (M4), opt-in:** `scan --quarantine` moves confirmed, high-confidence detections (category malware or test, confidence high) into an encrypted vault. Suspicious (heuristic) and PUA findings are only reported. `sentinel quarantine add <file>` quarantines a file by hand.
+- **Quarantine (M4), opt-in:** `scan --quarantine` moves confirmed, high-confidence detections (category malware or test, confidence high) into an encrypted vault. Suspicious (heuristic) and PUA findings are only reported. `kshatriya quarantine add <file>` quarantines a file by hand.
   - The file is removed only through the same handle that was verified: opened without following links and shared for reading only, checked (regular file, one hard link, ≤ 1 GiB), re-hashed while it is encrypted into the vault, and deleted only after the vault copy is on disk. If anything fails (the file changed, is locked, is a running program, …) the file is left where it was and the report says why.
   - The vault uses AES-256-GCM with a DPAPI-protected key; the service's vault is readable only by SYSTEM and Administrators.
-  - `sentinel quarantine restore <id> [--to <path>]` never overwrites an existing file, verifies the content and marks the restored file as downloaded from the internet. `quarantine list` and `quarantine delete <id>` manage the vault.
+  - `kshatriya quarantine restore <id> [--to <path>]` never overwrites an existing file, verifies the content and marks the restored file as downloaded from the internet. `quarantine list` and `quarantine delete <id>` manage the vault.
   - Running programs are **not** stopped; quarantining one fails with `inUse`.
-- **Exclusions (M4):** folders, files or SHA-256 values that Sentinel does not scan. Excluded items still appear in every report (`skipped`, reason `excluded`). Drive roots and the Windows directory cannot be excluded. Exclusions apply to Sentinel only and never to Microsoft Defender.
-- **Audit log (M4):** every quarantine, restore, delete and exclusion change (including refused attempts) is recorded in a hash-chained log; `sentinel audit` shows it and checks the chain. This makes edits detectable but cannot stop an administrator from rewriting the whole file.
+- **Exclusions (M4):** folders, files or SHA-256 values that Kshatriya does not scan. Excluded items still appear in every report (`skipped`, reason `excluded`). Drive roots and the Windows directory cannot be excluded. Exclusions apply to Kshatriya only and never to Microsoft Defender.
+- **Audit log (M4):** every quarantine, restore, delete and exclusion change (including refused attempts) is recorded in a hash-chained log; `kshatriya audit` shows it and checks the chain. This makes edits detectable but cannot stop an administrator from rewriting the whole file.
 - With the **service**, quarantine and restore act with your own access rights (you can only quarantine files you could delete). Restoring files, managing exclusions and reading the audit log require an elevated administrator.
 
-- **Desktop app (M5):** `Sentinel.App.exe` (WPF, Fluent theme, light/dark/high contrast) with Dashboard (service, engines, workers, schedules, quarantine count, audit status and the Windows antivirus state), Scan (folders, progress, results, opt-in quarantine), Quarantine (restore, restore to, delete), Exclusions, History (audit log with integrity check) and About. It talks only to the service (`Sentinel.App.exe --dev` for a development service) and offers "Restart as administrator" for admin-only actions. Keyboard and screen-reader friendly; no formal accessibility audit yet.
+- **Desktop app (M5):** `Kshatriya.App.exe` (WPF, Fluent theme, light/dark/high contrast) with Dashboard (service, engines, workers, schedules, quarantine count, audit status and the Windows antivirus state), Scan (folders, progress, results, opt-in quarantine), Quarantine (restore, restore to, delete), Exclusions, History (audit log with integrity check) and About. It talks only to the service (`Kshatriya.App.exe --dev` for a development service) and offers "Restart as administrator" for admin-only actions. Keyboard and screen-reader friendly; no formal accessibility audit yet.
 
-- **Signed content updates (M6):** `sentinel update import <package.sntu> --service` (administrator) installs signature and rule updates. Packages are signed with ECDSA P-256; the service checks the signature before reading the manifest, verifies every file hash, refuses older packages (anti-rollback) and expired ones, and only switches once a fresh sandboxed worker pool has loaded the new content. `status` and the app show the active update and warn when it has expired. `tools/Sentinel.ContentTool` (`sentinel-content keygen|pack|verify`) creates keys and packages. **No production signing key exists yet:** add your own public key to `contentKeys` in `service.json`.
+- **Signed content updates (M6):** `kshatriya update import <package.kstu> --service` (administrator) installs signature and rule updates. Packages are signed with ECDSA P-256; the service checks the signature before reading the manifest, verifies every file hash, refuses older packages (anti-rollback) and expired ones, and only switches once a fresh sandboxed worker pool has loaded the new content. `status` and the app show the active update and warn when it has expired. `tools/Kshatriya.ContentTool` (`kshatriya-content keygen|pack|verify`) creates keys and packages. **No production signing key exists yet:** add your own public key to `contentKeys` in `service.json`.
 
-- **Real-time monitoring (M7, opt-in, user mode):** with a `realTime` section in `service.json` the service watches folders for new and changed files, scans the image of every program that starts (WMI process-start events) and scans removable drives when they are attached. Findings appear in `sentinel detections --service`, the app's Detections page and the event log; with `"action": "quarantine"` high-confidence detections are quarantined. **It scans shortly after the fact and cannot block a file or program before it runs**, and it never terminates processes.
+- **Real-time monitoring (M7, opt-in, user mode):** with a `realTime` section in `service.json` the service watches folders for new and changed files, scans the image of every program that starts (WMI process-start events) and scans removable drives when they are attached. Findings appear in `kshatriya detections --service`, the app's Detections page and the event log; with `"action": "quarantine"` high-confidence detections are quarantined. **It scans shortly after the fact and cannot block a file or program before it runs**, and it never terminates processes.
 
-- **Ransomware behaviour detection (M8, alert only):** with real-time monitoring on, Sentinel raises *suspicious* alerts when many existing files are rewritten or renamed in a short time and the results look encrypted, when ransom-note-like files appear, when a program runs a command that deletes shadow copies or disables recovery, and (opt-in) when a hidden decoy file in a chosen folder is touched. Alerts name recently started programs from user-writable folders as possible sources. **Nothing is stopped or quarantined automatically.** The app shows whether Defender's Controlled folder access (which can block) is on, and recommends it; Sentinel never changes it.
+- **Ransomware behaviour detection (M8, alert only):** with real-time monitoring on, Kshatriya raises *suspicious* alerts when many existing files are rewritten or renamed in a short time and the results look encrypted, when ransom-note-like files appear, when a program runs a command that deletes shadow copies or disables recovery, and (opt-in) when a hidden decoy file in a chosen folder is touched. Alerts name recently started programs from user-writable folders as possible sources. **Nothing is stopped or quarantined automatically.** The app shows whether Defender's Controlled folder access (which can block) is on, and recommends it; Kshatriya never changes it.
 
 - **Optional machine-learning scoring (M9, off by default):** an `ml` engine scores PE files with a JSON model (logistic regression or gradient-boosted trees over 296 EMBER-style features), evaluated in pure C# inside the sandboxed workers. Results are only ever *suspicious*. **No model is shipped**: use `scan --model <file.model.json>` to evaluate one locally, or deliver it in a signed content package and set `"machineLearning": true` in `service.json`. No detection-quality claim is made.
 
 - **Network protection (M10, opt-in):** with `"networkProtection": true` the service turns IP blocklists from signed content packages (`*.netblock`) into Windows Filtering Platform filters that block outbound connections to those addresses. The filters live in a dynamic session, so they disappear if the service stops (it never strands the machine offline), and broad or local ranges are refused. **IP only** (no domain or URL filtering); no blocklist is published by this project.
 
-- **Release packaging (M11):** `./scripts/Build-Release.ps1` builds a self-contained `Sentinel-<version>-win-x64.zip` (service, worker, CLI, app) with `SHA256SUMS.txt`, a dependency inventory and the licence files. Binaries are Authenticode-signed only when a certificate is supplied; otherwise the release is marked **UNSIGNED**. `Install-SentinelService.ps1 -FromRelease <folder> [-RequireSignature]` verifies every file before installing. The zip and install script are the chosen installer; there is deliberately no MSI/MSIX ([ADR 0013](docs/adr/0013-packaging-and-signing.md)). Automatic product updates are not built yet (they need certificate and hosting decisions).
+- **Release packaging (M11):** `./scripts/Build-Release.ps1` builds a self-contained `Kshatriya-<version>-win-x64.zip` (service, worker, CLI, app) with `SHA256SUMS.txt`, a dependency inventory and the licence files. Binaries are Authenticode-signed only when a certificate is supplied; otherwise the release is marked **UNSIGNED**. `Install-KshatriyaService.ps1 -FromRelease <folder> [-RequireSignature]` verifies every file before installing. The zip and install script are the chosen installer; there is deliberately no MSI/MSIX ([ADR 0013](docs/adr/0013-packaging-and-signing.md)). Automatic product updates are not built yet (they need certificate and hosting decisions).
 
 - **Release hardening (M12):** every push runs a dependency vulnerability audit and release gates (a performance budget through the sandboxed workers, and a false-positive check that fails on any finding in `C:\Windows\System32`); parsers are fuzzed nightly at 1,000,000 iterations each, and the PE, ZIP and content-package parsers also with coverage guidance. [SECURITY.md](SECURITY.md) describes private reporting and response targets. The [release checklist](docs/release-checklist.md) lists what is still missing before a beta label, and records a first real-time cost measurement on one machine (watching `C:\Users`: about 0.1% CPU idle, under 1% during heavy file churn, about 300 MB for the service and workers). That's one machine, not a budget.
 
@@ -57,30 +57,30 @@ Requirements: Windows 10 22H2 or Windows 11 (x64), .NET SDK 10.0.100 or later (p
 
 ```powershell
 ./scripts/Get-YaraX.ps1          # once: downloads the hash-pinned YARA-X library into native/ (not committed)
-dotnet build Sentinel.slnx
-dotnet test Sentinel.slnx
-dotnet run --project src/Sentinel.Cli -- scan C:\path\to\folder
+dotnet build Kshatriya.slnx
+dotnet test Kshatriya.slnx
+dotnet run --project src/Kshatriya.Cli -- scan C:\path\to\folder
 ```
 
 ### Trying the service without installing it
 
 ```powershell
-dotnet run --project src/Sentinel.Service -- --dev     # runs as you, on a per-user pipe; data in %LOCALAPPDATA%\Sentinel\dev
-dotnet run --project src/Sentinel.Cli -- status --dev
-dotnet run --project src/Sentinel.Cli -- scan --service --dev C:\Users\me\Downloads
+dotnet run --project src/Kshatriya.Service -- --dev     # runs as you, on a per-user pipe; data in %LOCALAPPDATA%\Kshatriya\dev
+dotnet run --project src/Kshatriya.Cli -- status --dev
+dotnet run --project src/Kshatriya.Cli -- scan --service --dev C:\Users\me\Downloads
 ```
 
-`scripts/Install-SentinelService.ps1` (administrator) publishes to `%ProgramFiles%\Sentinel` and registers `SentinelService` as LocalSystem; `scripts/Uninstall-SentinelService.ps1` removes it. Neither script touches Defender or any security setting. Neither has been run on the development machine yet, and the installed (LocalSystem) configuration has not been tested end to end.
+`scripts/Install-KshatriyaService.ps1` (administrator) publishes to `%ProgramFiles%\Kshatriya` and registers `KshatriyaService` as LocalSystem; `scripts/Uninstall-KshatriyaService.ps1` removes it. Neither script touches Defender or any security setting. Neither has been run on the development machine yet, and the installed (LocalSystem) configuration has not been tested end to end.
 
 ### Service configuration
 
-Optional `%ProgramData%\Sentinel\config\service.json` (development: `%LOCALAPPDATA%\Sentinel\dev\config\service.json`). Unknown fields or invalid values reject the whole file, and the service refuses the file, and any signature or rule file it names, unless only SYSTEM/Administrators can change it.
+Optional `%ProgramData%\Kshatriya\config\service.json` (development: `%LOCALAPPDATA%\Kshatriya\dev\config\service.json`). Unknown fields or invalid values reject the whole file, and the service refuses the file, and any signature or rule file it names, unless only SYSTEM/Administrators can change it.
 
 ```json
 {
   "schemaVersion": 1,
   "workers": 4,
-  "signatureFiles": ["C:\\ProgramData\\Sentinel\\signatures\\extra.hashdb"],
+  "signatureFiles": ["C:\\ProgramData\\Kshatriya\\signatures\\extra.hashdb"],
   "ruleFiles": [],
   "maxFileSizeMiB": 256,
   "maxConcurrentScans": 2,
@@ -92,27 +92,27 @@ Optional `%ProgramData%\Sentinel\config\service.json` (development: `%LOCALAPPDA
     "paths": ["C:\\Users"], "action": "report", "processes": true, "removableMedia": true, "debounceSeconds": 2,
     "ransomware": { "threshold": 40, "windowSeconds": 30, "canaryFolders": ["C:\\Users\\me\\Documents"] }
   },
-  "contentKeys": ["<base64 public key from sentinel-content keygen>"]
+  "contentKeys": ["<base64 public key from kshatriya-content keygen>"]
 }
 ```
 
-Scheduled scans run in local time and skip the verdict cache. Add `"action": "quarantine"` to a schedule to quarantine high-confidence detections (default `"report"`). Reports (schema v4) are written to `reports\`. Persistent exclusions live in `config\exclusions.json` and are managed with `sentinel exclusions ... --service`; the quarantine vault is `quarantine\` and the audit log `audit\`. A run missed while the machine was off happens once the service is running again; a new schedule waits for its first occurrence.
+Scheduled scans run in local time and skip the verdict cache. Add `"action": "quarantine"` to a schedule to quarantine high-confidence detections (default `"report"`). Reports (schema v4) are written to `reports\`. Persistent exclusions live in `config\exclusions.json` and are managed with `kshatriya exclusions ... --service`; the quarantine vault is `quarantine\` and the audit log `audit\`. A run missed while the machine was off happens once the service is running again; a new schedule waits for its first occurrence.
 
 ### CLI
 
 ```text
-sentinel scan <path>... [--quarantine] [--exclude <path>]... [--json] [--output <file>] [--include-clean]
+kshatriya scan <path>... [--quarantine] [--exclude <path>]... [--json] [--output <file>] [--include-clean]
                         [--signatures <file>]... [--rules <file>]... [--no-heuristics] [--archive-depth <n>]
                         [--max-file-size <MiB>] [--timeout <seconds>] [--parallelism <n>] [--no-sandbox] [--quiet]
-sentinel scan --stdin [--name <label>] [options]
-sentinel scan --service [--dev] <path>... [--quarantine] [--json] [--output <file>] [--include-clean] [--quiet]
-sentinel status [--dev]
-sentinel quarantine list | add <file> | restore <id> [--to <path>] | delete <id>   [--service [--dev]]
-sentinel exclusions list | add <path|sha256:...> | remove <path|sha256:...>   --service [--dev]
-sentinel audit [--last <n>] [--service [--dev]]
-sentinel update import <package.sntu> --service [--dev]
-sentinel detections [--last <n>] --service [--dev]
-sentinel version | help
+kshatriya scan --stdin [--name <label>] [options]
+kshatriya scan --service [--dev] <path>... [--quarantine] [--json] [--output <file>] [--include-clean] [--quiet]
+kshatriya status [--dev]
+kshatriya quarantine list | add <file> | restore <id> [--to <path>] | delete <id>   [--service [--dev]]
+kshatriya exclusions list | add <path|sha256:...> | remove <path|sha256:...>   --service [--dev]
+kshatriya audit [--last <n>] [--service [--dev]]
+kshatriya update import <package.kstu> --service [--dev]
+kshatriya detections [--last <n>] --service [--dev]
+kshatriya version | help
 ```
 
 | Exit code | Meaning |
@@ -126,29 +126,29 @@ sentinel version | help
 
 Items skipped **by policy** (links, cloud placeholders, exclusions) are listed but do not make a scan incomplete.
 
-Files that Windows refuses to open because Microsoft Defender (or another security product) has detected them are reported as not scanned with the reason `blockedBySecurityProduct`. That is expected in companion mode: Defender acted first, and Sentinel never asks for a Defender exclusion.
+Files that Windows refuses to open because Microsoft Defender (or another security product) has detected them are reported as not scanned with the reason `blockedBySecurityProduct`. That is expected in companion mode: Defender acted first, and Kshatriya never asks for a Defender exclusion.
 
-Without `--service`, quarantine uses a per-user vault and audit log in `%LOCALAPPDATA%\Sentinel\local`.
+Without `--service`, quarantine uses a per-user vault and audit log in `%LOCALAPPDATA%\Kshatriya\local`.
 
 ### Hash database format (v1)
 
 UTF-8 text. The header line is required; any malformed line rejects the whole file (fail closed).
 
 ```text
-# sentinel-hashdb v1
+# kshatriya-hashdb v1
 # comments start with '#'
 sha256:<64 hex characters> <Name> [malware|pua|suspicious|test]
 ```
 
-Hash databases given directly with `--signatures` or in `service.json` are trusted by their file permissions; updates delivered as `.sntu` packages are signed (see above).
+Hash databases given directly with `--signatures` or in `service.json` are trusted by their file permissions; updates delivered as `.kstu` packages are signed (see above).
 
 ### YARA rule metadata
 
-Sentinel reads these optional `meta:` fields: `name` (detection name), `category` (`malware`, `pua`, `suspicious`, `test`; default `suspicious`), `confidence` (`low`, `medium`, `high`; default `medium`) and `description`. A rule without a category is treated as suspicious, never as confirmed malware. Third-party rule sets must pass the licence review in [ADR 0003](docs/adr/0003-dependency-licensing.md) before being bundled.
+Kshatriya reads these optional `meta:` fields: `name` (detection name), `category` (`malware`, `pua`, `suspicious`, `test`; default `suspicious`), `confidence` (`low`, `medium`, `high`; default `medium`) and `description`. A rule without a category is treated as suspicious, never as confirmed malware. Third-party rule sets must pass the licence review in [ADR 0003](docs/adr/0003-dependency-licensing.md) before being bundled.
 
 ### Testing with EICAR
 
-Microsoft Defender will (correctly) quarantine an EICAR file written to disk, and this project never adds Defender exclusions. Tests therefore assemble the EICAR string in memory, and file-based tests use a harmless custom signature (the hash of generated random bytes). To try the CLI by hand, pipe the string into `sentinel scan --stdin`.
+Microsoft Defender will (correctly) quarantine an EICAR file written to disk, and this project never adds Defender exclusions. Tests therefore assemble the EICAR string in memory, and file-based tests use a harmless custom signature (the hash of generated random bytes). To try the CLI by hand, pipe the string into `kshatriya scan --stdin`.
 
 ## Performance
 
@@ -180,7 +180,7 @@ M2 trust results (unchanged): 23,505 executables; 22,084 validly signed (15,002 
 
 Limits of this evidence: one machine's files, mostly signed vendor software, and only 1,420 unsigned executables. A broader benign corpus and a labelled malware set are needed before heuristic quality can be claimed.
 
-Mutation fuzzing (`tools/Sentinel.Fuzz`, unguided, seed 20261108), **1,000,000 iterations each, 0 failures**:
+Mutation fuzzing (`tools/Kshatriya.Fuzz`, unguided, seed 20261108), **1,000,000 iterations each, 0 failures**:
 
 | Target | Time |
 |---|---|
@@ -194,7 +194,7 @@ Mutation fuzzing (`tools/Sentinel.Fuzz`, unguided, seed 20261108), **1,000,000 i
 
 CI runs 100,000 iterations per target.
 
-Coverage-guided fuzzing (`tools/Sentinel.CoverageFuzz`: SharpFuzz edge instrumentation, in-process AFL-style loop, seed 20261109), **5 minutes per target, 0 failures**:
+Coverage-guided fuzzing (`tools/Kshatriya.CoverageFuzz`: SharpFuzz edge instrumentation, in-process AFL-style loop, seed 20261109), **5 minutes per target, 0 failures**:
 
 | Target | Executions | Edges (seeds → end) | Corpus |
 |---|---|---|---|
@@ -210,25 +210,25 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 
 | Path | Purpose |
 |---|---|
-| `src/Sentinel.Core` | Scan result model, wire names, JSON report reader/writer |
-| `src/Sentinel.Engines.Abstractions` | `IDetectionEngine` extension point |
-| `src/Sentinel.Engines.Hash` | SHA-256 signature engine and database parser |
-| `src/Sentinel.Engines.Yara` | YARA-X engine (P/Invoke), built-in rules |
-| `src/Sentinel.Engines.Pe` | Bounds-checked PE parser and static heuristics |
-| `src/Sentinel.Scanning` | Safe enumerator, read-only opener, Authenticode trust, ZIP expansion, analyzers, verdict cache, scan pipeline |
-| `src/Sentinel.Protocol` | Framing and strict DTOs for the worker and service pipes |
-| `src/Sentinel.Runtime` | Sandbox launcher, worker pool, engine setup, authenticated service client |
-| `src/Sentinel.Worker` | Sandboxed scan worker process |
-| `src/Sentinel.Response` | Quarantine manager, encrypted vault, hash-chained audit log, quarantine responder |
-| `src/Sentinel.Updates` | Signed content package format, verification and creation |
-| `src/Sentinel.Service` | Windows service: pipe server, scan coordinator, scheduler, exclusion store |
-| `src/Sentinel.App` | WPF desktop app (client of the service) |
-| `src/Sentinel.Cli` | `sentinel` command-line tool |
+| `src/Kshatriya.Core` | Scan result model, wire names, JSON report reader/writer |
+| `src/Kshatriya.Engines.Abstractions` | `IDetectionEngine` extension point |
+| `src/Kshatriya.Engines.Hash` | SHA-256 signature engine and database parser |
+| `src/Kshatriya.Engines.Yara` | YARA-X engine (P/Invoke), built-in rules |
+| `src/Kshatriya.Engines.Pe` | Bounds-checked PE parser and static heuristics |
+| `src/Kshatriya.Scanning` | Safe enumerator, read-only opener, Authenticode trust, ZIP expansion, analyzers, verdict cache, scan pipeline |
+| `src/Kshatriya.Protocol` | Framing and strict DTOs for the worker and service pipes |
+| `src/Kshatriya.Runtime` | Sandbox launcher, worker pool, engine setup, authenticated service client |
+| `src/Kshatriya.Worker` | Sandboxed scan worker process |
+| `src/Kshatriya.Response` | Quarantine manager, encrypted vault, hash-chained audit log, quarantine responder |
+| `src/Kshatriya.Updates` | Signed content package format, verification and creation |
+| `src/Kshatriya.Service` | Windows service: pipe server, scan coordinator, scheduler, exclusion store |
+| `src/Kshatriya.App` | WPF desktop app (client of the service) |
+| `src/Kshatriya.Cli` | `kshatriya` command-line tool |
 | `tests/` | xUnit tests (shared helpers in `tests/Shared`) |
 | `docs/` | [Architecture](docs/architecture.md), [threat model](docs/threat-model.md), [ADRs](docs/adr), [schemas](docs/schemas) |
-| `tools/Sentinel.ContentTool` | `sentinel-content`: signing keys and content packages |
-| `tools/Sentinel.Fuzz` | Mutation fuzz harness for the parsers |
-| `tools/Sentinel.CoverageFuzz` | Coverage-guided fuzzing (SharpFuzz instrumentation) of the PE, ZIP and content-package parsers |
+| `tools/Kshatriya.ContentTool` | `kshatriya-content`: signing keys and content packages |
+| `tools/Kshatriya.Fuzz` | Mutation fuzz harness for the parsers |
+| `tools/Kshatriya.CoverageFuzz` | Coverage-guided fuzzing (SharpFuzz instrumentation) of the PE, ZIP and content-package parsers |
 | `scripts/` | YARA-X fetch (hash-pinned), performance tree generator, service install/uninstall |
 
 ## Roadmap
@@ -261,5 +261,5 @@ automatically.
 
 ## Licence
 
-Sentinel is licensed under the [Apache License, Version 2.0](LICENSE). Third-party components keep their own
+Kshatriya is licensed under the [Apache License, Version 2.0](LICENSE). Third-party components keep their own
 licences, listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

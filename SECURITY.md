@@ -2,7 +2,7 @@
 
 ## Status
 
-Sentinel is a pre-release **prototype**. It is not supported for production use and does not replace
+Kshatriya is a pre-release **prototype**. It is not supported for production use and does not replace
 Microsoft Defender or any other security product. Keep Microsoft Defender turned on.
 
 ## Reporting a vulnerability
@@ -13,7 +13,7 @@ Report suspected vulnerabilities **privately**:
   Security tab, which creates a private security advisory).
 - Do not open public issues or pull requests for security problems.
 
-Please include the affected version (`sentinel version`) or commit, reproduction steps, the impact you
+Please include the affected version (`kshatriya version`) or commit, reproduction steps, the impact you
 observed and whether you believe it is being exploited.
 
 ### What to expect (prototype targets, best effort)
@@ -30,9 +30,9 @@ against good-faith research that respects users' data and these guidelines.
 
 ### In scope
 
-Sandbox escapes from `Sentinel.Worker`; privilege escalation or confused-deputy issues through the
+Sandbox escapes from `Kshatriya.Worker`; privilege escalation or confused-deputy issues through the
 service pipe; bypassing quarantine, restore, exclusion or audit controls; forging or replaying content
-packages; crashes or hangs triggered by scanned files; anything that lets Sentinel weaken Windows
+packages; crashes or hangs triggered by scanned files; anything that lets Kshatriya weaken Windows
 security. Out of scope: detection misses of a prototype with no shipped threat content, and findings
 that require an attacker who is already an administrator (unless they defeat a documented control).
 

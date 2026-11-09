@@ -26,19 +26,19 @@ jobs:
         run: ./scripts/Get-YaraX.ps1
 
       - name: Restore
-        run: dotnet restore Sentinel.slnx
+        run: dotnet restore Kshatriya.slnx
 
       - name: Build (warnings are errors)
-        run: dotnet build Sentinel.slnx --no-restore -c Release
+        run: dotnet build Kshatriya.slnx --no-restore -c Release
 
       - name: Test
         # A hung test fails the run after 5 minutes and names the test, instead of stalling the job.
-        run: dotnet test Sentinel.slnx --no-build -c Release --logger trx --results-directory TestResults --blame-hang-timeout 5m --blame-hang-dump-type mini
+        run: dotnet test Kshatriya.slnx --no-build -c Release --logger trx --results-directory TestResults --blame-hang-timeout 5m --blame-hang-dump-type mini
 
       - name: Dependency vulnerability audit
         shell: pwsh
         run: |
-          $report = dotnet list Sentinel.slnx package --vulnerable --include-transitive 2>&1 | Out-String
+          $report = dotnet list Kshatriya.slnx package --vulnerable --include-transitive 2>&1 | Out-String
           Write-Host $report
           if ($report -match 'has the following vulnerable packages') { throw 'Vulnerable dependencies found.' }
 
@@ -47,7 +47,7 @@ jobs:
         run: ./scripts/Test-ReleaseGates.ps1
 
       - name: Fuzz smoke (100k iterations per parser)
-        run: dotnet run -c Release --no-build --project tools/Sentinel.Fuzz -- all 100000
+        run: dotnet run -c Release --no-build --project tools/Kshatriya.Fuzz -- all 100000
 
       - name: Upload test results
         if: always()

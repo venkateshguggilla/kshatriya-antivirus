@@ -1,6 +1,6 @@
 # Release checklist and readiness (M12)
 
-Sentinel is a **prototype**. This page separates what is checked automatically today from what is still
+Kshatriya is a **prototype**. This page separates what is checked automatically today from what is still
 missing before anyone should call a build "beta", let alone production.
 
 ## Checked on every push (CI)
@@ -23,8 +23,8 @@ missing before anyone should call a build "beta", let alone production.
 2. Confirm `RELEASE.txt` says signed or UNSIGNED as intended; verify the zip's `.sha256`.
 3. Run `./scripts/Test-ReleaseGates.ps1 -BenignPaths C:\Windows\System32, "C:\Program Files"` on a
    clean reference machine and keep `artifacts/release-gates.json` with the release.
-4. Install on a clean VM with `Install-SentinelService.ps1 -FromRelease <folder> -RequireSignature`;
-   run `sentinel status`, a scan, a quarantine/restore cycle and `sentinel audit`; uninstall.
+4. Install on a clean VM with `Install-KshatriyaService.ps1 -FromRelease <folder> -RequireSignature`;
+   run `kshatriya status`, a scan, a quarantine/restore cycle and `kshatriya audit`; uninstall.
 5. Review `docs/threat-model.md` for changes since the last release and update the README's honest
    limitations.
 
@@ -64,7 +64,7 @@ missing before anyone should call a build "beta", let alone production.
       (about 2% CPU and 8–67 MB/s of reads continuously) because of two real-time defects fixed in edb8ff9
       and 73d9cf1 ([ADR 0009 amendment](adr/0009-user-mode-real-time-monitoring.md)).
 - [ ] Accessibility audit of the app with screen readers (Narrator, NVDA) and keyboard-only use.
-- [x] Coverage-guided fuzzing for the PE, ZIP and package parsers (`tools/Sentinel.CoverageFuzz`, nightly 10 minutes each with a carried-over corpus). Not yet: the signed manifest past signature verification, and the text/JSON parsers.
+- [x] Coverage-guided fuzzing for the PE, ZIP and package parsers (`tools/Kshatriya.CoverageFuzz`, nightly 10 minutes each with a carried-over corpus). Not yet: the signed manifest past signature verification, and the text/JSON parsers.
 - [ ] A staffed false-positive response and content-revocation process.
 
 Production status would additionally require independent lab testing and, to act as a primary

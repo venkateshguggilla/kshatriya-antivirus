@@ -4,7 +4,7 @@
 .DESCRIPTION
   The DLL is not committed to the repository. This script fetches the official release asset from
   github.com/VirusTotal/yara-x, refuses to continue if the archive hash differs from the pinned value,
-  and extracts only the files Sentinel needs into native/yara-x/win-x64/.
+  and extracts only the files Kshatriya needs into native/yara-x/win-x64/.
   The upstream DLL is not Authenticode-signed; the pinned hash is the integrity control.
 #>
 [CmdletBinding()]
@@ -46,7 +46,7 @@ function Save-WithRetry([string] $Uri, [string] $OutFile) {
     }
 }
 
-$work = Join-Path ([System.IO.Path]::GetTempPath()) ("sentinel-yarax-" + [guid]::NewGuid().ToString('N'))
+$work = Join-Path ([System.IO.Path]::GetTempPath()) ("kshatriya-yarax-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
     $zip = Join-Path $work $Asset

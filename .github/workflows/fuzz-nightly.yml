@@ -28,7 +28,7 @@ jobs:
         shell: pwsh
         run: |
           $seed = [int](Get-Date -Format 'yyyyMMdd')
-          dotnet run -c Release --project tools/Sentinel.Fuzz -- all 1000000 $seed "$env:RUNNER_TEMP/fuzz-crashes"
+          dotnet run -c Release --project tools/Kshatriya.Fuzz -- all 1000000 $seed "$env:RUNNER_TEMP/fuzz-crashes"
       # The coverage corpus grows night by night: restore the latest one, save the new one.
       - name: Restore coverage corpus
         uses: actions/cache@v4
@@ -41,7 +41,7 @@ jobs:
         shell: pwsh
         run: |
           $seed = [int](Get-Date -Format 'yyyyMMdd')
-          dotnet run -c Release --project tools/Sentinel.CoverageFuzz -- all 600 $seed "$env:RUNNER_TEMP/coverage-fuzz"
+          dotnet run -c Release --project tools/Kshatriya.CoverageFuzz -- all 600 $seed "$env:RUNNER_TEMP/coverage-fuzz"
       - name: Upload crashing inputs
         if: failure()
         uses: actions/upload-artifact@v4

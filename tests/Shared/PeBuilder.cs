@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 
-namespace Sentinel.Tests.Shared;
+namespace Kshatriya.Tests.Shared;
 
 /// <summary>
 /// Builds small, synthetic, non-functional PE32+ images for parser and heuristic tests, so no real

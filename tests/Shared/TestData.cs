@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Sentinel.Tests.Shared;
+namespace Kshatriya.Tests.Shared;
 
 /// <summary>Harmless test content. Nothing here is malware.</summary>
 internal static class TestData
@@ -30,7 +30,7 @@ internal static class TestData
 
     public static string HashDb(params (string Sha256, string Name, string Category)[] entries)
     {
-        var sb = new StringBuilder("# sentinel-hashdb v1\n");
+        var sb = new StringBuilder("# kshatriya-hashdb v1\n");
         foreach (var (sha, name, category) in entries)
         {
             sb.Append("sha256:").Append(sha).Append(' ').Append(name).Append(' ').Append(category).Append('\n');
@@ -45,7 +45,7 @@ internal sealed class TempDirectory : IDisposable
 {
     public TempDirectory()
     {
-        Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "sentinel-tests", Guid.NewGuid().ToString("N"));
+        Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "kshatriya-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path);
     }
 

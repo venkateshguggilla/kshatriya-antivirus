@@ -1,4 +1,4 @@
-namespace Sentinel.Tests.Shared;
+namespace Kshatriya.Tests.Shared;
 
 /// <summary>
 /// Simple deterministic mutation fuzzer (no coverage guidance). Produces structurally plausible but

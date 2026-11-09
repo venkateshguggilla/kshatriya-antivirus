@@ -7,7 +7,7 @@ name: release
 # SIGNPATH_API_TOKEN exist, the unsigned build is submitted to SignPath (SignPath Foundation certificate
 # for open-source projects). Each request waits for manual approval by a project approver in SignPath, then
 # the signed binaries replace the unsigned ones and the package step refuses to continue unless every
-# Sentinel binary is validly signed. Without that configuration the release is built and marked UNSIGNED.
+# Kshatriya binary is validly signed. Without that configuration the release is built and marked UNSIGNED.
 # No certificate or private key exists in this repository or on the runner.
 on:
   push:
@@ -38,15 +38,15 @@ jobs:
 
       - name: Build and test (warnings are errors)
         run: |
-          dotnet build Sentinel.slnx -c Release
-          dotnet test Sentinel.slnx --no-build -c Release --blame-hang-timeout 5m
+          dotnet build Kshatriya.slnx -c Release
+          dotnet test Kshatriya.slnx --no-build -c Release --blame-hang-timeout 5m
 
       - name: Build release folder (unsigned)
         id: build
         shell: pwsh
         run: |
           ./scripts/Build-Release.ps1 -Stage Build
-          $folder = (Get-ChildItem artifacts -Directory -Filter 'Sentinel-*-win-x64' | Select-Object -First 1).FullName
+          $folder = (Get-ChildItem artifacts -Directory -Filter 'Kshatriya-*-win-x64' | Select-Object -First 1).FullName
           "folder=$folder" >> $env:GITHUB_OUTPUT
 
       - name: Upload unsigned build for signing
@@ -54,7 +54,7 @@ jobs:
         if: env.SIGNPATH_CONFIGURED == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: sentinel-unsigned
+          name: kshatriya-unsigned
           path: ${{ steps.build.outputs.folder }}
           retention-days: 3
 
@@ -64,7 +64,7 @@ jobs:
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'sentinel-antivirus' }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'kshatriya-antivirus' }}
           signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
           artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }} # empty: the project's default
           github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
@@ -89,7 +89,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sentinel-release
+          name: kshatriya-release
           path: |
             artifacts/*.zip
             artifacts/*.zip.sha256

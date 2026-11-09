@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 
-namespace Sentinel.Tests.Shared;
+namespace Kshatriya.Tests.Shared;
 
 /// <summary>Builds ZIP archives in memory for tests.</summary>
 internal static class ZipFactory

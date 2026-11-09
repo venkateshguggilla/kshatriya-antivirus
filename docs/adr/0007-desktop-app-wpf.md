@@ -14,7 +14,7 @@ self-contained copy of it.
 
 ## Decision
 
-Build `Sentinel.App` on **WPF (.NET 10)** with the in-box Fluent theme
+Build `Kshatriya.App` on **WPF (.NET 10)** with the in-box Fluent theme
 (`PresentationFramework.Fluent`). WPF is part of the MIT-licensed .NET runtime, adds no package
 dependency, follows the system light/dark and high-contrast settings through the Fluent theme, and has
 a mature UI Automation implementation.

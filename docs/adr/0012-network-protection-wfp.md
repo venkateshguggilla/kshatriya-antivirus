@@ -18,7 +18,7 @@ add filters without a driver (no callout, no kernel code).
 - **Dynamic session** (`FWPM_SESSION_FLAG_DYNAMIC`): all filters disappear when the session closes,
   including on a crash. The failure mode is *fail open* (connections allowed), never a stranded machine.
   Updates replace all filters in one WFP transaction.
-- **Blocklists** come only from signed content (`*.netblock`, header `# sentinel-netblock v1`, one
+- **Blocklists** come only from signed content (`*.netblock`, header `# kshatriya-netblock v1`, one
   `address[/prefix] name` per line). Guardrails reject unspecified, loopback, link-local and multicast
   addresses and ranges broader than /16 (IPv4) or /48 (IPv6); one bad line rejects the package.
 - **Opt-in:** `networkProtection: true` in `service.json`. Status reports `blocking N address range(s)`,
@@ -28,6 +28,6 @@ add filters without a driver (no callout, no kernel code).
 
 - IP-based only: no domain, URL or TLS-SNI filtering (that needs DNS integration or a callout driver).
   Attackers can rotate addresses; blocklists age quickly.
-- Blocked connections fail with "access denied" in the application; Sentinel does not yet surface a
+- Blocked connections fail with "access denied" in the application; Kshatriya does not yet surface a
   per-connection notification (WFP net-event subscription is future work).
 - No blocklist is published by this project.

@@ -5,7 +5,7 @@
 
 ## Context
 
-Until M3 Sentinel only reported. Milestone 4 adds the first component that changes user files.
+Until M3 Kshatriya only reported. Milestone 4 adds the first component that changes user files.
 A mistake here destroys data, and a mistake in authorization turns the LocalSystem service into a
 tool for deleting or planting files, so the design favours "leave the file alone and say why" over
 "try harder".
@@ -14,7 +14,7 @@ tool for deleting or planting files, so the design favours "leave the file alone
 
 ### Separate response component
 
-- `Sentinel.Response` holds everything that writes: the vault, the quarantine manager, the audit log.
+- `Kshatriya.Response` holds everything that writes: the vault, the quarantine manager, the audit log.
   `ScanRunner` stays read-only and calls an optional `IItemResponder` for detected files **after**
   its own read-only handle is closed.
 - Only confirmed, high-confidence detections are actioned automatically: category `malware` or
@@ -79,7 +79,7 @@ Refused operations are audited.
 - Full paths (a file, or a folder and everything below it, on path-segment boundaries) and exact
   SHA-256 values. No wildcards. Drive roots and the Windows directory are refused.
 - Excluded items are still reported (`skipped`, reason `excluded`) and do not make a scan incomplete.
-- Exclusions apply to Sentinel only. Nothing in Sentinel adds Defender exclusions ([ADR 0002](0002-defender-companion-mode.md)).
+- Exclusions apply to Kshatriya only. Nothing in Kshatriya adds Defender exclusions ([ADR 0002](0002-defender-companion-mode.md)).
 
 ### Audit log
 

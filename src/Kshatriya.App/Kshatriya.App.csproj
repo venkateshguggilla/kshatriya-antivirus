@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Kshatriya.App</RootNamespace>
+    <AssemblyName>Kshatriya.App</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- WPF data binding needs culture data; the rest of the solution runs with invariant globalization. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Kshatriya.Runtime\Kshatriya.Runtime.csproj" />
+    <PackageReference Include="System.Management" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Kshatriya.App.Tests" />
+  </ItemGroup>
+</Project>

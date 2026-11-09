@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>Kshatriya.Runtime</RootNamespace>
+    <!-- Required by LibraryImport-generated marshalling and the process-creation structures. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Kshatriya.Scanning\Kshatriya.Scanning.csproj" />
+    <ProjectReference Include="..\Kshatriya.Protocol\Kshatriya.Protocol.csproj" />
+    <ProjectReference Include="..\Kshatriya.Engines.Hash\Kshatriya.Engines.Hash.csproj" />
+    <ProjectReference Include="..\Kshatriya.Engines.Pe\Kshatriya.Engines.Pe.csproj" />
+    <ProjectReference Include="..\Kshatriya.Engines.Yara\Kshatriya.Engines.Yara.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Kshatriya.Runtime.Tests" />
+  </ItemGroup>
+</Project>

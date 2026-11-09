@@ -18,13 +18,13 @@ The roadmap called for "EMBER-style features, ONNX, off by default". Two facts c
   and 24 header, section and import facts from the existing bounds-checked `PeImage`.
 - **Model format:** strict JSON (`*.model.json`), either logistic regression (one weight per feature) or
   a gradient-boosted tree ensemble (the shape LightGBM/XGBoost export; at most 5,000 trees of 8,192
-  nodes). Children must follow their parent, so evaluation always terminates. Fuzzed (`Sentinel.Fuzz model`).
+  nodes). Children must follow their parent, so evaluation always terminates. Fuzzed (`Kshatriya.Fuzz model`).
 - **Evaluation in pure C#** inside the sandboxed worker (`MlEngine`). No native runtime, no dependency.
 - **Results are `suspicious` only** (low, or medium at score ≥ 0.95), never `malware`, never actioned
   automatically. Validly signed files are skipped.
 - **Off by default:** models arrive only in signed content packages ([ADR 0008](0008-signed-content-updates.md))
   and are used only when `machineLearning: true` is set in the protected `service.json`.
-  `sentinel scan --model <file>` exists for local evaluation.
+  `kshatriya scan --model <file>` exists for local evaluation.
 
 ## Consequences
 

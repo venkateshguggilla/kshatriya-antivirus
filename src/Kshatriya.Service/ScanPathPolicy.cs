@@ -1,0 +1,38 @@
+namespace Kshatriya.Service;
+
+/// <summary>
+/// Which paths the service accepts. Only fully qualified local drive paths (<c>C:\...</c>): no UNC
+/// shares, no device or <c>\\?\</c> namespaces, no wildcards, no relative paths. The service never
+/// reaches off the machine on a caller's behalf.
+/// </summary>
+public static class ScanPathPolicy
+{
+    public const int MaxPathsPerRequest = 64;
+
+    public static bool IsLocalAbsolutePath(string? path) => Scanning.PathPolicy.IsLocalAbsolutePath(path);
+
+    /// <summary>Returns an error message, or null if every path is acceptable.</summary>
+    public static string? Validate(IReadOnlyList<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        if (paths.Count == 0)
+        {
+            return "No paths were given.";
+        }
+
+        if (paths.Count > MaxPathsPerRequest)
+        {
+            return $"At most {MaxPathsPerRequest} paths can be scanned in one request.";
+        }
+
+        foreach (string path in paths)
+        {
+            if (!IsLocalAbsolutePath(path))
+            {
+                return $"'{path}' is not a fully qualified local path (for example C:\\Users\\me\\Downloads).";
+            }
+        }
+
+        return null;
+    }
+}

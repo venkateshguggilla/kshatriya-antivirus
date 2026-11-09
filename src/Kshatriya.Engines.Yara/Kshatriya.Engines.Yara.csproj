@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Kshatriya.Engines.Yara</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Kshatriya.Engines.Abstractions\Kshatriya.Engines.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Rules\*.yar" LogicalName="Kshatriya.Engines.Yara.Rules.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <!-- Native YARA-X library, fetched and hash-verified by scripts/Get-YaraX.ps1. -->
+  <PropertyGroup>
+    <YaraXNativeDir>$(MSBuildThisFileDirectory)..\..\native\yara-x\win-x64\</YaraXNativeDir>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(YaraXNativeDir)yara_x_capi.dll')">
+    <None Include="$(YaraXNativeDir)yara_x_capi.dll" Link="yara_x_capi.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+</Project>

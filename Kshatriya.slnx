@@ -1,0 +1,35 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Kshatriya.App/Kshatriya.App.csproj" />
+    <Project Path="src/Kshatriya.Cli/Kshatriya.Cli.csproj" />
+    <Project Path="src/Kshatriya.Core/Kshatriya.Core.csproj" />
+    <Project Path="src/Kshatriya.Engines.Abstractions/Kshatriya.Engines.Abstractions.csproj" />
+    <Project Path="src/Kshatriya.Engines.Hash/Kshatriya.Engines.Hash.csproj" />
+    <Project Path="src/Kshatriya.Engines.Pe/Kshatriya.Engines.Pe.csproj" />
+    <Project Path="src/Kshatriya.Engines.Yara/Kshatriya.Engines.Yara.csproj" />
+    <Project Path="src/Kshatriya.Protocol/Kshatriya.Protocol.csproj" />
+    <Project Path="src/Kshatriya.Response/Kshatriya.Response.csproj" />
+    <Project Path="src/Kshatriya.Runtime/Kshatriya.Runtime.csproj" />
+    <Project Path="src/Kshatriya.Scanning/Kshatriya.Scanning.csproj" />
+    <Project Path="src/Kshatriya.Service/Kshatriya.Service.csproj" />
+    <Project Path="src/Kshatriya.Updates/Kshatriya.Updates.csproj" />
+    <Project Path="src/Kshatriya.Worker/Kshatriya.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Kshatriya.App.Tests/Kshatriya.App.Tests.csproj" />
+    <Project Path="tests/Kshatriya.Cli.Tests/Kshatriya.Cli.Tests.csproj" />
+    <Project Path="tests/Kshatriya.Engines.Hash.Tests/Kshatriya.Engines.Hash.Tests.csproj" />
+    <Project Path="tests/Kshatriya.Engines.Pe.Tests/Kshatriya.Engines.Pe.Tests.csproj" />
+    <Project Path="tests/Kshatriya.Engines.Yara.Tests/Kshatriya.Engines.Yara.Tests.csproj" />
+    <Project Path="tests/Kshatriya.Response.Tests/Kshatriya.Response.Tests.csproj" />
+    <Project Path="tests/Kshatriya.Runtime.Tests/Kshatriya.Runtime.Tests.csproj" />
+    <Project Path="tests/Kshatriya.Scanning.Tests/Kshatriya.Scanning.Tests.csproj" />
+    <Project Path="tests/Kshatriya.Service.Tests/Kshatriya.Service.Tests.csproj" />
+    <Project Path="tests/Kshatriya.Updates.Tests/Kshatriya.Updates.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Kshatriya.ContentTool/Kshatriya.ContentTool.csproj" />
+    <Project Path="tools/Kshatriya.CoverageFuzz/Kshatriya.CoverageFuzz.csproj" />
+    <Project Path="tools/Kshatriya.Fuzz/Kshatriya.Fuzz.csproj" />
+  </Folder>
+</Solution>

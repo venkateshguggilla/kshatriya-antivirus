@@ -21,7 +21,7 @@ three things must hold:
 - The broker (service or CLI) does everything that needs file access: enumeration, the safe open,
   hashing, Authenticode checks, the verdict cache. It then streams the **bytes** of each item to a
   worker over an anonymous pipe. Workers never receive a path they are expected to open.
-- Workers (`Sentinel.Worker.exe`) run the engines and archive expansion. Each is created with:
+- Workers (`Kshatriya.Worker.exe`) run the engines and archive expansion. Each is created with:
   - a restricted copy of the broker's token: `DISABLE_MAX_PRIVILEGE` (only SeChangeNotify left),
     BUILTIN\Administrators deny-only, mandatory label **low**;
   - a Job Object: kill on job close, one active process, per-process memory cap (1.5 GiB default),
@@ -59,7 +59,7 @@ three things must hold:
   instances so the name never becomes free while it runs.
 - **Client → server:** before writing anything, the client checks the pipe server's process ID.
   In production it must equal the PID that the Service Control Manager reports for
-  `SentinelService` (only administrators can install or reconfigure the service). In development
+  `KshatriyaService` (only administrators can install or reconfigure the service). In development
   (`--dev`) the server must run as the same user. Because the client writes nothing before this
   check, a squatting server cannot impersonate it: `ImpersonateNamedPipeClient` needs data to have
   been read first.
@@ -76,7 +76,7 @@ three things must hold:
 
 ### Configuration trust
 
-- Settings (`%ProgramData%\Sentinel\config\service.json`) and any signature or rule files they
+- Settings (`%ProgramData%\Kshatriya\config\service.json`) and any signature or rule files they
   name are refused unless only SYSTEM, Administrators or TrustedInstaller own them and can write
   them. In production the data directory gets a protected ACL: SYSTEM and Administrators full
   control, Users read.
