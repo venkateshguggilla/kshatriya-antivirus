@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Management;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
@@ -103,6 +104,11 @@ public sealed class RealTimeMonitor : IDisposable
     private long _lastCanaryCheck;
     private string _processState = "off";
     private string _removableState = "off";
+    private Task _folderScan = Task.CompletedTask;
+    private long _folderScanStarted;
+    private long _folderScanProgress;
+    private bool _folderScanReported;
+    private string _folderScanDescription = "";
     private long _scanned;
     private long _findings;
     private long _overflows;
@@ -163,6 +169,7 @@ public sealed class RealTimeMonitor : IDisposable
         finally
         {
             await removable.ContinueWith(_ => { }, TaskScheduler.Default);
+            await _folderScan.ContinueWith(_ => { }, TaskScheduler.Default);
         }
     }
 
@@ -181,7 +188,7 @@ public sealed class RealTimeMonitor : IDisposable
         }
 
         long due = _time.GetUtcNow().Add(delay ?? _options.Debounce).UtcTicks;
-        _pending.AddOrUpdate(path, _ => new Pending(due, source, 0), (_, old) => old with { DueTicks = due });
+        _pending.AddOrUpdate(path, _ => new Pending(due, source, 0, IsDirectory(path)), (_, old) => old with { DueTicks = due });
         _signal.Release();
     }
 
@@ -335,7 +342,8 @@ public sealed class RealTimeMonitor : IDisposable
             await _signal.WaitAsync(TimeSpan.FromMilliseconds(250), cancellationToken);
             CollectBehaviour();
             long now = _time.GetUtcNow().UtcTicks;
-            var due = _pending.Where(p => p.Value.DueTicks <= now).Take(BatchSize).ToList();
+            StartFolderScan(now, cancellationToken);
+            var due = _pending.Where(p => p.Value.DueTicks <= now && !p.Value.Folder).Take(BatchSize).ToList();
             if (due.Count == 0)
             {
                 continue;
@@ -346,8 +354,49 @@ public sealed class RealTimeMonitor : IDisposable
                 _pending.TryRemove(item.Key, out _);
             }
 
-            await ScanBatchAsync(due, cancellationToken);
+            await ScanBatchAsync(due, folders: false, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Whole folders (created or moved in, removable drives, rescans after lost events) are scanned in
+    /// their own lane, one batch at a time, so newly written files and started programs are never stuck
+    /// behind them. A folder scan that runs for over a minute is logged with its folders and progress.
+    /// </summary>
+    private void StartFolderScan(long now, CancellationToken cancellationToken)
+    {
+        if (!_folderScan.IsCompleted)
+        {
+            TimeSpan running = Stopwatch.GetElapsedTime(_folderScanStarted);
+            if (!_folderScanReported && running > TimeSpan.FromMinutes(1))
+            {
+                _folderScanReported = true;
+                Log.RealTimeLongFolderScan(_logger, _folderScanDescription, running.TotalSeconds, Interlocked.Read(ref _folderScanProgress));
+            }
+
+            return;
+        }
+
+        var folders = _pending.Where(p => p.Value.DueTicks <= now && p.Value.Folder).Take(8).ToList();
+        if (folders.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var item in folders)
+        {
+            _pending.TryRemove(item.Key, out _);
+        }
+
+        _folderScanDescription = string.Join("; ", folders.Select(f => $"{f.Key} ({f.Value.Source})"));
+        _folderScanStarted = Stopwatch.GetTimestamp();
+        _folderScanReported = false;
+        Interlocked.Exchange(ref _folderScanProgress, 0);
+        _folderScan = ScanBatchAsync(folders, folders: true, cancellationToken).ContinueWith(
+            t => Log.RealTimeProblem(_logger, $"Real-time folder scan failed: {t.Exception!.GetBaseException().Message}"),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
     }
 
     private void CollectBehaviour()
@@ -373,21 +422,44 @@ public sealed class RealTimeMonitor : IDisposable
         }
     }
 
-    private async Task ScanBatchAsync(List<KeyValuePair<string, Pending>> batch, CancellationToken cancellationToken)
+    private async Task ScanBatchAsync(List<KeyValuePair<string, Pending>> batch, bool folders, CancellationToken cancellationToken)
     {
         IItemResponder? responder = _options.Quarantine ? new QuarantineResponder(_core.Quarantine, Actor.System("real-time protection")) : null;
         ScanReport report;
+        long started = Stopwatch.GetTimestamp();
+        long reported = 0;
+        // Counts items as they finish so status shows progress during long folder scans; corrected to the
+        // exact number of scanned files when the batch completes.
+        var progress = new CallbackProgress(() =>
+        {
+            Interlocked.Increment(ref reported);
+            Interlocked.Increment(ref _scanned);
+            if (folders)
+            {
+                Interlocked.Increment(ref _folderScanProgress);
+            }
+        });
         try
         {
-            report = await _core.Coordinator.ScanBackgroundAsync([.. batch.Select(b => b.Key)], responder, cancellationToken);
+            report = await _core.Coordinator.ScanBackgroundAsync([.. batch.Select(b => b.Key)], responder, cancellationToken, folders, progress);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ObjectDisposedException)
         {
             Log.RealTimeProblem(_logger, $"Real-time scan failed: {ex.Message}");
             return;
         }
+        catch (OperationCanceledException) when (folders && cancellationToken.IsCancellationRequested)
+        {
+            return; // service stopping
+        }
 
-        Interlocked.Add(ref _scanned, report.Summary.FilesScanned);
+        TimeSpan took = Stopwatch.GetElapsedTime(started);
+        if (!folders && took > TimeSpan.FromSeconds(10))
+        {
+            Log.RealTimeSlowBatch(_logger, took.TotalSeconds, report.Summary.FilesScanned, batch.Count);
+        }
+
+        Interlocked.Add(ref _scanned, report.Summary.FilesScanned - Interlocked.Read(ref reported));
         var sources = batch.ToDictionary(b => b.Key, b => b.Value, StringComparer.OrdinalIgnoreCase);
         foreach (ScanItemResult item in report.Items)
         {
@@ -404,7 +476,13 @@ public sealed class RealTimeMonitor : IDisposable
         _core.RecordDetections(report, "real-time protection", $"real-time ({source})");
     }
 
-    private sealed record Pending(long DueTicks, string Source, int Attempts);
+    private sealed record Pending(long DueTicks, string Source, int Attempts, bool Folder);
+
+    /// <summary>Synchronous progress (unlike <see cref="Progress{T}"/>, which posts to a context).</summary>
+    private sealed class CallbackProgress(Action onItem) : IProgress<ScanProgress>
+    {
+        public void Report(ScanProgress value) => onItem();
+    }
 }
 
 /// <summary>

@@ -35,7 +35,7 @@ internal sealed class RunningService : IAsyncDisposable
     /// <summary>Benign bytes that the service's custom signature database flags as a test detection.</summary>
     public byte[] KnownBad { get; }
 
-    public static async Task<RunningService> StartAsync(ServiceSettings? settings = null, TimeProvider? time = null, bool requireAdministrator = false, Sentinel.Service.RealTime.IProcessStartSource? processes = null, Func<IEnumerable<string>>? removableDrives = null)
+    public static async Task<RunningService> StartAsync(ServiceSettings? settings = null, TimeProvider? time = null, bool requireAdministrator = false, Sentinel.Service.RealTime.IProcessStartSource? processes = null, Func<IEnumerable<string>>? removableDrives = null, Microsoft.Extensions.Logging.ILogger? logger = null)
     {
         var temp = new TempDirectory();
         byte[] knownBad = TestData.BenignBytes(77, 4096);
@@ -56,7 +56,7 @@ internal sealed class RunningService : IAsyncDisposable
                 ProcessStartSource = processes,
                 RemovableDrives = removableDrives,
             },
-            NullLogger.Instance,
+            logger ?? NullLogger.Instance,
             CancellationToken.None);
 
         var service = new RunningService(temp, core, pipe, knownBad);

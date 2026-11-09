@@ -36,6 +36,7 @@ public sealed class ScanCoordinator : IDisposable
     private readonly SemaphoreSlim _capacity;
     private readonly ExclusionStore _exclusions;
     private readonly SemaphoreSlim _background = new(1, 1);
+    private readonly SemaphoreSlim _backgroundFolders = new(1, 1);
 
     public ScanCoordinator(WorkerPoolAnalyzer pool, ServiceSettings settings, ExclusionStore exclusions)
     {
@@ -91,28 +92,30 @@ public sealed class ScanCoordinator : IDisposable
     }
 
     /// <summary>
-    /// Scans on the service's own behalf (real-time monitoring): one batch at a time, sharing the pool and
-    /// cache but not taking a slot from user scans.
+    /// Scans on the service's own behalf (real-time monitoring), sharing the pool and cache but not taking
+    /// a slot from user scans. Two lanes, one batch each: files (up to two workers) and whole folders (one
+    /// worker), so a long folder scan never holds up newly written files or started programs.
     /// </summary>
-    public async Task<ScanReport> ScanBackgroundAsync(IReadOnlyList<string> paths, IItemResponder? responder, CancellationToken cancellationToken)
+    public async Task<ScanReport> ScanBackgroundAsync(IReadOnlyList<string> paths, IItemResponder? responder, CancellationToken cancellationToken, bool folders = false, IProgress<ScanProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        await _background.WaitAsync(cancellationToken);
+        SemaphoreSlim lane = folders ? _backgroundFolders : _background;
+        await lane.WaitAsync(cancellationToken);
         try
         {
             var runner = new ScanRunner(Pool, new ScanOptions
             {
-                Limits = new ScanLimits { MaxFileSizeBytes = _settings.MaxFileSizeBytes, MaxDegreeOfParallelism = Math.Min(2, _settings.Workers) },
+                Limits = new ScanLimits { MaxFileSizeBytes = _settings.MaxFileSizeBytes, MaxDegreeOfParallelism = folders ? 1 : Math.Min(2, _settings.Workers) },
                 TrustProvider = _trust,
                 Cache = Cache,
                 Exclusions = _exclusions.Current,
                 Responder = responder,
             });
-            return await runner.ScanPathsAsync(paths, progress: null, cancellationToken);
+            return await runner.ScanPathsAsync(paths, progress, cancellationToken);
         }
         finally
         {
-            _background.Release();
+            lane.Release();
         }
     }
 
@@ -125,15 +128,22 @@ public sealed class ScanCoordinator : IDisposable
     {
         ArgumentNullException.ThrowIfNull(next);
         int acquired = 0;
-        bool background = false;
+        bool fileLane = false;
+        bool folderLane = false;
         try
         {
-            if (!await _background.WaitAsync(timeout, cancellationToken))
+            fileLane = await _background.WaitAsync(timeout, cancellationToken);
+            if (!fileLane)
             {
                 throw new ScanCapacityException("Real-time scanning is busy; try the update again shortly.");
             }
 
-            background = true;
+            folderLane = await _backgroundFolders.WaitAsync(timeout, cancellationToken);
+            if (!folderLane)
+            {
+                throw new ScanCapacityException("Real-time protection is scanning a folder; try the update again shortly.");
+            }
+
             for (; acquired < _settings.MaxConcurrentScans; acquired++)
             {
                 if (!await _capacity.WaitAsync(timeout, cancellationToken))
@@ -152,9 +162,14 @@ public sealed class ScanCoordinator : IDisposable
                 _capacity.Release(acquired);
             }
 
-            if (background)
+            if (fileLane)
             {
                 _background.Release();
+            }
+
+            if (folderLane)
+            {
+                _backgroundFolders.Release();
             }
         }
     }
@@ -164,5 +179,6 @@ public sealed class ScanCoordinator : IDisposable
         Pool.Dispose();
         _capacity.Dispose();
         _background.Dispose();
+        _backgroundFolders.Dispose();
     }
 }

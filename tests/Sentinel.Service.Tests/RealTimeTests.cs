@@ -85,6 +85,26 @@ public sealed class RealTimeTests : IDisposable
     }
 
     [Fact]
+    public async Task A_long_folder_scan_does_not_hold_up_newly_written_files()
+    {
+        using var big = new TempDirectory();
+        for (int i = 0; i < 4000; i++)
+        {
+            big.File($@"f{i / 100}\{i}.bin", TestData.BenignBytes(i, 64));
+        }
+
+        await using RunningService service = await RunningService.StartAsync(Settings());
+        await Task.Delay(300);
+        service.Core.RealTime!.Enqueue(big.Path, "file (moved in)", TimeSpan.Zero);
+        await Task.Delay(500); // the folder scan is under way
+        string bad = _watched.File("while-busy.bin", service.KnownBad);
+
+        await WaitForDetectionAsync(service, bad);
+
+        Assert.True(service.Core.RealTime.Stats.Scanned < 4000, "The new file was detected before the folder scan finished.");
+    }
+
+    [Fact]
     public async Task With_quarantine_enabled_a_high_confidence_detection_is_quarantined()
     {
         await using RunningService service = await RunningService.StartAsync(Settings(quarantine: true));

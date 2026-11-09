@@ -40,3 +40,23 @@ intercept an open or an execution, so this milestone *detects soon after*; it do
   cost, but no performance budget has been measured yet (M12).
 - The history does not survive a restart; reports and the event log remain the durable record.
 - No user notification (toast) yet; findings appear in the app, `sentinel detections` and the event log.
+
+## Amendment (2026-11-09): folder events and scan lanes
+
+The first install with `C:\Users` watched (on the owner's own machine) showed real-time scanning never
+went idle. Two defects, both fixed:
+
+- **Folder change events.** Windows reports a folder as changed whenever an entry inside it changes. The
+  monitor queued that folder, and queued folders are scanned recursively, so every write in a busy folder
+  rescanned the whole folder (about 5 million scans in an hour). `Changed` events for folders are now
+  ignored, because the entry has its own event. Created folders are still scanned in full, since a folder
+  moved in raises no events for its files. Folder changes no longer count toward the ransomware
+  mass-change heuristic.
+- **One lane.** A full folder scan (a folder moved in, a removable drive, a rescan after lost events)
+  ran in the same one-batch-at-a-time lane as file events. A large one held up every new file and
+  started program for as long as it ran; once, the whole of `C:\Users` was scanned in a single batch
+  for over 30 minutes while the file queue grew. The trigger could not be identified from the logs,
+  which only record warnings. Whole folders now have their own lane (one batch, one worker), so file
+  events keep being scanned. Status counts scanned items as they finish. A folder scan still running
+  after a minute is logged as event 7002, naming each folder and why it was queued. A file batch that
+  takes over 10 s is logged as event 7003. Content updates wait for both lanes.

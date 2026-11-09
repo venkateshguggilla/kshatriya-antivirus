@@ -80,7 +80,13 @@ internal static partial class Log
     [LoggerMessage(7001, LogLevel.Information, "Removable drive {Drive} attached; scanning it.")]
     public static partial void RemovableDrive(ILogger logger, string drive);
 
-    [LoggerMessage(6000, LogLevel.Information, "Content package {Sequence} (channel {Channel}, key {KeyId}) is now active.")]
+    [LoggerMessage(7002, LogLevel.Warning, "Real-time protection has been scanning {Folders} in full for {Seconds:F0} s ({Items} item(s) so far). New files and started programs are still scanned meanwhile.")]
+    public static partial void RealTimeLongFolderScan(ILogger logger, string folders, double seconds, long items);
+
+    [LoggerMessage(7003, LogLevel.Warning, "Real-time scan of {Paths} file event(s) took {Seconds:F0} s ({Files} file(s) scanned).")]
+    public static partial void RealTimeSlowBatch(ILogger logger, double seconds, long files, int paths);
+
+    [LoggerMessage(6000, LogLevel.Information,"Content package {Sequence} (channel {Channel}, key {KeyId}) is now active.")]
     public static partial void ContentActivated(ILogger logger, long sequence, string channel, string keyId);
 
     [LoggerMessage(6001, LogLevel.Error, "{Problem}")]
