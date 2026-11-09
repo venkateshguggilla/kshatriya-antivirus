@@ -14,6 +14,7 @@ public static class AuditActions
     public const string Delete = "delete";
     public const string ExclusionAdd = "exclusionAdd";
     public const string ExclusionRemove = "exclusionRemove";
+    public const string AuditRead = "auditRead";
 }
 
 /// <summary>Stable outcome names written to the audit log.</summary>

@@ -153,6 +153,7 @@ public class QuarantineServiceTests
         var records = service.Core.Quarantine.Audit.ReadRecent(10);
         Assert.Contains(records, r => r.Action == "restore" && r.Outcome == "denied");
         Assert.Contains(records, r => r.Action == "exclusionAdd" && r.Outcome == "denied");
+        Assert.Contains(records, r => r.Action == "auditRead" && r.Outcome == "denied");
     }
 
     [Fact]

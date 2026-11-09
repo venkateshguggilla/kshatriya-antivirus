@@ -605,7 +605,9 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
     {
         if (!canManage)
         {
-            Log.Denied(logger, "auditQuery", actor.Name, "not an elevated administrator");
+            const string reason = "not an elevated administrator";
+            core.Quarantine.AuditDenied(actor, AuditActions.AuditRead, "audit log", reason);
+            Log.Denied(logger, AuditActions.AuditRead, actor.Name, reason);
             await SendErrorAsync(ErrorCodes.AccessDenied, "Reading the audit log requires an elevated administrator.", cancellationToken);
             return;
         }
