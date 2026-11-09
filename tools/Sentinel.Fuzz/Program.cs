@@ -1,5 +1,5 @@
 // Mutation fuzz harness for Sentinel parsers.
-//   dotnet run -c Release --project tools/Sentinel.Fuzz -- <pe|zip|hashdb|frame|report|content|model|all> [iterations] [seed] [crashDir]
+//   dotnet run -c Release --project tools/Sentinel.Fuzz -- <pe|zip|hashdb|frame|report|content|model|usn|all> [iterations] [seed] [crashDir]
 // Any exception escaping a parser counts as a failure; the offending input is saved to crashDir.
 // This is unguided mutation fuzzing; coverage-guided fuzzing (SharpFuzz + libFuzzer) is future work.
 
@@ -11,6 +11,7 @@ using Sentinel.Engines.Hash;
 using Sentinel.Engines.Pe;
 using Sentinel.Protocol;
 using Sentinel.Scanning;
+using Sentinel.Service.RealTime;
 using Sentinel.Tests.Shared;
 using Sentinel.Updates;
 
@@ -20,10 +21,11 @@ int seed = args.Length > 2 ? int.Parse(args[2], CultureInfo.InvariantCulture) : 
 string crashDir = args.Length > 3 ? args[3] : Path.Combine(Path.GetTempPath(), "sentinel-fuzz-crashes");
 
 int failures = 0;
-foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "report", "content", "model" } : [target])
+foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "report", "content", "model", "usn" } : [target])
 {
     failures += t switch
     {
+        "usn" => FuzzUsn(iterations, seed, crashDir),
         "pe" => FuzzPe(iterations, seed, crashDir),
         "zip" => await FuzzZipAsync(iterations, seed, crashDir),
         "hashdb" => FuzzHashDb(iterations, seed, crashDir),
@@ -36,6 +38,38 @@ foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "
 }
 
 return failures == 0 ? 0 : 1;
+
+static int FuzzUsn(long iterations, int seed, string crashDir)
+{
+    byte[] seedRecords = UsnRecordBuilder.Concat(
+        UsnRecordBuilder.Record(1, 5, UsnRecords.ReasonFileCreate, 0x20, "new.bin"),
+        UsnRecordBuilder.Record(2, 5, UsnRecords.ReasonRenameNewName, UsnRecords.AttributeDirectory, "moved-in"),
+        UsnRecordBuilder.Record(3, 5, 0, 0, "v3", majorVersion: 3),
+        UsnRecordBuilder.Record(4, 5, UsnRecords.ReasonFileDelete, 0x20, "gone.txt"));
+    var mutator = new Mutator(seed);
+    long entries = 0;
+    int failures = 0;
+    var sw = Stopwatch.StartNew();
+    for (long i = 0; i < iterations; i++)
+    {
+        byte[] input = mutator.Mutate(seedRecords);
+        try
+        {
+            foreach (Sentinel.Service.RealTime.UsnEntry entry in UsnRecords.Parse(input))
+            {
+                entries++;
+                _ = UsnRecords.IsScannable(entry);
+            }
+        }
+        catch (Exception ex)
+        {
+            failures += Save(crashDir, "usn", i, input, ex);
+        }
+    }
+
+    Report("usn", iterations, failures, sw.Elapsed, $"entries {entries:N0}");
+    return failures;
+}
 
 static int FuzzPe(long iterations, int seed, string crashDir)
 {

@@ -17,5 +17,8 @@
     <Compile Include="../../tests/Shared/PeBuilder.cs" Link="Shared/PeBuilder.cs" />
     <Compile Include="../../tests/Shared/ZipFactory.cs" Link="Shared/ZipFactory.cs" />
     <Compile Include="../../tests/Shared/TestData.cs" Link="Shared/TestData.cs" />
+    <Compile Include="../../tests/Shared/UsnRecordBuilder.cs" Link="Shared/UsnRecordBuilder.cs" />
+    <!-- The change-journal record parser is pure; compiled in directly rather than referencing the service. -->
+    <Compile Include="../../src/Sentinel.Service/RealTime/UsnRecords.cs" Link="Service/UsnRecords.cs" />
   </ItemGroup>
 </Project>

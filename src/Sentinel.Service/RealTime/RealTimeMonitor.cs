@@ -88,6 +88,10 @@ public sealed class RealTimeMonitor : IDisposable
     private const int MaxQueue = 10_000;
     private const int BatchSize = 64;
     private const int MaxAttempts = 5;
+    private const int MaxRecovered = 5_000;
+    private readonly ConcurrentQueue<(string Root, string Message)> _lost = new();
+    private readonly Dictionary<string, RootJournal> _journals = new(StringComparer.OrdinalIgnoreCase);
+    private long _lastCheckpoint = Environment.TickCount64;
     private readonly ServiceCore _core;
     private readonly RealTimeOptions _options;
     private readonly TimeProvider _time;
@@ -199,6 +203,11 @@ public sealed class RealTimeMonitor : IDisposable
             watcher.Dispose();
         }
 
+        foreach (RootJournal state in _journals.Values)
+        {
+            state.Journal?.Dispose();
+        }
+
         _processes?.Dispose();
         _signal.Dispose();
     }
@@ -248,16 +257,88 @@ public sealed class RealTimeMonitor : IDisposable
                 Enqueue(e.FullPath, "file");
             };
             watcher.Deleted += (_, e) => _behaviour?.OnFileEvent(e.FullPath, FileEventKind.Deleted);
-            watcher.Error += (_, e) =>
-            {
-                // Events were lost (buffer overflow or the folder went away): rescan the whole root
-                // instead of silently missing changes.
-                Interlocked.Increment(ref _overflows);
-                Log.RealTimeProblem(_logger, $"Change notifications for '{root}' were lost ({e.GetException().Message}); rescanning it.");
-                Enqueue(root, "file (rescan after lost events)");
-            };
+            // Events were lost (buffer overflow or the folder went away): never silently miss changes.
+            watcher.Error += (_, e) => OnLostEvents(root, e.GetException().Message);
             watcher.EnableRaisingEvents = true;
             _watchers.Add(watcher);
+
+            UsnJournal? journal = UsnJournal.TryOpen(root, out string unavailable);
+            var state = new RootJournal(journal, unavailable);
+            if (journal?.Current(out unavailable) is UsnCheckpoint start)
+            {
+                state.Older = state.Newer = start;
+            }
+            else
+            {
+                state.Unavailable = unavailable;
+            }
+
+            _journals[root] = state;
+        }
+    }
+
+    /// <summary>Records that change notifications for <paramref name="root"/> were lost (tests call it directly).</summary>
+    internal void OnLostEvents(string root, string message)
+    {
+        Interlocked.Increment(ref _overflows);
+        _lost.Enqueue((root, message));
+        _signal.Release();
+    }
+
+    /// <summary>
+    /// Finds what changed while notifications were lost. With the NTFS change journal, only the paths
+    /// changed since a checkpoint 30-60 seconds before the loss are queued; without it (not
+    /// administrator, not NTFS, entries overwritten, too many changes) the whole root is rescanned.
+    /// </summary>
+    private void RecoverLostEvents()
+    {
+        var handled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (_lost.TryDequeue(out (string Root, string Message) lost))
+        {
+            if (!handled.Add(lost.Root))
+            {
+                continue;
+            }
+
+            _journals.TryGetValue(lost.Root, out RootJournal? state);
+            string why = state?.Unavailable ?? "no change journal";
+            if (state?.Journal is { } journal && state.Older is UsnCheckpoint from
+                && journal.ChangedSince(from, MaxRecovered, out why) is { } changed)
+            {
+                string prefix = lost.Root.TrimEnd('\\') + "\\";
+                int queued = 0;
+                foreach (string path in changed.Where(p => p.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Enqueue(path, "file (recovered from change journal)");
+                    queued++;
+                }
+
+                Log.RealTimeProblem(_logger, $"Change notifications for '{lost.Root}' were lost ({lost.Message}); {queued} changed path(s) recovered from the NTFS change journal and queued.");
+                continue;
+            }
+
+            Log.RealTimeProblem(_logger, $"Change notifications for '{lost.Root}' were lost ({lost.Message}); rescanning it in full ({why}).");
+            Enqueue(lost.Root, "file (rescan after lost events)");
+        }
+    }
+
+    /// <summary>Rotates journal checkpoints every 30 s, so recovery always starts at least 30 s before a loss.</summary>
+    private void RefreshCheckpoints()
+    {
+        long now = Environment.TickCount64;
+        if (now - _lastCheckpoint < 30_000)
+        {
+            return;
+        }
+
+        _lastCheckpoint = now;
+        foreach (RootJournal state in _journals.Values)
+        {
+            if (state.Journal?.Current(out _) is UsnCheckpoint current)
+            {
+                state.Older = state.Newer;
+                state.Newer = current;
+            }
         }
     }
 
@@ -340,6 +421,8 @@ public sealed class RealTimeMonitor : IDisposable
         while (!cancellationToken.IsCancellationRequested)
         {
             await _signal.WaitAsync(TimeSpan.FromMilliseconds(250), cancellationToken);
+            RecoverLostEvents();
+            RefreshCheckpoints();
             CollectBehaviour();
             long now = _time.GetUtcNow().UtcTicks;
             StartFolderScan(now, cancellationToken);
@@ -477,6 +560,17 @@ public sealed class RealTimeMonitor : IDisposable
     }
 
     private sealed record Pending(long DueTicks, string Source, int Attempts, bool Folder);
+
+    private sealed class RootJournal(UsnJournal? journal, string unavailable)
+    {
+        public UsnJournal? Journal { get; } = journal;
+
+        public string Unavailable { get; set; } = unavailable;
+
+        public UsnCheckpoint? Older { get; set; }
+
+        public UsnCheckpoint? Newer { get; set; }
+    }
 
     /// <summary>Synchronous progress (unlike <see cref="Progress{T}"/>, which posts to a context).</summary>
     private sealed class CallbackProgress(Action onItem) : IProgress<ScanProgress>

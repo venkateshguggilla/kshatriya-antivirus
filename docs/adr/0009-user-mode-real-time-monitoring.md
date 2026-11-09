@@ -60,3 +60,25 @@ went idle. Two defects, both fixed:
   events keep being scanned. Status counts scanned items as they finish. A folder scan still running
   after a minute is logged as event 7002, naming each folder and why it was queued. A file batch that
   takes over 10 s is logged as event 7003. Content updates wait for both lanes.
+
+## Amendment (2026-11-09): targeted recovery after lost notifications
+
+When notifications for a watched root are lost, the monitor reads the NTFS change journal (USN journal)
+of that volume instead of rescanning everything. It reads from a checkpoint taken 30–60 seconds before
+the loss (checkpoints rotate every 30 s) and queues only the paths that changed: files that still exist
+under their recorded name, and folders that were created or moved in (scanned in full in the folder
+lane, because their files raise no records). Each recovery is logged as event 7000 with the number of
+paths queued.
+
+- **Fallback:** the previous full rescan of the root, logged with the reason. This happens without
+  administrator or SYSTEM rights (opening a volume needs them), on non-NTFS drives, when the journal
+  was recreated or its entries were overwritten, or when more than 5,000 paths changed.
+- **Reading the journal:** only metadata is read. Parent folders are opened by file id with
+  attribute access only and without following reparse points, to rebuild paths. File contents are
+  opened later by the normal scan through `SafeFileOpener`, and paths outside the watched root or in the
+  service data folder are dropped.
+- **Parser:** journal records come from the kernel, but the parser (`UsnRecords`) is bounds-checked
+  anyway, unit-tested with malformed records and fuzzed (`Sentinel.Fuzz usn`).
+- **Limits:** the 30-second margin assumes notifications are lost within seconds of being raised, which
+  matches how a buffer overflow happens. Only 64-bit file ids (NTFS) are handled; ReFS falls back to
+  the full rescan.
