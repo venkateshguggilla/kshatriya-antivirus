@@ -37,7 +37,7 @@ intercept an open or an execution, so this milestone *detects soon after*; it do
 - Malware can run before the scan of its file finishes. This is stated in the app, the README and the
   threat model. Blocking requires a minifilter (M13+, optional) or a different OS facility.
 - Watching `C:\Users` recursively sees a lot of churn; the debounce, cache and batch size bound the
-  cost, but no performance budget has been measured yet (M12).
+  cost. A first measurement on one machine is in the [release checklist](../release-checklist.md); no budget is set yet.
 - The history does not survive a restart; reports and the event log remain the durable record.
 - No user notification (toast) yet; findings appear in the app, `sentinel detections` and the event log.
 

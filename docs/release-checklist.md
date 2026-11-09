@@ -42,7 +42,23 @@ missing before anyone should call a build "beta", let alone production.
 - [ ] Independent security review of the service pipe, sandbox and response component; external
       penetration test.
 - [ ] Measured performance budgets on reference hardware (CPU, memory, disk I/O during real-time
-      monitoring), including the cost of watching `C:\Users`.
+      monitoring), including the cost of watching `C:\Users`. **First measurement only** (2026-11-09,
+      build 73d9cf1, one developer machine: i9-9980HK 8 cores/16 threads, 64 GB, Apple SSD, Windows 10 22H2,
+      Defender on; `C:\Users` watched, about 675,000 files; processes and removable media on; report only).
+      Service and workers summed, 60 s per phase from performance counters; CPU is a share of the whole
+      machine:
+
+      | Phase | CPU avg (max) | Private working set avg (max) | Disk read / write avg |
+      |---|---|---|---|
+      | Idle (normal desktop and browser activity) | 0.09% (0.6%) | 280 MB (299 MB) | 1.1 / 0.4 MB/s |
+      | File churn: 2,506 writes of 4–256 KB random data | 0.84% (1.7%) | 329 MB (554 MB) | 16.1 / 5.4 MB/s |
+      | Program starts: 266 `cmd.exe` launches | 0.10% (1.4%) | 100 MB (129 MB) | 2.0 / 0.6 MB/s |
+
+      The queue stayed under 10 entries in every phase. Not yet measured: a full rescan after lost
+      events (it runs in its own lane on one worker and took over 30 minutes for all of `C:\Users`
+      before the lane fix), slower disks, and other machines. The first install measured far worse
+      (about 2% CPU and 8–67 MB/s of reads continuously) because of two real-time defects fixed in edb8ff9
+      and 73d9cf1 ([ADR 0009 amendment](adr/0009-user-mode-real-time-monitoring.md)).
 - [ ] Accessibility audit of the app with screen readers (Narrator, NVDA) and keyboard-only use.
 - [x] Coverage-guided fuzzing for the PE, ZIP and package parsers (`tools/Sentinel.CoverageFuzz`, nightly 10 minutes each with a carried-over corpus). Not yet: the signed manifest past signature verification, and the text/JSON parsers.
 - [ ] A staffed false-positive response and content-revocation process.
