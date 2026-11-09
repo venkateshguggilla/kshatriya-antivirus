@@ -5,37 +5,32 @@ using Kshatriya.App.ViewModels;
 
 namespace Kshatriya.App.Tests;
 
-/// <summary>Loads the real XAML on an STA thread and renders every page, so markup and binding errors fail tests.</summary>
+/// <summary>Loads the real XAML on the UI thread and renders every page, so markup and binding errors fail tests.</summary>
 public class XamlTests
 {
     [Fact]
-    public void Every_page_renders_with_its_template()
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                RenderAllPages();
-            }
-            catch (Exception ex)
-            {
-                failure = ex;
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
+    public void Every_page_renders_with_its_template() => UiThread.Run(RenderAllPages);
 
-        Assert.Null(failure);
-    }
+    [Fact]
+    public void A_narrow_window_switches_to_icon_navigation() => UiThread.Run(() =>
+    {
+        var window = new MainWindow { DataContext = new MainViewModel(new FakeGateway(), new FakeDialogs(), new FakeHost()), ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Width = 1180, Height = 700 };
+        window.Show();
+        try
+        {
+            Assert.False(window.IsCompact);
+            window.Width = 700;
+            window.UpdateLayout();
+            Assert.True(window.IsCompact);
+        }
+        finally
+        {
+            window.Hide();
+        }
+    });
 
     private static void RenderAllPages()
     {
-        var app = Application.Current ?? new App();
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/PresentationFramework.Fluent;component/Themes/Fluent.xaml") });
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/Kshatriya.App;component/Views/Pages.xaml") });
-
         var gateway = new FakeGateway();
         var main = new MainViewModel(gateway, new FakeDialogs(), new FakeHost());
         var window = new MainWindow { DataContext = main, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual, Left = -10000 };
@@ -54,7 +49,8 @@ public class XamlTests
         }
         finally
         {
-            window.Close();
+            // Hidden, not closed: closing the last window of a test Application would shut it down.
+            window.Hide();
         }
     }
 
@@ -63,7 +59,7 @@ public class XamlTests
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
         {
             DependencyObject child = VisualTreeHelper.GetChild(root, i);
-            if (child is ContentPresenter { Content: PageViewModel } presenter)
+            if (child is ContentPresenter { Content: PageViewModel } presenter && presenter.TemplatedParent is not ListBoxItem)
             {
                 return presenter;
             }

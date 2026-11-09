@@ -7,6 +7,7 @@
       <ResourceDictionary.MergedDictionaries>
         <!-- .NET Fluent theme: follows the Windows light/dark and high-contrast settings. -->
         <ResourceDictionary Source="pack://application:,,,/PresentationFramework.Fluent;component/Themes/Fluent.xaml" />
+        <ResourceDictionary Source="Views/Theme.xaml" />
         <ResourceDictionary Source="Views/Pages.xaml" />
       </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>

@@ -13,6 +13,13 @@ public sealed class MainViewModel : ObservableObject
     {
         Dashboard = new DashboardViewModel(gateway, host);
         Scan = new ScanViewModel(gateway, dialogs);
+        ScanViewModel scan = Scan;
+        Dashboard.QuickScanRequested += () =>
+        {
+            Current = scan;
+            scan.Choice = ScanChoice.Quick;
+            scan.QuickScanCommand.Execute(null);
+        };
         Detections = new DetectionsViewModel(gateway);
         Quarantine = new QuarantineViewModel(gateway, dialogs);
         Exclusions = new ExclusionsViewModel(gateway, dialogs);

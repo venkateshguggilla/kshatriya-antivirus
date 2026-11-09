@@ -31,6 +31,7 @@ public sealed partial class App : Application, IAppHost, IDisposable
     private DispatcherTimer? _driveTimer;
     private IServiceGateway? _gateway;
     private readonly ExternalDriveWatcher _drives = new();
+    private ExternalDriveScanner? _driveScanner;
     private Action? _clickAction;
     private bool _polling;
     private bool _checkingDrives;
@@ -105,7 +106,8 @@ public sealed partial class App : Application, IAppHost, IDisposable
         _gateway = gateway;
         _preferences = new AppPreferences();
         _watcher = new DetectionWatcher(gateway);
-        _tray = new TrayIcon(_preferences.Notifications, () => ShowMainWindow(detections: false), _preferences.SetNotifications, ExitApp);
+        _driveScanner = new ExternalDriveScanner(gateway);
+        _tray = new TrayIcon(_preferences.Notifications, _preferences.ScanExternalDrives, () => ShowMainWindow(detections: false), _preferences.SetNotifications, _preferences.SetScanExternalDrives, ExitApp);
         // Each notification decides what clicking it does (open Detections, or scan a newly attached drive).
         _tray.NotificationClicked += () => (_clickAction ?? (() => ShowMainWindow(detections: true)))();
         _timer = new DispatcherTimer { Interval = s_pollInterval };
@@ -134,6 +136,8 @@ public sealed partial class App : Application, IAppHost, IDisposable
     {
         _timer?.Stop();
         _driveTimer?.Stop();
+        _driveScanner?.Dispose();
+        _driveScanner = null;
         _tray?.Dispose();
         _tray = null;
         _showWait?.Unregister(null);
@@ -249,20 +253,51 @@ public sealed partial class App : Application, IAppHost, IDisposable
         {
             IReadOnlyList<DriveDescription> current = await Task.Run(Drives.Local);
             IReadOnlyList<DriveDescription> attached = _drives.Update(current);
-            if (attached.Count == 0 || !_preferences.Notifications)
+            if (attached.Count == 0)
             {
                 return;
             }
 
-            bool automatic = await RealTimeScansExternalDrivesAsync(_gateway);
-            DriveDescription drive = attached[^1];
-            FindingNotice notice = ExternalDriveWatcher.Describe(drive, automatic);
-            _clickAction = automatic ? () => ShowMainWindow(detections: false) : () => ScanDrive(drive.Root);
-            _tray.Notify(notice.Title, notice.Message, warning: false);
+            // Scan each new drive once: real-time protection does it when it watches external drives,
+            // otherwise the app does it now (unless the user turned that off), otherwise a scan is offered.
+            ConnectAction action = await RealTimeScansExternalDrivesAsync(_gateway) ? ConnectAction.ServiceScans
+                : _preferences.ScanExternalDrives ? ConnectAction.AppScans
+                : ConnectAction.Offer;
+            foreach (DriveDescription drive in attached)
+            {
+                if (_preferences.Notifications)
+                {
+                    FindingNotice notice = ExternalDriveWatcher.Describe(drive, action);
+                    _clickAction = action == ConnectAction.Offer ? () => ScanDrive(drive.Root) : () => ShowMainWindow(detections: false);
+                    _tray.Notify(notice.Title, notice.Message, warning: false);
+                }
+
+                if (action == ConnectAction.AppScans)
+                {
+                    _ = AutoScanAsync(drive);
+                }
+            }
         }
         finally
         {
             _checkingDrives = false;
+        }
+    }
+
+    /// <summary>Scans a newly connected drive in the background and reports the result.</summary>
+    private async Task AutoScanAsync(DriveDescription drive)
+    {
+        if (_driveScanner is null || _tray is null || _preferences is null)
+        {
+            return;
+        }
+
+        FindingNotice result = await _driveScanner.ScanAsync(drive, CancellationToken.None);
+        if (_preferences.Notifications && !_exiting)
+        {
+            bool findings = result.IsThreat || result.Title.StartsWith("Suspicious", StringComparison.Ordinal);
+            _clickAction = () => ShowMainWindow(detections: findings);
+            _tray.Notify(result.Title, result.Message, result.IsThreat);
         }
     }
 

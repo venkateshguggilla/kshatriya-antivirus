@@ -28,14 +28,30 @@ public sealed class ExternalDriveWatcher
     }
 
     /// <summary>
-    /// What to tell the user about a newly attached drive. When real-time protection scans new external
-    /// drives itself, the notification says so; otherwise it offers a scan.
+    /// What to tell the user about a newly attached drive: real-time protection is scanning it, the app is
+    /// scanning it now (the result follows in another notification), or a scan is offered.
     /// </summary>
-    public static FindingNotice Describe(DriveDescription drive, bool scannedAutomatically)
+    public static FindingNotice Describe(DriveDescription drive, ConnectAction action)
     {
         ArgumentNullException.ThrowIfNull(drive);
-        return scannedAutomatically
-            ? new FindingNotice("External drive connected", $"{drive.Label}. Kshatriya Antivirus is scanning it now and will tell you if it finds anything.", IsThreat: false)
-            : new FindingNotice("External drive connected", $"{drive.Label}. Click here to scan it with Kshatriya Antivirus.", IsThreat: false);
+        return action switch
+        {
+            ConnectAction.ServiceScans => new FindingNotice("External drive connected", $"{drive.Label}. Real-time protection is scanning it and will tell you if it finds anything.", IsThreat: false),
+            ConnectAction.AppScans => new FindingNotice("Scanning external drive", $"{drive.Label}. You will be told the result when the scan finishes.", IsThreat: false),
+            _ => new FindingNotice("External drive connected", $"{drive.Label}. Click here to scan it with Kshatriya Antivirus.", IsThreat: false),
+        };
     }
+}
+
+/// <summary>What happens when an external drive is connected.</summary>
+public enum ConnectAction
+{
+    /// <summary>Real-time protection in the service scans new external drives.</summary>
+    ServiceScans,
+
+    /// <summary>The app scans it now ("Scan USB drives when connected" is on).</summary>
+    AppScans,
+
+    /// <summary>Automatic scanning is off: offer a scan.</summary>
+    Offer,
 }

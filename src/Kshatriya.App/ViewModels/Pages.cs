@@ -32,16 +32,20 @@ public abstract class PageViewModel : ObservableObject
     private bool _isError;
     private bool _isBusy;
 
-    protected PageViewModel(string title, string description)
+    protected PageViewModel(string title, string description, string glyph = Glyphs.Info)
     {
         Title = title;
         Description = description;
+        Glyph = glyph;
         RefreshCommand = new AsyncCommand(_ => RunAsync(RefreshCoreAsync), onError: ShowError);
     }
 
     public string Title { get; }
 
     public string Description { get; }
+
+    /// <summary>Icon for the navigation list (a Segoe Fluent Icons / MDL2 Assets glyph).</summary>
+    public string Glyph { get; }
 
     public AsyncCommand RefreshCommand { get; }
 
@@ -91,7 +95,7 @@ public abstract class PageViewModel : ObservableObject
     }
 }
 
-public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) : PageViewModel("Dashboard", "Protection status at a glance")
+public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) : PageViewModel("Dashboard", "Protection status at a glance", Glyphs.Home)
 {
     private string _serviceState = "Checking…";
     private string _connectedAs = string.Empty;
@@ -195,6 +199,7 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
                 Schedules.Add("No scheduled scans are configured.");
             }
 
+            BuildStatus(status);
             ShowInfo(null);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -202,8 +207,83 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
             IsConnected = false;
             ServiceState = $"Not connected to the {gateway.EndpointDescription}.";
             ConnectedAs = string.Empty;
+            BuildDisconnected();
             ShowError(ex);
         }
+    }
+
+    private string _verdict = "Checking protection…";
+    private string _verdictDetail = string.Empty;
+    private Tone _verdictTone = Tone.Neutral;
+
+    /// <summary>One-line answer to "am I protected?".</summary>
+    public string Verdict { get => _verdict; private set => Set(ref _verdict, value); }
+
+    public string VerdictDetail { get => _verdictDetail; private set => Set(ref _verdictDetail, value); }
+
+    public Tone VerdictTone { get => _verdictTone; private set => Set(ref _verdictTone, value); }
+
+    /// <summary>The checks behind the verdict, one row each.</summary>
+    public ObservableCollection<StatusRow> Rows { get; } = [];
+
+    /// <summary>Raised by the Quick scan button; the shell opens the Scan page and starts a quick scan.</summary>
+    public event Action? QuickScanRequested;
+
+    public RelayCommand QuickScanCommand => new(_ => QuickScanRequested?.Invoke(), _ => IsConnected);
+
+    private void BuildStatus(StatusReplyDto status)
+    {
+        RealTimeStatusDto rt = status.RealTime;
+        ContentStatusDto c = status.Content;
+        Tone antivirus = Antivirus switch
+        {
+            AntivirusHealth.Good => Tone.Success,
+            AntivirusHealth.Unknown => Tone.Neutral,
+            _ => Tone.Caution,
+        };
+
+        Rows.Clear();
+        Rows.Add(new StatusRow(Glyphs.Shield, "Kshatriya service", $"Running since {Local(status.StartedUtc)}", Tone.Success));
+        Rows.Add(new StatusRow(Glyphs.Processing, "Real-time monitoring",
+            rt.Enabled ? $"On for {string.Join(", ", rt.Paths)}; scans files after they are written" : "Off; turn it on in the service settings",
+            rt.Enabled ? Tone.Success : Tone.Caution));
+        Rows.Add(new StatusRow(Glyphs.Usb, "External drives",
+            rt.Enabled && rt.RemovableMedia != "off" ? "Scanned automatically when connected" : "The app scans USB drives when connected (tray menu)",
+            Tone.Success));
+        Rows.Add(new StatusRow(Glyphs.Shield, "Windows antivirus", SecurityCenter.Describe(Antivirus), antivirus));
+        Rows.Add(new StatusRow(Glyphs.Folder, "Ransomware folder protection", FolderAccessText, Tone.Neutral));
+        Rows.Add(new StatusRow(Glyphs.Lock, "Quarantine", status.QuarantineItems == 1 ? "1 item" : $"{status.QuarantineItems} items", Tone.Neutral));
+        Rows.Add(new StatusRow(Glyphs.History, "Audit log", status.AuditChainValid ? "Intact" : "Integrity check failed: review History", status.AuditChainValid ? Tone.Success : Tone.Critical));
+        Rows.Add(new StatusRow(Glyphs.Document, "Signatures",
+            c.Sequence == 0 ? "Built-in only (no signed update installed)" : c.Expired ? $"Update {c.Sequence} expired on {Local(c.ExpiresUtc)}" : $"Update {c.Sequence}, valid until {Local(c.ExpiresUtc)}",
+            c.Expired ? Tone.Caution : Tone.Neutral));
+        Rows.Add(new StatusRow(Glyphs.Calendar, "Scheduled scans",
+            status.Schedules.Count == 0 ? "None configured" : string.Join("; ", status.Schedules.Select(s => $"{s.Name}, next {Local(s.NextRunUtc)}")),
+            Tone.Neutral));
+
+        if (!status.AuditChainValid)
+        {
+            (Verdict, VerdictDetail, VerdictTone) = ("The audit log may have been tampered with", "Its integrity check failed. Review the History page.", Tone.Critical);
+        }
+        else if (!rt.Enabled || antivirus == Tone.Caution || c.Expired)
+        {
+            (Verdict, VerdictDetail, VerdictTone) = ("Attention needed", "Some protection is off or out of date. The items marked below explain what to do.", Tone.Caution);
+        }
+        else
+        {
+            (Verdict, VerdictDetail, VerdictTone) = ("All checks passed", $"Kshatriya is running alongside {(Antivirus == AntivirusHealth.Good ? "Microsoft Defender" : "your antivirus")}. Real-time monitoring is on.", Tone.Success);
+        }
+
+        OnPropertyChanged(nameof(QuickScanCommand));
+    }
+
+    private void BuildDisconnected()
+    {
+        Rows.Clear();
+        Rows.Add(new StatusRow(Glyphs.Shield, "Kshatriya service", "Not reachable", Tone.Critical));
+        Rows.Add(new StatusRow(Glyphs.Shield, "Windows antivirus", SecurityCenter.Describe(Antivirus), Antivirus == AntivirusHealth.Good ? Tone.Success : Tone.Caution));
+        (Verdict, VerdictDetail, VerdictTone) = ("Kshatriya is not running", $"The {gateway.EndpointDescription} is not reachable. Scans and real-time monitoring need it; Microsoft Defender keeps protecting you.", Tone.Critical);
+        OnPropertyChanged(nameof(QuickScanCommand));
     }
 
     internal static string Local(string? isoUtc) =>
@@ -212,8 +292,29 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
             : "-";
 }
 
+/// <summary>One check on the dashboard.</summary>
+public sealed record StatusRow(string Glyph, string Label, string Value, Tone Tone);
+
 /// <summary>One line in the scan results.</summary>
-public sealed record ResultRow(string Status, string Path, string Detail, string Action);
+public sealed record ResultRow(string Status, string Path, string Detail, string Action)
+{
+    public Tone Tone => Status switch
+    {
+        "Detected" => Tone.Critical,
+        "Suspicious" or "Not scanned" => Tone.Caution,
+        _ => Tone.Neutral,
+    };
+}
+
+/// <summary>The scan types offered on the Scan page.</summary>
+public enum ScanChoice
+{
+    Quick,
+    Full,
+    External,
+    Drive,
+    Custom,
+}
 
 /// <summary>A drive offered for a drive scan.</summary>
 public sealed record DriveChoice(string Root, string Label, bool IsExternal = false)
@@ -237,7 +338,7 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
     private DriveChoice? _selectedDrive;
 
     public ScanViewModel(IServiceGateway gateway, IDialogs dialogs, Func<IReadOnlyList<DriveChoice>>? drives = null)
-        : base("Scan", "Quick, full, drive and custom scans with your own access rights")
+        : base("Scan", "Quick, full, external-drive and custom scans with your own access rights", Glyphs.Search)
     {
         _gateway = gateway;
         _dialogs = dialogs;
@@ -423,7 +524,67 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
                     ? $"Nothing detected, but {s.NotScanned} item(s) could not be scanned. {s.FilesScanned:N0} file(s) scanned."
                     : $"Nothing detected. {s.FilesScanned:N0} file(s) scanned.";
         string capped = report.Items.Count > MaxRows ? $" Showing the first {MaxRows:N0} of {report.Items.Count:N0} listed items, findings first." : string.Empty;
+        SummaryTone = s.Detected > 0 ? Tone.Critical : s.Suspicious > 0 || s.NotScanned > 0 ? Tone.Caution : Tone.Success;
+        SummaryTitle = s.Detected > 0 ? "Threats found" : s.Suspicious > 0 ? "Suspicious files found" : s.NotScanned > 0 ? "Scan incomplete" : "No threats found";
         Summary = $"{label} finished. {result}{capped}";
+    }
+
+    private Tone _summaryTone = Tone.Neutral;
+    private string _summaryTitle = string.Empty;
+    private ScanChoice _choice = ScanChoice.Quick;
+
+    /// <summary>Tone of the last result: critical (threats), caution (suspicious or incomplete) or success.</summary>
+    public Tone SummaryTone { get => _summaryTone; private set => Set(ref _summaryTone, value); }
+
+    public string SummaryTitle { get => _summaryTitle; private set => Set(ref _summaryTitle, value); }
+
+    /// <summary>The scan type chosen on the page; <see cref="ScanNowCommand"/> runs it.</summary>
+    public ScanChoice Choice
+    {
+        get => _choice;
+        set
+        {
+            if (Set(ref _choice, value))
+            {
+                foreach (string name in new[] { nameof(IsQuick), nameof(IsFull), nameof(IsExternal), nameof(IsDrive), nameof(IsCustom) })
+                {
+                    OnPropertyChanged(name);
+                }
+            }
+        }
+    }
+
+    // Radio-button bindings for each choice.
+    public bool IsQuick { get => Choice == ScanChoice.Quick; set => Pick(value, ScanChoice.Quick); }
+
+    public bool IsFull { get => Choice == ScanChoice.Full; set => Pick(value, ScanChoice.Full); }
+
+    public bool IsExternal { get => Choice == ScanChoice.External; set => Pick(value, ScanChoice.External); }
+
+    public bool IsDrive { get => Choice == ScanChoice.Drive; set => Pick(value, ScanChoice.Drive); }
+
+    public bool IsCustom { get => Choice == ScanChoice.Custom; set => Pick(value, ScanChoice.Custom); }
+
+    /// <summary>Runs the chosen scan type.</summary>
+    public AsyncCommand ScanNowCommand => _scanNow ??= new AsyncCommand(_ => Selected.ExecuteAsync(null), _ => Selected.CanExecute(null));
+
+    private AsyncCommand? _scanNow;
+
+    private AsyncCommand Selected => Choice switch
+    {
+        ScanChoice.Full => FullScanCommand,
+        ScanChoice.External => ExternalScanCommand,
+        ScanChoice.Drive => DriveScanCommand,
+        ScanChoice.Custom => StartCommand,
+        _ => QuickScanCommand,
+    };
+
+    private void Pick(bool selected, ScanChoice choice)
+    {
+        if (selected)
+        {
+            Choice = choice;
+        }
     }
 }
 
@@ -437,7 +598,7 @@ public sealed class QuarantineViewModel : PageViewModel
     private QuarantineRow? _selected;
 
     public QuarantineViewModel(IServiceGateway gateway, IDialogs dialogs)
-        : base("Quarantine", "Files Kshatriya moved into its encrypted vault")
+        : base("Quarantine", "Files Kshatriya moved into its encrypted vault", Glyphs.Lock)
     {
         _gateway = gateway;
         _dialogs = dialogs;
@@ -465,7 +626,7 @@ public sealed class QuarantineViewModel : PageViewModel
             Items.Add(new QuarantineRow(i.Id, DashboardViewModel.Local(i.QuarantinedUtc), i.OriginalPath, i.Detections.Count == 0 ? "Added manually" : string.Join(", ", i.Detections), i.User, i.SizeBytes));
         }
 
-        ShowInfo(Items.Count == 0 ? "The quarantine is empty." : null);
+        ShowInfo(null); // an empty list shows the page's empty state
     }
 
     private async Task RestoreAsync(bool toOtherLocation)
@@ -534,7 +695,7 @@ public sealed class ExclusionsViewModel : PageViewModel
     private string _newValue = string.Empty;
 
     public ExclusionsViewModel(IServiceGateway gateway, IDialogs dialogs)
-        : base("Exclusions", "Folders, files and hashes Kshatriya does not scan")
+        : base("Exclusions", "Folders, files and hashes Kshatriya does not scan", Glyphs.Filter)
     {
         _gateway = gateway;
         _dialogs = dialogs;
@@ -590,14 +751,17 @@ public sealed class ExclusionsViewModel : PageViewModel
             Items.Add(new ExclusionRow("SHA-256", h));
         }
 
-        ShowInfo(Items.Count == 0 ? "No exclusions." : null);
+        ShowInfo(null); // an empty list shows the page's empty state
     }
 }
 
 /// <summary>One finding in the detections history.</summary>
-public sealed record DetectionRow(string TimeLocal, string Status, string Path, string Names, string Source, string Action);
+public sealed record DetectionRow(string TimeLocal, string Status, string Path, string Names, string Source, string Action)
+{
+    public Tone Tone => Status == "Detected" ? Tone.Critical : Tone.Caution;
+}
 
-public sealed class DetectionsViewModel(IServiceGateway gateway) : PageViewModel("Detections", "Recent findings from scans and real-time monitoring")
+public sealed class DetectionsViewModel(IServiceGateway gateway) : PageViewModel("Detections", "Recent findings from scans and real-time monitoring", Glyphs.Warning)
 {
     public ObservableCollection<DetectionRow> Items { get; } = [];
 
@@ -610,20 +774,25 @@ public sealed class DetectionsViewModel(IServiceGateway gateway) : PageViewModel
             Items.Add(new DetectionRow(DashboardViewModel.Local(d.TimeUtc), d.Status == "detected" ? "Detected" : "Suspicious", d.Path, string.Join(", ", d.Names), d.Source, d.Action));
         }
 
-        ShowInfo(Items.Count == 0 ? "No recent detections. (The history is kept in memory by the service and starts empty after a restart.)" : null);
+        ShowInfo(null); // an empty list shows the page's empty state
     }
 }
 
 /// <summary>One audit record.</summary>
 public sealed record AuditRow(long Seq, string TimeLocal, string User, string Action, string Outcome, string Target, string Detail);
 
-public sealed class HistoryViewModel(IServiceGateway gateway) : PageViewModel("History", "Audit log of quarantine, restore and exclusion changes")
+public sealed class HistoryViewModel(IServiceGateway gateway) : PageViewModel("History", "Audit log of quarantine, restore and exclusion changes", Glyphs.History)
 {
     private string _chainState = string.Empty;
 
     public ObservableCollection<AuditRow> Records { get; } = [];
 
     public string ChainState { get => _chainState; private set => Set(ref _chainState, value); }
+
+    private Tone _chainTone = Tone.Neutral;
+
+    /// <summary>Success when the hash chain verified, critical when it did not.</summary>
+    public Tone ChainTone { get => _chainTone; private set => Set(ref _chainTone, value); }
 
     protected override async Task RefreshCoreAsync()
     {
@@ -634,6 +803,7 @@ public sealed class HistoryViewModel(IServiceGateway gateway) : PageViewModel("H
             Records.Add(new AuditRow(r.Seq, DashboardViewModel.Local(r.TimeUtc), r.User, r.Action, r.Outcome, r.Target, r.Detail ?? string.Empty));
         }
 
+        ChainTone = reply.ChainValid ? Tone.Success : Tone.Critical;
         ChainState = reply.ChainValid
             ? $"Integrity check passed: the hash chain of {Records.Count} shown record(s) and the full log is intact."
             : $"Integrity check FAILED: {reply.Problem} The log may have been edited.";
@@ -641,7 +811,7 @@ public sealed class HistoryViewModel(IServiceGateway gateway) : PageViewModel("H
     }
 }
 
-public sealed class AboutViewModel(IServiceGateway gateway) : PageViewModel("About", "Version, status and limitations")
+public sealed class AboutViewModel(IServiceGateway gateway) : PageViewModel("About", "Version, status and limitations", Glyphs.Info)
 {
     public string Version { get; } = $"Kshatriya Antivirus {AppInfo.Version}";
 
