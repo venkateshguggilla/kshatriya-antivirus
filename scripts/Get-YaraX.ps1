@@ -9,10 +9,12 @@
 #>
 [CmdletBinding()]
 param(
-    [string] $Destination = (Join-Path $PSScriptRoot '..\native\yara-x\win-x64')
+    # Defaults to <repo>/native/yara-x/win-x64 (resolved below: Windows PowerShell 5.1 leaves $PSScriptRoot empty here).
+    [string] $Destination
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $Destination) { $Destination = Join-Path $PSScriptRoot '..\native\yara-x\win-x64' }
 
 $Version = '1.22.1'
 $Asset = "yara-x-capi-v$Version-x86_64-pc-windows-msvc.zip"
@@ -27,12 +29,29 @@ if ((Test-Path -LiteralPath $marker) -and ((Get-Content -LiteralPath $marker -Ra
     return
 }
 
+# Transient server errors (for example a 504 from the release CDN) are retried; the hash check below
+# still decides whether the download is used.
+function Save-WithRetry([string] $Uri, [string] $OutFile) {
+    for ($attempt = 1; ; $attempt++) {
+        try {
+            Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
+            return
+        }
+        catch {
+            if ($attempt -ge 4) { throw }
+            $delay = 5 * [math]::Pow(2, $attempt - 1)
+            Write-Warning "Download attempt $attempt failed ($($_.Exception.Message)); retrying in $delay s."
+            Start-Sleep -Seconds $delay
+        }
+    }
+}
+
 $work = Join-Path ([System.IO.Path]::GetTempPath()) ("sentinel-yarax-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
     $zip = Join-Path $work $Asset
     Write-Host "Downloading $Url"
-    Invoke-WebRequest -Uri $Url -OutFile $zip -UseBasicParsing
+    Save-WithRetry $Url $zip
 
     $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actual -ne $Sha256) {
@@ -53,7 +72,7 @@ try {
         $archive.Dispose()
     }
 
-    Invoke-WebRequest -Uri $LicenseUrl -OutFile (Join-Path $Destination 'LICENSE.txt') -UseBasicParsing
+    Save-WithRetry $LicenseUrl (Join-Path $Destination 'LICENSE.txt')
     Set-Content -LiteralPath $marker -Value "$Version $Sha256" -Encoding ascii
     Write-Host "YARA-X $Version installed to $Destination (archive SHA-256 verified)."
 }

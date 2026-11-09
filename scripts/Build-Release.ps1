@@ -18,7 +18,8 @@
 #>
 [CmdletBinding()]
 param(
-    [string] $OutputDirectory = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts'),
+    # Defaults to <repo>/artifacts (resolved below: Windows PowerShell 5.1 leaves $PSScriptRoot empty here).
+    [string] $OutputDirectory,
     [string] $CertificatePath = $env:SENTINEL_SIGN_PFX,
     [string] $CertificatePassword = $env:SENTINEL_SIGN_PASSWORD,
     [string] $TimestampUrl = 'http://timestamp.digicert.com'
@@ -26,6 +27,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repo 'artifacts' }
 [xml] $props = Get-Content (Join-Path $repo 'Directory.Build.props')
 $version = ($props.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
 $name = "Sentinel-$version-win-x64"

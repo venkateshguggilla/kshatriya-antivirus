@@ -225,6 +225,13 @@ public sealed class RealTimeMonitor : IDisposable
             };
             watcher.Changed += (_, e) =>
             {
+                // A folder's last-write time changes whenever an entry inside it changes; the entry has
+                // its own event. Queuing the folder would rescan it recursively on every write.
+                if (IsDirectory(e.FullPath))
+                {
+                    return;
+                }
+
                 _behaviour?.OnFileEvent(e.FullPath, FileEventKind.Changed);
                 Enqueue(e.FullPath, "file");
             };
@@ -244,6 +251,19 @@ public sealed class RealTimeMonitor : IDisposable
             };
             watcher.EnableRaisingEvents = true;
             _watchers.Add(watcher);
+        }
+    }
+
+    private static bool IsDirectory(string path)
+    {
+        try
+        {
+            // Reads attributes only: never follows the reparse point or recalls a cloud placeholder.
+            return (File.GetAttributes(path) & FileAttributes.Directory) != 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false; // gone or unreadable: let the scan report it
         }
     }
 

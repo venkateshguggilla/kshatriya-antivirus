@@ -64,6 +64,27 @@ public sealed class RealTimeTests : IDisposable
     }
 
     [Fact]
+    public async Task A_write_scans_only_the_written_file_not_its_whole_folder()
+    {
+        // Windows also reports the parent folder as changed; it must not be rescanned recursively.
+        for (int i = 0; i < 40; i++)
+        {
+            _watched.File($@"busy\old{i}.bin", TestData.BenignBytes(i, 500));
+        }
+
+        await using RunningService service = await RunningService.StartAsync(Settings());
+        await Task.Delay(300);
+        string bad = _watched.File(@"busy\new.bin", service.KnownBad);
+
+        await WaitForDetectionAsync(service, bad);
+        await Task.Delay(1000); // let any (wrongly) queued folder scan run
+        RealTimeStats stats = service.Core.RealTime!.Stats;
+
+        Assert.Equal(0, stats.Queued);
+        Assert.InRange(stats.Scanned, 1, 2); // the new file, possibly twice (created, then changed)
+    }
+
+    [Fact]
     public async Task With_quarantine_enabled_a_high_confidence_detection_is_quarantined()
     {
         await using RunningService service = await RunningService.StartAsync(Settings(quarantine: true));
