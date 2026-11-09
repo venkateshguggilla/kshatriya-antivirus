@@ -1,7 +1,9 @@
 # ADR 0013: Release packaging, signing pipeline and product updates
 
 - Status: accepted (M11). Installer technology decided by the owner on 2026-11-09: keep the zip and
-  install script. Product auto-update still awaits owner decisions.
+  install script. Product auto-update still awaits owner decisions. The signing part is superseded by
+  [ADR 0014](0014-open-source-licence-and-code-signing.md) (Apache-2.0, SignPath Foundation; no `.pfx`
+  secrets in CI).
 - Date: 2026-11-09
 
 ## Context

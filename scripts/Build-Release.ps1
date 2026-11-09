@@ -5,21 +5,34 @@
 
 .DESCRIPTION
     Publishes self-contained win-x64 binaries (no separate .NET installation needed) into
-    artifacts/Sentinel-<version>-win-x64, adds the licence files and a dependency inventory, optionally
-    Authenticode-signs every Sentinel binary, writes SHA256SUMS.txt and zips the folder.
+    artifacts/Sentinel-<version>-win-x64, adds the licence files and a dependency inventory, writes
+    SHA256SUMS.txt and zips the folder.
 
-    Signing happens only when a certificate is supplied, through parameters or the environment variables
-    SENTINEL_SIGN_PFX (path to a .pfx) and SENTINEL_SIGN_PASSWORD. Without one, the release is clearly
-    marked UNSIGNED. No certificate or private key is ever stored in the repository.
+    Two stages, so that an external signing service can sign in between (the release workflow uses
+    SignPath, ADR 0014): -Stage Build publishes the folder; -Stage Package writes RELEASE.txt, the
+    checksums and the zip for whatever is in the folder then. -Stage All (default) does both.
+
+    Whether the release is signed is decided by checking every Sentinel binary's Authenticode signature,
+    not by how it was produced. -RequireSignature refuses to package unless all of them are validly signed.
+    A local .pfx (a test certificate; publicly trusted code-signing keys must stay on hardware and cannot be
+    exported) can be applied with -CertificatePath or SENTINEL_SIGN_PFX / SENTINEL_SIGN_PASSWORD. No
+    certificate or private key is ever stored in the repository.
 
 .EXAMPLE
     ./scripts/Get-YaraX.ps1
     ./scripts/Build-Release.ps1
+.EXAMPLE
+    ./scripts/Build-Release.ps1 -Stage Build
+    # ... binaries signed externally and copied back into the folder ...
+    ./scripts/Build-Release.ps1 -Stage Package -RequireSignature
 #>
 [CmdletBinding()]
 param(
     # Defaults to <repo>/artifacts (resolved below: Windows PowerShell 5.1 leaves $PSScriptRoot empty here).
     [string] $OutputDirectory,
+    [ValidateSet('All', 'Build', 'Package')]
+    [string] $Stage = 'All',
+    [switch] $RequireSignature,
     [string] $CertificatePath = $env:SENTINEL_SIGN_PFX,
     [string] $CertificatePassword = $env:SENTINEL_SIGN_PASSWORD,
     [string] $TimestampUrl = 'http://timestamp.digicert.com'
@@ -33,6 +46,7 @@ $version = ($props.Project.PropertyGroup | Where-Object { $_.Version } | Select-
 $name = "Sentinel-$version-win-x64"
 $folder = Join-Path $OutputDirectory $name
 
+if ($Stage -ne 'Package') {
 if (-not (Test-Path (Join-Path $repo 'native/yara-x/win-x64/yara_x_capi.dll'))) {
     throw 'YARA-X library missing. Run ./scripts/Get-YaraX.ps1 first.'
 }
@@ -46,7 +60,7 @@ foreach ($project in 'src/Sentinel.Service', 'src/Sentinel.Cli', 'src/Sentinel.A
 }
 
 Get-ChildItem $folder -File | Where-Object { $_.Extension -in '.pdb', '.xml' } | Remove-Item
-foreach ($doc in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'README.md', 'SECURITY.md') {
+foreach ($doc in 'LICENSE', 'NOTICE', 'THIRD-PARTY-NOTICES.md', 'README.md', 'SECURITY.md') {
     if (Test-Path (Join-Path $repo $doc)) { Copy-Item (Join-Path $repo $doc) $folder }
 }
 
@@ -66,24 +80,41 @@ $yaraVersion = if ($yara -match "\`$Version\s*=\s*'([^']+)'") { $Matches[1] } el
     packages  = $inventory
     native    = @([ordered]@{ id = 'yara-x (yara_x_capi.dll)'; version = $yaraVersion; license = 'BSD-3-Clause' })
 } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $folder 'dependencies.json') -Encoding utf8
+Copy-Item (Join-Path $repo 'scripts/Install-SentinelService.ps1'), (Join-Path $repo 'scripts/Uninstall-SentinelService.ps1') $folder
 
-$ours = Get-ChildItem $folder -File | Where-Object { $_.Name -like 'Sentinel*' -or $_.Name -eq 'sentinel.exe' } | Where-Object { $_.Extension -in '.exe', '.dll' }
-$signed = $false
+if ($Stage -eq 'Build') {
+    Write-Host "Built $folder (not packaged; sign the Sentinel binaries, then run -Stage Package)."
+    return
+}
+}
+
+if (-not (Test-Path (Join-Path $folder 'Sentinel.Service.exe'))) {
+    throw "No built release in $folder. Run -Stage Build first."
+}
+
+$ours = @(Get-ChildItem $folder -File | Where-Object { $_.Name -like 'Sentinel*' -or $_.Name -like 'sentinel.*' } | Where-Object { $_.Extension -in '.exe', '.dll' })
 if ($CertificatePath) {
     $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
     if (-not $signtool) { throw 'signtool.exe not found (install the Windows SDK).' }
     & $signtool.FullName sign /fd SHA256 /td SHA256 /tr $TimestampUrl /f $CertificatePath /p $CertificatePassword $ours.FullName
     if ($LASTEXITCODE -ne 0) { throw 'Signing failed.' }
-    $signed = $true
 }
 
+# Signed means every Sentinel binary carries a valid Authenticode signature right now.
+$unsigned = @($ours | Where-Object { (Get-AuthenticodeSignature -LiteralPath $_.FullName).Status -ne 'Valid' })
+$signed = $ours.Count -gt 0 -and $unsigned.Count -eq 0
+if ($RequireSignature -and -not $signed) {
+    throw "Refusing to package: $($unsigned.Count) of $($ours.Count) Sentinel binaries are not validly signed ($(($unsigned.Name | Select-Object -First 5) -join ', '))."
+}
+
+$signer = if ($signed) { (Get-AuthenticodeSignature -LiteralPath $ours[0].FullName).SignerCertificate.Subject } else { $null }
 Set-Content (Join-Path $folder 'RELEASE.txt') -Encoding utf8 -Value @"
 Sentinel $version (win-x64) - prototype. Not a replacement for Microsoft Defender; keep Defender on.
-Binaries: $(if ($signed) { 'Authenticode-signed' } else { 'UNSIGNED (no signing certificate was supplied for this build)' })
-Install (administrator, PowerShell 7): ./Install-SentinelService.ps1 -FromRelease <this folder>
+Binaries: $(if ($signed) { "Authenticode-signed ($signer)" } else { 'UNSIGNED (no signature was applied to this build)' })
+Install (administrator, Windows PowerShell 5.1 or later): ./Install-SentinelService.ps1 -FromRelease <this folder>
 Verify: every file is listed with its SHA-256 in SHA256SUMS.txt.
+Licence: Apache License 2.0 (LICENSE, NOTICE); third-party components: THIRD-PARTY-NOTICES.md.
 "@
-Copy-Item (Join-Path $repo 'scripts/Install-SentinelService.ps1'), (Join-Path $repo 'scripts/Uninstall-SentinelService.ps1') $folder
 
 $sums = Get-ChildItem $folder -File -Recurse | Where-Object Name -ne 'SHA256SUMS.txt' | Sort-Object FullName | ForEach-Object {
     $relative = $_.FullName.Substring($folder.Length + 1)

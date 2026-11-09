@@ -11,7 +11,7 @@
 
 ## Rationale
 
-The licensing model of the product is not final. A permissive-only policy keeps proprietary, open-source and dual-licence options open.
+The licensing model of the product is not final. A permissive-only policy keeps proprietary, open-source and dual-licence options open. (Settled on 2026-11-09: Sentinel is Apache-2.0, see [ADR 0014](0014-open-source-licence-and-code-signing.md).)
 
 ## Consequences
 

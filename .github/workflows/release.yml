@@ -1,8 +1,14 @@
 name: release
 
-# Builds a release zip for a version tag (or on demand). Binaries are Authenticode-signed only when the
-# repository secrets SIGNING_CERT_PFX_BASE64 and SIGNING_CERT_PASSWORD exist; otherwise the release is
-# built and clearly marked UNSIGNED. The zip is uploaded as a workflow artifact, not published anywhere.
+# Builds a release zip for a version tag (or on demand) and uploads it as a workflow artifact; nothing is
+# published automatically.
+#
+# Signing (ADR 0014): when the repository variable SIGNPATH_ORGANIZATION_ID and the secret
+# SIGNPATH_API_TOKEN exist, the unsigned build is submitted to SignPath (SignPath Foundation certificate
+# for open-source projects). Each request waits for manual approval by a project approver in SignPath, then
+# the signed binaries replace the unsigned ones and the package step refuses to continue unless every
+# Sentinel binary is validly signed. Without that configuration the release is built and marked UNSIGNED.
+# No certificate or private key exists in this repository or on the runner.
 on:
   push:
     tags: ['v*']
@@ -10,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # SignPath reads job details and downloads the unsigned artifact with the job token
 
 jobs:
   release:
@@ -17,6 +24,7 @@ jobs:
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
+      SIGNPATH_CONFIGURED: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,29 +41,51 @@ jobs:
           dotnet build Sentinel.slnx -c Release
           dotnet test Sentinel.slnx --no-build -c Release --blame-hang-timeout 5m
 
-      - name: Prepare signing certificate (if configured)
+      - name: Build release folder (unsigned)
+        id: build
         shell: pwsh
-        env:
-          PFX_BASE64: ${{ secrets.SIGNING_CERT_PFX_BASE64 }}
         run: |
-          if ($env:PFX_BASE64) {
-            $path = Join-Path $env:RUNNER_TEMP 'signing.pfx'
-            [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($env:PFX_BASE64))
-            "SENTINEL_SIGN_PFX=$path" >> $env:GITHUB_ENV
-          } else {
-            Write-Host 'No signing certificate configured; the release will be UNSIGNED.'
-          }
+          ./scripts/Build-Release.ps1 -Stage Build
+          $folder = (Get-ChildItem artifacts -Directory -Filter 'Sentinel-*-win-x64' | Select-Object -First 1).FullName
+          "folder=$folder" >> $env:GITHUB_OUTPUT
 
-      - name: Build release
-        shell: pwsh
-        env:
-          SENTINEL_SIGN_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
-        run: ./scripts/Build-Release.ps1
+      - name: Upload unsigned build for signing
+        id: unsigned
+        if: env.SIGNPATH_CONFIGURED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-unsigned
+          path: ${{ steps.build.outputs.folder }}
+          retention-days: 3
 
-      - name: Remove signing certificate
-        if: always()
+      - name: Sign with SignPath (waits for manual approval)
+        if: env.SIGNPATH_CONFIGURED == 'true'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'sentinel-antivirus' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }} # empty: the project's default
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          # Hosted jobs end after 6 hours, so the approver has 5 hours to approve the request in SignPath.
+          wait-for-completion-timeout-in-seconds: 18000
+          output-artifact-directory: ${{ runner.temp }}/signed
+
+      - name: Replace binaries with the signed ones
+        if: env.SIGNPATH_CONFIGURED == 'true'
         shell: pwsh
-        run: Remove-Item (Join-Path $env:RUNNER_TEMP 'signing.pfx') -ErrorAction SilentlyContinue
+        run: |
+          $signed = Join-Path $env:RUNNER_TEMP 'signed'
+          Get-ChildItem $signed -File | Where-Object { $_.Extension -in '.exe', '.dll' } |
+            Copy-Item -Destination '${{ steps.build.outputs.folder }}' -Force
+
+      - name: Package release
+        shell: pwsh
+        run: |
+          if ($env:SIGNPATH_CONFIGURED -eq 'true') { ./scripts/Build-Release.ps1 -Stage Package -RequireSignature }
+          else { Write-Host 'SignPath is not configured; the release will be UNSIGNED.'; ./scripts/Build-Release.ps1 -Stage Package }
 
       - uses: actions/upload-artifact@v4
         with:

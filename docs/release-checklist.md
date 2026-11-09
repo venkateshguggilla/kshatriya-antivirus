@@ -36,6 +36,10 @@ missing before anyone should call a build "beta", let alone production.
       could not start under LocalSystem, the scripts needed PowerShell 7, refused audit reads were not
       audited). Clean VMs and Windows 11 are still to do.
 - [ ] Code-signing certificate and signed releases. (Installer decided: zip + install script, ADR 0013.)
+      Route decided: Apache-2.0 and free signing through SignPath Foundation (ADR 0014). Done: licence,
+      NOTICE, code signing policy and privacy statement, two-stage release script with `-RequireSignature`,
+      SignPath step in the release workflow (inactive until configured), history checked for secrets (none).
+      Owner: make the repository public, publish a first release, apply to SignPath, configure it.
 - [ ] Production content signing key, key-custody process and a first signed content release (ADR 0008).
 - [ ] A broader benign corpus (many machines and installers) and a labelled malware set run in an
       isolated lab, with false-positive and detection rates published.

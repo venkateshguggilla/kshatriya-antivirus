@@ -15,7 +15,8 @@
 
     <Product>Sentinel</Product>
     <Company>Sentinel project</Company>
-    <Copyright>Copyright (c) 2026 Sentinel project contributors. All rights reserved.</Copyright>
+    <Copyright>Copyright (c) 2026 Sentinel project contributors. Licensed under the Apache License, Version 2.0.</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <Version>0.12.0</Version>
     <InformationalVersion>0.12.0-m12</InformationalVersion>
   </PropertyGroup>

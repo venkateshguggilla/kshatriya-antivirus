@@ -238,3 +238,28 @@ See [docs/architecture.md](docs/architecture.md#roadmap). All planned user-mode 
 ## Security
 
 See [SECURITY.md](SECURITY.md). Do not commit live malware to this repository.
+
+## Code signing policy
+
+Releases are not signed yet. Signing through SignPath Foundation has been applied for or is planned
+([ADR 0014](docs/adr/0014-open-source-licence-and-code-signing.md)). Once it is approved:
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [repository members](https://github.com/venkateshguggilla/sentinel-antivirus/graphs/contributors)
+- Approvers: [repository owner](https://github.com/venkateshguggilla)
+
+Only binaries built by this repository's GitHub Actions release workflow from a tagged commit are signed, and
+each signing request is approved by hand. See [docs/code-signing-policy.md](docs/code-signing-policy.md).
+
+### Privacy
+
+This program will not transfer any information to other networked systems unless specifically requested by
+the user or the person installing or operating it. Scanning, quarantine, real-time monitoring and reports
+all stay on the device. Content updates are imported from files you supply; nothing is downloaded
+automatically.
+
+## Licence
+
+Sentinel is licensed under the [Apache License, Version 2.0](LICENSE). Third-party components keep their own
+licences, listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
