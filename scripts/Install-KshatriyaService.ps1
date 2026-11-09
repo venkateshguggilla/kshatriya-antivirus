@@ -100,8 +100,19 @@ $app = Join-Path $InstallDirectory 'Kshatriya.App.exe'
 if ((Test-Path $app) -and $PSCmdlet.ShouldProcess('Start menu', 'Add Kshatriya shortcut')) {
     $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Kshatriya Antivirus.lnk'))
     $shortcut.TargetPath = $app
-    $shortcut.Description = 'Kshatriya (prototype) - runs alongside Microsoft Defender'
+    $shortcut.Description = 'Kshatriya Antivirus (prototype) - runs alongside Microsoft Defender'
     $shortcut.Save()
+}
+
+# Start the app in the notification area at sign-in, for every user, so findings from real-time protection
+# are shown as notifications. Each user can turn it off in Task Manager > Startup apps, or turn off
+# notifications from the tray icon.
+if ((Test-Path $app) -and $PSCmdlet.ShouldProcess('Startup folder', 'Start Kshatriya Antivirus in the notification area at sign-in')) {
+    $startup = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp\Kshatriya Antivirus.lnk'))
+    $startup.TargetPath = $app
+    $startup.Arguments = '--background'
+    $startup.Description = 'Kshatriya Antivirus notifications (notification area)'
+    $startup.Save()
 }
 
 $binary = Join-Path $InstallDirectory 'Kshatriya.Service.exe'

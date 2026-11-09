@@ -109,12 +109,15 @@ internal sealed class FakeGateway : IServiceGateway
         });
     }
 
+    /// <summary>When set, returned by <see cref="GetDetectionsAsync"/> instead of the default single finding.</summary>
+    public List<DetectionRecordDto>? Detections { get; set; }
+
     public Task<DetectionsReplyDto> GetDetectionsAsync(int max, CancellationToken cancellationToken)
     {
         ThrowIfFailing();
         return Task.FromResult(new DetectionsReplyDto
         {
-            Items = [new DetectionRecordDto { TimeUtc = "2026-11-08T10:00:00Z", Source = "real-time (file)", Path = @"C:\Users\alice\Downloads\x.exe", Status = "detected", Names = ["Test.Sample"], Action = "reported" }],
+            Items = Detections is { } set ? [.. set] : [new DetectionRecordDto { TimeUtc = "2026-11-08T10:00:00Z", Source = "real-time (file)", Path = @"C:\Users\alice\Downloads\x.exe", Status = "detected", Names = ["Test.Sample"], Action = "reported" }],
         });
     }
 

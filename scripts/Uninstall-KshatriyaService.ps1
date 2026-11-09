@@ -26,12 +26,23 @@ if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
     }
 }
 
-$shortcut = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Kshatriya Antivirus.lnk'
-if ((Test-Path $shortcut) -and $PSCmdlet.ShouldProcess($shortcut, 'Remove Start menu shortcut')) {
-    Remove-Item -LiteralPath $shortcut -Force
+foreach ($shortcut in (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Kshatriya Antivirus.lnk'),
+                      (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp\Kshatriya Antivirus.lnk')) {
+    if ((Test-Path $shortcut) -and $PSCmdlet.ShouldProcess($shortcut, 'Remove shortcut')) {
+        Remove-Item -LiteralPath $shortcut -Force
+    }
 }
 
 if (-not $KeepFiles -and (Test-Path $InstallDirectory)) {
+    # The desktop app runs in the notification area of signed-in users and keeps its files open. Close
+    # only Kshatriya's own app processes started from this install folder, so the files can be removed.
+    $installed = [System.IO.Path]::GetFullPath($InstallDirectory).TrimEnd('\') + '\'
+    $apps = @(Get-Process -Name 'Kshatriya.App' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($installed, [StringComparison]::OrdinalIgnoreCase) })
+    if ($apps.Count -gt 0 -and $PSCmdlet.ShouldProcess("$($apps.Count) running Kshatriya Antivirus app window(s)", 'Close')) {
+        $apps | Stop-Process -Force
+        $apps | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+    }
+
     if ($PSCmdlet.ShouldProcess($InstallDirectory, 'Remove binaries')) {
         Remove-Item -LiteralPath $InstallDirectory -Recurse -Force
     }
