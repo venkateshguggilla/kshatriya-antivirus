@@ -58,8 +58,14 @@ Platform facts this design relies on (Chrome for Developers documentation, check
    `nativeMessaging`, `notifications`, `storage`), and it has no host permissions.
 7. **Installation (prototype).** The installer copies the extension to
    `%ProgramFiles%\Kshatriya\browser-extension` and registers the native host for Edge and Chrome under
-   `HKLM`. The user loads the extension with "Load unpacked" in developer mode. Kshatriya does not
-   force-install it through browser policy. Store publishing is an owner decision.
+   `HKLM`. Edge and Chrome write the compiled ruleset (`_metadata`) into an unpacked extension's own
+   folder, and fail with "Internal error while parsing rules" when it is read-only (seen on the owner's
+   machine, 2026-11-10). So the desktop app keeps a per-user copy in
+   `%LOCALAPPDATA%\Kshatriya\browser-extension`, refreshed from the install at start-up whenever any file
+   differs (links are not followed), and the tray menu's "Set up the browser extension" opens it. The user
+   loads that folder with "Load unpacked" in developer mode. The copy is writable by the user, like any
+   browser profile; the native host still accepts only this extension ID and only scan requests. Kshatriya
+   does not force-install the extension through browser policy. Store publishing is an owner decision.
 
 ## Consequences
 

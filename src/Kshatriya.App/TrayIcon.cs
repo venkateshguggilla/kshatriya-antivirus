@@ -12,7 +12,7 @@ internal sealed class TrayIcon : IDisposable
     private readonly Forms.ToolStripMenuItem _notifications;
     private readonly Forms.ToolStripMenuItem _scanDrives;
 
-    public TrayIcon(bool notificationsEnabled, bool scanDrivesEnabled, Action open, Action<bool> setNotifications, Action<bool> setScanDrives, Action exit)
+    public TrayIcon(bool notificationsEnabled, bool scanDrivesEnabled, Action open, Action<bool> setNotifications, Action<bool> setScanDrives, Action exit, Action openBrowserExtension)
     {
         _notifications = new Forms.ToolStripMenuItem("Show notifications") { CheckOnClick = true, Checked = notificationsEnabled };
         _notifications.CheckedChanged += (_, _) => setNotifications(_notifications.Checked);
@@ -22,6 +22,7 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add("Open Kshatriya Antivirus", null, (_, _) => open());
         menu.Items.Add(_notifications);
         menu.Items.Add(_scanDrives);
+        menu.Items.Add("Set up the browser extension…", null, (_, _) => openBrowserExtension());
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Exit (protection keeps running in the service)", null, (_, _) => exit());
 

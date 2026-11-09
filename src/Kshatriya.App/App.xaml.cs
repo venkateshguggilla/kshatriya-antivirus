@@ -107,7 +107,8 @@ public sealed partial class App : Application, IAppHost, IDisposable
         _preferences = new AppPreferences();
         _watcher = new DetectionWatcher(gateway);
         _driveScanner = new ExternalDriveScanner(gateway);
-        _tray = new TrayIcon(_preferences.Notifications, _preferences.ScanExternalDrives, () => ShowMainWindow(detections: false), _preferences.SetNotifications, _preferences.SetScanExternalDrives, ExitApp);
+        _tray = new TrayIcon(_preferences.Notifications, _preferences.ScanExternalDrives, () => ShowMainWindow(detections: false), _preferences.SetNotifications, _preferences.SetScanExternalDrives, ExitApp, OpenBrowserExtensionFolder);
+        _ = Task.Run(SyncBrowserExtension);
         // Each notification decides what clicking it does (open Detections, or scan a newly attached drive).
         _tray.NotificationClicked += () => (_clickAction ?? (() => ShowMainWindow(detections: true)))();
         _timer = new DispatcherTimer { Interval = s_pollInterval };
@@ -145,6 +146,38 @@ public sealed partial class App : Application, IAppHost, IDisposable
         _showSignal?.Dispose();
         _showSignal = null;
         ReleaseInstance();
+    }
+
+    /// <summary>Refreshes this user's copy of the browser extension from the install (ADR 0018).</summary>
+    private static bool SyncBrowserExtension()
+    {
+        try
+        {
+            return BrowserExtensionCopy.Sync(BrowserExtensionCopy.InstalledFolder, BrowserExtensionCopy.UserFolder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Opens the folder to choose in the browser's "Load unpacked" dialog.</summary>
+    private void OpenBrowserExtensionFolder()
+    {
+        if (SyncBrowserExtension())
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{BrowserExtensionCopy.UserFolder}\"") { UseShellExecute = true });
+            _clickAction = static () => { };
+            _tray?.Notify(
+                "Load the browser extension",
+                "In edge://extensions or chrome://extensions turn on Developer mode, choose Load unpacked and select this folder.",
+                warning: false);
+        }
+        else
+        {
+            _clickAction = static () => { };
+            _tray?.Notify("Browser extension not found", "Reinstall Kshatriya Antivirus to get the browser extension.", warning: true);
+        }
     }
 
     /// <summary>Paths after <c>--scan</c> (Explorer's "Scan with Kshatriya Antivirus" passes one per item).</summary>
