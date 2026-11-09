@@ -98,6 +98,7 @@ public sealed class RealTimeMonitor : IDisposable
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Pending> _pending = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _signal = new(0);
+    private volatile bool _disposed;
     private readonly List<FileSystemWatcher> _watchers = [];
     private readonly IProcessStartSource? _processes;
     private readonly Func<IEnumerable<string>> _removableDrives;
@@ -180,7 +181,7 @@ public sealed class RealTimeMonitor : IDisposable
     /// <summary>Queues a path (file or folder) for scanning after the debounce period.</summary>
     public void Enqueue(string path, string source, TimeSpan? delay = null)
     {
-        if (string.IsNullOrEmpty(path) || IsIgnored(path))
+        if (_disposed || string.IsNullOrEmpty(path) || IsIgnored(path))
         {
             return;
         }
@@ -193,11 +194,32 @@ public sealed class RealTimeMonitor : IDisposable
 
         long due = _time.GetUtcNow().Add(delay ?? _options.Debounce).UtcTicks;
         _pending.AddOrUpdate(path, _ => new Pending(due, source, 0, IsDirectory(path)), (_, old) => old with { DueTicks = due });
-        _signal.Release();
+        Wake();
+    }
+
+    /// <summary>
+    /// Wakes the queue. File-system callbacks already in flight can still arrive after <see cref="Dispose"/>;
+    /// they must not throw on a thread-pool thread, which would end the service process.
+    /// </summary>
+    private void Wake()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            _signal.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
     public void Dispose()
     {
+        _disposed = true;
         foreach (FileSystemWatcher watcher in _watchers)
         {
             watcher.Dispose();
@@ -282,7 +304,7 @@ public sealed class RealTimeMonitor : IDisposable
     {
         Interlocked.Increment(ref _overflows);
         _lost.Enqueue((root, message));
-        _signal.Release();
+        Wake();
     }
 
     /// <summary>

@@ -134,6 +134,25 @@ public sealed class UsnJournalTests
         }
     }
 
+    [Fact]
+    public async Task Change_notifications_arriving_after_shutdown_are_ignored()
+    {
+        // A file-system callback already in flight can reach the monitor after it was disposed; it used to
+        // throw ObjectDisposedException on a thread-pool thread, which ends the process (seen in CI).
+        using var watched = new TempDirectory();
+        var settings = new ServiceSettings
+        {
+            RealTime = new RealTimeOptions { Enabled = true, Paths = [watched.Path], Debounce = TimeSpan.FromMilliseconds(200) },
+        };
+        RunningService service = await RunningService.StartAsync(settings);
+        var monitor = service.Core.RealTime!;
+
+        await service.DisposeAsync(); // stops the service, which disposes the monitor
+
+        monitor.Enqueue(Path.Combine(watched.Path, "late.bin"), "late event");
+        monitor.OnLostEvents(watched.Path, "late loss");
+    }
+
     private static async Task WaitForAsync(RunningService service, string path, string source)
     {
         var clock = Stopwatch.StartNew();
