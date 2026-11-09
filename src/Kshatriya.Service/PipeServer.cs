@@ -8,6 +8,7 @@ using Kshatriya.Protocol;
 using Kshatriya.Response;
 using Kshatriya.Runtime.Ipc;
 using Kshatriya.Scanning;
+using Kshatriya.Scanning.Targets;
 
 namespace Kshatriya.Service;
 
@@ -234,7 +235,7 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
                     await SendAsync(MessageType.StatusReply, core.GetStatus(), cancellationToken);
                     break;
                 case MessageType.Scan:
-                    await ScanAsync(ProtocolJson.Deserialize<ScanRequestDto>(frame.Json), caller, actor, cancellationToken);
+                    await ScanAsync(ProtocolJson.Deserialize<ScanRequestDto>(frame.Json), caller, actor, isAdmin, cancellationToken);
                     break;
                 case MessageType.QuarantineList:
                     ProtocolJson.Deserialize<EmptyDto>(frame.Json);
@@ -275,12 +276,41 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
         }
     }
 
-    private async Task ScanAsync(ScanRequestDto request, WindowsIdentity caller, Actor actor, CancellationToken cancellationToken)
+    private async Task ScanAsync(ScanRequestDto request, WindowsIdentity caller, Actor actor, bool isAdmin, CancellationToken cancellationToken)
     {
-        string? invalid = ScanPathPolicy.Validate(request.Paths);
-        if (invalid is not null)
+        IReadOnlyList<string> targets;
+        switch (ScanKindNames.Parse(request.Kind))
         {
-            await SendErrorAsync(ErrorCodes.InvalidPath, invalid, cancellationToken);
+            case ScanKind.Custom:
+                string? invalid = ScanPathPolicy.Validate(request.Paths);
+                if (invalid is not null)
+                {
+                    await SendErrorAsync(ErrorCodes.InvalidPath, invalid, cancellationToken);
+                    return;
+                }
+
+                targets = request.Paths;
+                break;
+            case ScanKind kind when request.Paths.Count > 0:
+                await SendErrorAsync(ErrorCodes.BadRequest, $"A {ScanKindNames.Of(kind)} scan takes no paths; the service determines its targets.", cancellationToken);
+                return;
+            case ScanKind.Quick:
+                // Targets are gathered as the service (registry, processes), limited to the caller's own profile
+                // plus system locations; the files themselves are still opened as the caller below.
+                string? sid = caller.User?.Value;
+                targets = core.ResolveTargets(ScanKind.Quick, new QuickScanScope(sid, sid is null ? null : ScanTargets.ProfileOf(sid), IncludeAdminLocations: isAdmin));
+                break;
+            case ScanKind.Full:
+                targets = core.ResolveTargets(ScanKind.Full, QuickScanScope.Machine);
+                break;
+            default:
+                await SendErrorAsync(ErrorCodes.BadRequest, $"Unknown scan kind '{request.Kind}'.", cancellationToken);
+                return;
+        }
+
+        if (targets.Count == 0)
+        {
+            await SendErrorAsync(ErrorCodes.InvalidPath, "There is nothing to scan.", cancellationToken);
             return;
         }
 
@@ -300,7 +330,7 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
                 return;
         }
 
-        Log.ScanRequested(logger, caller.Name, request.Paths.Count);
+        Log.ScanRequested(logger, caller.Name, targets.Count);
         using var scanCancel = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task watcher = WatchForCancelAsync(scanCancel);
         var progress = new ThrottledProgress(this, scanCancel.Token);
@@ -310,7 +340,7 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
             // anything the caller could not read themselves. Workers are started as the service identity.
             ScanReport report = await WindowsIdentity.RunImpersonatedAsync(
                 caller.AccessToken,
-                () => core.Coordinator.ScanAsync(request.Paths, request.IncludeClean, useCache: true, responder, progress, scanCancel.Token));
+                () => core.Coordinator.ScanAsync(targets, request.IncludeClean, useCache: true, responder, progress, scanCancel.Token));
 
             core.RecordDetections(report, caller.Name);
 

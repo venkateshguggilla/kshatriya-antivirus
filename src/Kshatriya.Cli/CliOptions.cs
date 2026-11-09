@@ -66,6 +66,9 @@ public sealed record CliOptions
     /// <summary>Quarantine high-confidence detections found by the scan.</summary>
     public bool Quarantine { get; init; }
 
+    /// <summary>Custom (the given paths), quick (--quick) or full (--full).</summary>
+    public Scanning.Targets.ScanKind ScanKind { get; init; } = Scanning.Targets.ScanKind.Custom;
+
     /// <summary>Paths excluded from this scan only (local scans).</summary>
     public IReadOnlyList<string> Excludes { get; init; } = [];
 
@@ -88,6 +91,7 @@ public sealed record CliOptions
           kshatriya scan <path>... [options]
           kshatriya scan --stdin [--name <label>] [options]
           kshatriya scan --service [--dev] <path>... [--quarantine] [--json] [--output <file>] [--include-clean] [--quiet]
+          kshatriya scan --quick | --full [--service [--dev]] [options]
           kshatriya status [--dev]
           kshatriya quarantine list | add <file> | restore <id> [--to <path>] | delete <id>   [--service [--dev]]
           kshatriya exclusions list | add <path|sha256:...> | remove <path|sha256:...>   --service [--dev]
@@ -96,6 +100,12 @@ public sealed record CliOptions
           kshatriya detections [--last <n>] --service [--dev]
           kshatriya version
           kshatriya help
+
+        Scan types:
+          <path>...              Custom scan of files and folders; a drive root such as D:\ scans that drive
+          --quick                Quick scan: startup entries, running programs and services, and the Downloads,
+                                 Desktop, Temp and Startup folders (your own profile only)
+          --full                 Full scan of every fixed drive (can take a long time)
 
         Options:
           --quarantine           Move confirmed high-confidence detections (malware, test files) into the
@@ -237,6 +247,15 @@ public sealed record CliOptions
                 case "--quarantine":
                     options = options with { Quarantine = true };
                     break;
+                case "--quick" or "--full":
+                    var kind = arg == "--quick" ? Scanning.Targets.ScanKind.Quick : Scanning.Targets.ScanKind.Full;
+                    if (options.ScanKind != Scanning.Targets.ScanKind.Custom && options.ScanKind != kind)
+                    {
+                        throw new CliUsageException("Use either --quick or --full, not both.");
+                    }
+
+                    options = options with { ScanKind = kind };
+                    break;
                 case "--exclude":
                     string excluded = Path.GetFullPath(Next(args, ref i, arg));
                     excludes.Add(ExclusionSet.ValidatePath(excluded) is { } problem ? throw new CliUsageException(problem) : excluded);
@@ -256,14 +275,19 @@ public sealed record CliOptions
             }
         }
 
+        if (options.ScanKind != Scanning.Targets.ScanKind.Custom && (targets.Count > 0 || options.ReadStdin))
+        {
+            throw new CliUsageException("--quick and --full choose their own targets; do not give paths or --stdin.");
+        }
+
         if (options.ReadStdin && targets.Count > 0)
         {
             throw new CliUsageException("Use either --stdin or paths, not both.");
         }
 
-        if (!options.ReadStdin && targets.Count == 0)
+        if (!options.ReadStdin && targets.Count == 0 && options.ScanKind == Scanning.Targets.ScanKind.Custom)
         {
-            throw new CliUsageException("No scan targets given.");
+            throw new CliUsageException("No scan targets given. Give paths (a file, folder or drive such as D:\\), --quick or --full.");
         }
 
         if (options.DevService && !options.UseService)

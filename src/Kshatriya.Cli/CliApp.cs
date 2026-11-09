@@ -8,6 +8,7 @@ using Kshatriya.Runtime;
 using Kshatriya.Runtime.Ipc;
 using Kshatriya.Runtime.Workers;
 using Kshatriya.Scanning;
+using Kshatriya.Scanning.Targets;
 using Kshatriya.Scanning.Trust;
 
 namespace Kshatriya.Cli;
@@ -162,7 +163,7 @@ public static class CliApp
             {
                 report = options.ReadStdin
                     ? await ScanStdinAsync(runner, stdin, options.StdinName, cancellationToken)
-                    : await runner.ScanPathsAsync(options.Targets, progress: null, cancellationToken);
+                    : await runner.ScanPathsAsync(LocalTargets(options), progress: null, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -174,6 +175,26 @@ public static class CliApp
         }
     }
 
+    /// <summary>Targets of a local scan: the given paths, or this user's quick or full scan targets.</summary>
+    private static IReadOnlyList<string> LocalTargets(CliOptions options)
+    {
+        switch (options.ScanKind)
+        {
+            case ScanKind.Quick:
+                using (var identity = System.Security.Principal.WindowsIdentity.GetCurrent())
+                {
+                    bool admin = new System.Security.Principal.WindowsPrincipal(identity).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+                    string profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                    return ScanTargets.Quick(new QuickScanScope(identity.User?.Value, profile, admin));
+                }
+
+            case ScanKind.Full:
+                return ScanTargets.FullSystem();
+            default:
+                return options.Targets;
+        }
+    }
+
     private static async Task<int> ServiceScanAsync(CliOptions options, TextWriter stdout, TextWriter stderr, CancellationToken cancellationToken)
     {
         // The service accepts only absolute paths; resolve relative ones against this process's directory.
@@ -182,7 +203,12 @@ public static class CliApp
         try
         {
             await using ServiceClient client = await ConnectAsync(options, cancellationToken);
-            report = await client.ScanAsync(targets, options.IncludeClean, options.Quarantine, progress: null, cancellationToken);
+            report = options.ScanKind switch
+            {
+                ScanKind.Quick => await client.ScanKindAsync(ScanKinds.Quick, options.IncludeClean, options.Quarantine, progress: null, cancellationToken),
+                ScanKind.Full => await client.ScanKindAsync(ScanKinds.Full, options.IncludeClean, options.Quarantine, progress: null, cancellationToken),
+                _ => await client.ScanAsync(targets, options.IncludeClean, options.Quarantine, progress: null, cancellationToken),
+            };
         }
         catch (OperationCanceledException)
         {

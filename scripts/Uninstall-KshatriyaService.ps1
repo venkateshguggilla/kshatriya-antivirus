@@ -33,6 +33,12 @@ foreach ($shortcut in (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\
     }
 }
 
+if ($PSCmdlet.ShouldProcess('Explorer context menu', 'Remove "Scan with Kshatriya Antivirus"')) {
+    foreach ($class in '*', 'Directory', 'Drive') {
+        [Microsoft.Win32.Registry]::LocalMachine.DeleteSubKeyTree("SOFTWARE\Classes\$class\shell\KshatriyaScan", $false)
+    }
+}
+
 if (-not $KeepFiles -and (Test-Path $InstallDirectory)) {
     # The desktop app runs in the notification area of signed-in users and keeps its files open. Close
     # only Kshatriya's own app processes started from this install folder, so the files can be removed.

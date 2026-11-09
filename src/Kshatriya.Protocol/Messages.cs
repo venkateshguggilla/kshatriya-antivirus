@@ -45,7 +45,7 @@ public static class MessageType
 public static class ProtocolVersion
 {
     public const int Worker = 2;
-    public const int Service = 7;
+    public const int Service = 8;
 }
 
 // ---- Shared ----
@@ -376,12 +376,24 @@ public sealed class ContentImportReplyDto
 
 public sealed class ScanRequestDto
 {
+    /// <summary>Paths for a custom scan; empty for "quick" and "full", whose targets the service determines.</summary>
     public required List<string> Paths { get; init; }
+
+    /// <summary>"custom" (default when absent), "quick" or "full".</summary>
+    public string? Kind { get; init; }
 
     public required bool IncludeClean { get; init; }
 
     /// <summary>"report" (read-only) or "quarantine" (quarantine high-confidence detections).</summary>
     public required string Action { get; init; }
+}
+
+/// <summary>Values of <see cref="ScanRequestDto.Kind"/>.</summary>
+public static class ScanKinds
+{
+    public const string Custom = "custom";
+    public const string Quick = "quick";
+    public const string Full = "full";
 }
 
 /// <summary>Values of <see cref="ScanRequestDto.Action"/>.</summary>

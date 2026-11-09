@@ -215,27 +215,56 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
 /// <summary>One line in the scan results.</summary>
 public sealed record ResultRow(string Status, string Path, string Detail, string Action);
 
+/// <summary>A drive offered for a drive scan.</summary>
+public sealed record DriveChoice(string Root, string Label)
+{
+    public override string ToString() => Label;
+}
+
 public sealed class ScanViewModel : PageViewModel, IDisposable
 {
+    /// <summary>Result rows shown at most; a full scan can list thousands of files that could not be opened.</summary>
+    internal const int MaxRows = 2000;
+
     private readonly IServiceGateway _gateway;
     private readonly IDialogs _dialogs;
+    private readonly Func<IReadOnlyList<DriveChoice>> _drives;
     private CancellationTokenSource? _cancel;
     private bool _quarantine;
     private bool _isScanning;
     private string _progress = string.Empty;
     private string _summary = string.Empty;
+    private DriveChoice? _selectedDrive;
 
-    public ScanViewModel(IServiceGateway gateway, IDialogs dialogs)
-        : base("Scan", "Scan files and folders with your own access rights")
+    public ScanViewModel(IServiceGateway gateway, IDialogs dialogs, Func<IReadOnlyList<DriveChoice>>? drives = null)
+        : base("Scan", "Quick, full, drive and custom scans with your own access rights")
     {
         _gateway = gateway;
         _dialogs = dialogs;
+        _drives = drives ?? LocalDrives;
         AddFoldersCommand = new RelayCommand(_ => AddTargets(_dialogs.PickFolders()), _ => !IsScanning);
         AddKnownFolderCommand = new RelayCommand(p => AddTargets([KnownFolder(p as string)]), _ => !IsScanning);
         RemoveTargetCommand = new RelayCommand(p => Targets.Remove((string)p!), p => !IsScanning && p is string);
-        StartCommand = new AsyncCommand(_ => ScanAsync(), _ => !IsScanning && Targets.Count > 0, ShowError);
+        StartCommand = new AsyncCommand(_ => RunScanAsync("Custom scan", (progress, token) => _gateway.ScanAsync([.. Targets], Quarantine, progress, token)), _ => !IsScanning && Targets.Count > 0, ShowError);
+        QuickScanCommand = new AsyncCommand(_ => RunScanAsync("Quick scan", (progress, token) => _gateway.ScanKindAsync(ScanKinds.Quick, Quarantine, progress, token)), _ => !IsScanning, ShowError);
+        FullScanCommand = new AsyncCommand(_ => RunScanAsync("Full scan", (progress, token) => _gateway.ScanKindAsync(ScanKinds.Full, Quarantine, progress, token)), _ => !IsScanning, ShowError);
+        DriveScanCommand = new AsyncCommand(
+            _ => RunScanAsync($"Scan of {SelectedDrive!.Root}", (progress, token) => _gateway.ScanAsync([SelectedDrive!.Root], Quarantine, progress, token)),
+            _ => !IsScanning && SelectedDrive is not null,
+            ShowError);
         CancelCommand = new RelayCommand(_ => _cancel?.Cancel(), _ => IsScanning);
+        LoadDrives();
     }
+
+    public ObservableCollection<DriveChoice> Drives { get; } = [];
+
+    public DriveChoice? SelectedDrive { get => _selectedDrive; set => Set(ref _selectedDrive, value); }
+
+    public AsyncCommand QuickScanCommand { get; }
+
+    public AsyncCommand FullScanCommand { get; }
+
+    public AsyncCommand DriveScanCommand { get; }
 
     public ObservableCollection<string> Targets { get; } = [];
 
@@ -274,7 +303,50 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
 
     public void Dispose() => _cancel?.Dispose();
 
-    protected override Task RefreshCoreAsync() => Task.CompletedTask;
+    /// <summary>Refreshing the page re-reads the drive list (for example after a USB drive was attached).</summary>
+    protected override Task RefreshCoreAsync()
+    {
+        LoadDrives();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Ready fixed and removable drives, labelled with their type, name and size.</summary>
+    internal static IReadOnlyList<DriveChoice> LocalDrives()
+    {
+        var choices = new List<DriveChoice>();
+        foreach (DriveInfo drive in DriveInfo.GetDrives().Where(d => d.DriveType is DriveType.Fixed or DriveType.Removable))
+        {
+            try
+            {
+                if (!drive.IsReady)
+                {
+                    continue;
+                }
+
+                string type = drive.DriveType == DriveType.Removable ? "Removable drive" : "Local disk";
+                string name = string.IsNullOrWhiteSpace(drive.VolumeLabel) ? string.Empty : $" \"{drive.VolumeLabel}\"";
+                choices.Add(new DriveChoice(drive.RootDirectory.FullName, $"{drive.Name}  {type}{name}, {drive.TotalSize / 1e9:N0} GB"));
+            }
+            catch (IOException)
+            {
+                // Not ready after all (removed while listing).
+            }
+        }
+
+        return choices;
+    }
+
+    private void LoadDrives()
+    {
+        string? selected = SelectedDrive?.Root;
+        Drives.Clear();
+        foreach (DriveChoice drive in _drives())
+        {
+            Drives.Add(drive);
+        }
+
+        SelectedDrive = Drives.FirstOrDefault(d => d.Root == selected) ?? Drives.FirstOrDefault();
+    }
 
     private static string KnownFolder(string? name) => name switch
     {
@@ -284,25 +356,25 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 
-    private async Task ScanAsync()
+    private async Task RunScanAsync(string label, Func<IProgress<ScanProgressDto>, CancellationToken, Task<ScanReport>> start)
     {
         _cancel = new CancellationTokenSource();
         IsScanning = true;
         Results.Clear();
         Summary = string.Empty;
         ShowInfo(null);
-        Progress = "Starting…";
+        Progress = $"{label}: starting…";
         try
         {
             var progress = new Progress<ScanProgressDto>(p =>
-                Progress = $"{p.ItemsCompleted:N0} item(s) checked, {p.Detected:N0} finding(s), {p.BytesScanned / (1024.0 * 1024):N1} MiB read");
-            ScanReport report = await _gateway.ScanAsync([.. Targets], Quarantine, progress, _cancel.Token);
-            ShowReport(report);
+                Progress = $"{label}: {p.ItemsCompleted:N0} item(s) checked, {p.Detected:N0} finding(s), {p.BytesScanned / (1024.0 * 1024):N1} MiB read");
+            ScanReport report = await start(progress, _cancel.Token);
+            ShowReport(report, label);
         }
         catch (OperationCanceledException)
         {
             Progress = string.Empty;
-            ShowInfo("The scan was cancelled. Results are incomplete.");
+            ShowInfo($"{label} was cancelled. Results are incomplete.");
         }
         finally
         {
@@ -312,15 +384,16 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
         }
     }
 
-    internal void ShowReport(ScanReport report)
+    internal void ShowReport(ScanReport report, string label = "Scan")
     {
+        // Findings first; at most MaxRows rows, so a full scan's long list of unreadable files stays usable.
         foreach (ScanItemResult item in report.Items.OrderBy(i => i.Status switch
                  {
                      ScanStatus.Detected => 0,
                      ScanStatus.Suspicious => 1,
                      ScanStatus.NotScanned => 2,
                      _ => 3,
-                 }).ThenBy(i => i.Path, StringComparer.OrdinalIgnoreCase))
+                 }).ThenBy(i => i.Path, StringComparer.OrdinalIgnoreCase).Take(MaxRows))
         {
             string status = item.Status switch
             {
@@ -344,13 +417,15 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
 
         ScanSummary s = report.Summary;
         Progress = string.Empty;
-        Summary = s.Detected > 0
+        string result = s.Detected > 0
             ? $"{s.Detected} item(s) detected, {s.Quarantined} quarantined, {s.QuarantineFailed} could not be quarantined. {s.FilesScanned:N0} file(s) scanned."
             : s.Suspicious > 0
                 ? $"{s.Suspicious} item(s) look suspicious but are not confirmed malware. Nothing was changed. {s.FilesScanned:N0} file(s) scanned."
                 : s.NotScanned > 0
                     ? $"Nothing detected, but {s.NotScanned} item(s) could not be scanned. {s.FilesScanned:N0} file(s) scanned."
                     : $"Nothing detected. {s.FilesScanned:N0} file(s) scanned.";
+        string capped = report.Items.Count > MaxRows ? $" Showing the first {MaxRows:N0} of {report.Items.Count:N0} listed items, findings first." : string.Empty;
+        Summary = $"{label} finished. {result}{capped}";
     }
 }
 

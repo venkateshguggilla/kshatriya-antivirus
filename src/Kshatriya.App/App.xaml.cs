@@ -57,6 +57,12 @@ public sealed partial class App : Application, IAppHost, IDisposable
     {
         base.OnStartup(e);
         _args = e.Args;
+        if (ScanArguments(e.Args) is { Count: > 0 } scanPaths)
+        {
+            StartContextScan(scanPaths, e.Args.Contains("--dev", StringComparer.OrdinalIgnoreCase));
+            return;
+        }
+
         if (!ClaimInstance())
         {
             // Already running in this session (for example in the tray): bring that window up instead.
@@ -121,6 +127,40 @@ public sealed partial class App : Application, IAppHost, IDisposable
         _showSignal?.Dispose();
         _showSignal = null;
         ReleaseInstance();
+    }
+
+    /// <summary>Paths after <c>--scan</c> (Explorer's "Scan with Kshatriya Antivirus" passes one per item).</summary>
+    internal static IReadOnlyList<string> ScanArguments(IReadOnlyList<string> args)
+    {
+        var paths = new List<string>();
+        for (int i = 0; i < args.Count - 1; i++)
+        {
+            if (args[i].Equals("--scan", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(args[i + 1]))
+            {
+                paths.Add(args[++i]);
+            }
+        }
+
+        return paths;
+    }
+
+    /// <summary>
+    /// A separate window for a right-click scan: it opens on the Scan page, starts at once, and exits when
+    /// closed. It does not take over the notification-area instance.
+    /// </summary>
+    private void StartContextScan(IReadOnlyList<string> paths, bool dev)
+    {
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
+        IServiceGateway gateway = dev
+            ? new ServiceGateway(ServiceEndpoint.Development(), "development service")
+            : new ServiceGateway(ServiceEndpoint.Production, "installed Kshatriya service");
+        _main = new MainViewModel(gateway, new WpfDialogs(), this);
+        var window = new MainWindow { DataContext = _main };
+        MainWindow = window;
+        _main.Current = _main.Scan;
+        _main.Scan.AddTargets(paths);
+        window.Show();
+        _main.Scan.StartCommand.Execute(null);
     }
 
     private bool ClaimInstance()

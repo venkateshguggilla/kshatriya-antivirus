@@ -54,6 +54,14 @@ internal sealed class FakeGateway : IServiceGateway
         return Task.FromResult(NextReport!);
     }
 
+    public Task<ScanReport> ScanKindAsync(string kind, bool quarantine, IProgress<ScanProgressDto> progress, CancellationToken cancellationToken)
+    {
+        ThrowIfFailing();
+        LastScanQuarantine = quarantine;
+        Calls.Add("scan-kind:" + kind);
+        return Task.FromResult(NextReport!);
+    }
+
     public Task<QuarantineListReplyDto> ListQuarantineAsync(CancellationToken cancellationToken)
     {
         ThrowIfFailing();

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kshatriya.Scanning.Targets;
 
 namespace Kshatriya.Service;
 
@@ -8,9 +9,10 @@ namespace Kshatriya.Service;
 /// <param name="Name">Unique name, used in reports and status.</param>
 /// <param name="Days">Days of the week it runs on.</param>
 /// <param name="Time">Local time of day.</param>
-/// <param name="Paths">Fully qualified local paths.</param>
+/// <param name="Paths">Fully qualified local paths (custom scans); empty for quick and full scans.</param>
 /// <param name="Quarantine">True to quarantine high-confidence detections ("action": "quarantine"); false only reports.</param>
-public sealed record ScheduledScan(string Name, IReadOnlySet<DayOfWeek> Days, TimeOnly Time, IReadOnlyList<string> Paths, bool Quarantine = false);
+/// <param name="Kind">"scan": "custom" (default, uses Paths), "quick" (all profiles) or "full" (all fixed drives).</param>
+public sealed record ScheduledScan(string Name, IReadOnlySet<DayOfWeek> Days, TimeOnly Time, IReadOnlyList<string> Paths, bool Quarantine = false, ScanKind Kind = ScanKind.Custom);
 
 /// <summary>Validated service configuration (config/service.json, schema version 1).</summary>
 public sealed record ServiceSettings
@@ -93,7 +95,14 @@ public sealed record ServiceSettings
                 "quarantine" => true,
                 _ => throw new FormatException($"Schedule '{s.Name}': action '{s.Action}' must be \"report\" or \"quarantine\"."),
             };
-            schedules.Add(new ScheduledScan(s.Name, ParseDays(s.Name, s.Days), time, ValidatePaths(s.Name, s.Paths), quarantine));
+            ScanKind kind = ScanKindNames.Parse(s.Scan)
+                ?? throw new FormatException($"Schedule '{s.Name}': scan '{s.Scan}' must be \"custom\", \"quick\" or \"full\".");
+            string[] paths = kind == ScanKind.Custom
+                ? ValidatePaths(s.Name, s.Paths ?? [])
+                : s.Paths is { Count: > 0 }
+                    ? throw new FormatException($"Schedule '{s.Name}': a {ScanKindNames.Of(kind)} scan takes no paths.")
+                    : [];
+            schedules.Add(new ScheduledScan(s.Name, ParseDays(s.Name, s.Days), time, paths, quarantine, kind));
         }
 
         return new ServiceSettings
@@ -345,7 +354,11 @@ internal sealed class ScheduleDto
 
     public required string Time { get; init; }
 
-    public required List<string> Paths { get; init; }
+    /// <summary>Required for custom scans; must be absent or empty for quick and full scans.</summary>
+    public List<string>? Paths { get; init; }
+
+    /// <summary>"custom" (default), "quick" or "full".</summary>
+    public string? Scan { get; init; }
 
     public string? Action { get; init; }
 }

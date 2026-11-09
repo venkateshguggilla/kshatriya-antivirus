@@ -109,12 +109,32 @@ public sealed class ServiceClient : IAsyncDisposable
     /// Asks the service to scan as the calling user; with <paramref name="quarantine"/> high-confidence
     /// detections are quarantined (files the caller can delete only).
     /// </summary>
-    public async Task<ScanReport> ScanAsync(IReadOnlyList<string> paths, bool includeClean, bool quarantine, IProgress<ScanProgressDto>? progress = null, CancellationToken cancellationToken = default)
+    public Task<ScanReport> ScanAsync(IReadOnlyList<string> paths, bool includeClean, bool quarantine, IProgress<ScanProgressDto>? progress = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(paths);
+        return SendScanAsync([.. paths], ScanKinds.Custom, includeClean, quarantine, progress, cancellationToken);
+    }
+
+    /// <summary>
+    /// Asks the service for a quick (<see cref="ScanKinds.Quick"/>) or full (<see cref="ScanKinds.Full"/>)
+    /// scan; the service determines the targets and still opens every file as the calling user.
+    /// </summary>
+    public Task<ScanReport> ScanKindAsync(string kind, bool includeClean, bool quarantine, IProgress<ScanProgressDto>? progress = null, CancellationToken cancellationToken = default)
+    {
+        if (kind is not (ScanKinds.Quick or ScanKinds.Full))
+        {
+            throw new ArgumentException($"Unknown scan kind '{kind}'.", nameof(kind));
+        }
+
+        return SendScanAsync([], kind, includeClean, quarantine, progress, cancellationToken);
+    }
+
+    private async Task<ScanReport> SendScanAsync(List<string> paths, string kind, bool includeClean, bool quarantine, IProgress<ScanProgressDto>? progress, CancellationToken cancellationToken)
+    {
         byte[] request = ProtocolJson.Serialize(new ScanRequestDto
         {
-            Paths = [.. paths],
+            Paths = paths,
+            Kind = kind,
             IncludeClean = includeClean,
             Action = quarantine ? ScanActions.Quarantine : ScanActions.Report,
         });

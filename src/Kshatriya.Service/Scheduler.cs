@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Kshatriya.Core;
 using Kshatriya.Response;
 using Kshatriya.Scanning;
+using Kshatriya.Scanning.Targets;
 
 namespace Kshatriya.Service;
 
@@ -222,13 +223,15 @@ public sealed class Scheduler(ServiceCore core, ScheduleState state, ReportStore
             }
 
             ran++;
-            Log.ScheduleStarting(logger, scan.Name, scan.Paths.Count);
+            // Quick and full schedules are resolved when they run (startup entries and processes change).
+            IReadOnlyList<string> targets = scan.Kind == ScanKind.Custom ? scan.Paths : core.ResolveTargets(scan.Kind, QuickScanScope.Machine);
+            Log.ScheduleStarting(logger, scan.Name, targets.Count);
             string outcome;
             try
             {
                 // Full rescans: the cache is bypassed so that stale cached verdicts are bounded by the schedule.
                 IItemResponder? responder = scan.Quarantine ? new QuarantineResponder(core.Quarantine, Actor.System($"schedule '{scan.Name}'")) : null;
-                ScanReport report = await core.Coordinator.ScanAsync(scan.Paths, includeClean: false, useCache: false, responder, progress: null, cancellationToken);
+                ScanReport report = await core.Coordinator.ScanAsync(targets, includeClean: false, useCache: false, responder, progress: null, cancellationToken);
                 string file = reports.Save(report, scan.Name, ServiceCore.Version);
                 core.RecordDetections(report, $"schedule '{scan.Name}'", $"schedule '{scan.Name}'");
                 outcome = report.HasDetections ? "detections" : report.HasSuspicious ? "suspicious" : report.IsComplete ? "clean" : "incomplete";

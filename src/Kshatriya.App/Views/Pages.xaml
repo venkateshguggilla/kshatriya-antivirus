@@ -91,7 +91,37 @@
       <TextBlock Text="The service scans with your own access rights. Files are parsed only inside sandboxed workers." TextWrapping="Wrap" Opacity="0.8" />
       <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
 
-      <TextBlock Text="What to scan" Style="{StaticResource SectionTitle}" />
+      <TextBlock Text="Scan types" Style="{StaticResource SectionTitle}" />
+      <Border Style="{StaticResource Card}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+
+          <Button Grid.Row="0" Content="Quick scan" Command="{Binding QuickScanCommand}" Padding="16,6" MinWidth="130" Margin="0,0,12,8"
+                  AutomationProperties.HelpText="Scans startup entries, running programs and services, and your Downloads, Desktop, Temp and Startup folders." />
+          <TextBlock Grid.Row="0" Grid.Column="1" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,0,8"
+                     Text="Startup entries, running programs and services, and your Downloads, Desktop, Temp and Startup folders. Usually takes minutes." />
+
+          <Button Grid.Row="1" Content="Full scan" Command="{Binding FullScanCommand}" Padding="16,6" MinWidth="130" Margin="0,0,12,8"
+                  AutomationProperties.HelpText="Scans every fixed drive. This can take a long time." />
+          <TextBlock Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,0,8"
+                     Text="Every fixed drive. Can take a long time; you can keep working, close this window (the scan continues while the app runs in the notification area) or cancel." />
+
+          <Button Grid.Row="2" Content="Scan drive" Command="{Binding DriveScanCommand}" Padding="16,6" MinWidth="130" Margin="0,0,12,0"
+                  AutomationProperties.HelpText="Scans the drive selected in the list, for example a USB drive." />
+          <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding Drives}" SelectedItem="{Binding SelectedDrive, Mode=TwoWay}"
+                    HorizontalAlignment="Left" MinWidth="320" AutomationProperties.Name="Drive to scan" />
+        </Grid>
+      </Border>
+
+      <TextBlock Text="Custom scan" Style="{StaticResource SectionTitle}" />
       <WrapPanel>
         <Button Content="Add folders…" Command="{Binding AddFoldersCommand}" Padding="12,6" Margin="0,0,8,8" />
         <Button Content="Downloads" Command="{Binding AddKnownFolderCommand}" CommandParameter="Downloads" Padding="12,6" Margin="0,0,8,8" AutomationProperties.Name="Add Downloads folder" />
@@ -111,13 +141,14 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
 
-      <CheckBox IsChecked="{Binding Quarantine}" Margin="0,12,0,0"
+      <Button Content="Scan selected" Command="{Binding StartCommand}" Padding="16,6" IsDefault="True" HorizontalAlignment="Left" Margin="0,8,0,0"
+              AutomationProperties.HelpText="Scans the files and folders listed above." />
+
+      <TextBlock Text="Options" Style="{StaticResource SectionTitle}" />
+      <CheckBox IsChecked="{Binding Quarantine}"
                 Content="Quarantine confirmed threats (high-confidence malware and test files). Suspicious findings are only reported." />
 
-      <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-        <Button Content="Start scan" Command="{Binding StartCommand}" Padding="16,6" IsDefault="True" />
-        <Button Content="Cancel" Command="{Binding CancelCommand}" Padding="16,6" Margin="8,0,0,0" />
-      </StackPanel>
+      <Button Content="Cancel scan" Command="{Binding CancelCommand}" Padding="16,6" HorizontalAlignment="Left" Margin="0,12,0,0" />
       <ProgressBar IsIndeterminate="True" Height="4" Margin="0,12,0,0" Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibility}}" AutomationProperties.Name="Scan in progress" />
       <TextBlock Text="{Binding Progress}" Margin="0,6,0,0" AutomationProperties.LiveSetting="Polite" />
       <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,8,0,0" AutomationProperties.LiveSetting="Assertive" />

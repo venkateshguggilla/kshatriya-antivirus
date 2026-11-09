@@ -19,6 +19,7 @@
   - Per-file size limit and time limit; locked, denied, oversized or timed-out files are reported as **not scanned**, never silently ignored
   - Text output for people, versioned JSON output for tools ([schema v4](docs/schemas/scan-report.v4.schema.json))
 - `kshatriya scan --stdin`: scans piped data (useful for the EICAR test string without writing it to disk)
+- **Scan types:** **quick** (`--quick`: startup entries from the Run keys and Startup folders, running programs, Windows services, and your Downloads, Desktop, Temp and Startup folders; minutes), **full** (`--full`: every fixed drive; can take hours), **drive** (give a drive root such as `E:\`, including USB drives) and **custom** (any files and folders). The app offers the same four, and Explorer's right-click menu has "Scan with Kshatriya Antivirus" for files, folders and drives (on Windows 11 under "Show more options"). A quick scan you start covers your own profile and system locations, never other users' profiles; scheduled quick scans cover all profiles ([ADR 0016](docs/adr/0016-scan-types.md)).
 - **Windows service (M3):** `Kshatriya.Service` runs as LocalSystem with a shared worker pool, a verdict cache for unchanged clean files and scheduled scans
   - `kshatriya scan --service <path>` asks the service to scan. The service scans **with your own access rights** (pipe impersonation), so it can't be used to read files you can't read.
   - `kshatriya status` shows the engines, workers, cache, schedules and active scans.
@@ -87,7 +88,9 @@ Optional `%ProgramData%\Kshatriya\config\service.json` (development: `%LOCALAPPD
   "maxConcurrentScans": 2,
   "reportRetention": 30,
   "scheduledScans": [
-    { "name": "weekly-users", "days": ["sunday"], "time": "03:00", "paths": ["C:\\Users"], "action": "report" }
+    { "name": "daily-quick", "days": ["daily"], "time": "12:30", "scan": "quick" },
+    { "name": "weekly-full", "days": ["sunday"], "time": "03:00", "scan": "full", "action": "report" },
+    { "name": "weekly-users", "days": ["saturday"], "time": "03:00", "paths": ["C:\\Users"] }
   ],
   "realTime": {
     "paths": ["C:\\Users"], "action": "report", "processes": true, "removableMedia": true, "debounceSeconds": 2,
@@ -97,7 +100,7 @@ Optional `%ProgramData%\Kshatriya\config\service.json` (development: `%LOCALAPPD
 }
 ```
 
-Scheduled scans run in local time and skip the verdict cache. Add `"action": "quarantine"` to a schedule to quarantine high-confidence detections (default `"report"`). Reports (schema v4) are written to `reports\`. Persistent exclusions live in `config\exclusions.json` and are managed with `kshatriya exclusions ... --service`; the quarantine vault is `quarantine\` and the audit log `audit\`. A run missed while the machine was off happens once the service is running again; a new schedule waits for its first occurrence.
+Scheduled scans run in local time and skip the verdict cache. `"scan"` is `"custom"` (the default, needs `"paths"`), `"quick"` or `"full"` (no `"paths"`; their targets are worked out each time the schedule runs). Add `"action": "quarantine"` to a schedule to quarantine high-confidence detections (default `"report"`). Reports (schema v4) are written to `reports\`. Persistent exclusions live in `config\exclusions.json` and are managed with `kshatriya exclusions ... --service`; the quarantine vault is `quarantine\` and the audit log `audit\`. A run missed while the machine was off happens once the service is running again; a new schedule waits for its first occurrence.
 
 ### CLI
 
@@ -106,6 +109,7 @@ kshatriya scan <path>... [--quarantine] [--exclude <path>]... [--json] [--output
                         [--signatures <file>]... [--rules <file>]... [--no-heuristics] [--archive-depth <n>]
                         [--max-file-size <MiB>] [--timeout <seconds>] [--parallelism <n>] [--no-sandbox] [--quiet]
 kshatriya scan --stdin [--name <label>] [options]
+kshatriya scan --quick | --full [--service [--dev]] [options]
 kshatriya scan --service [--dev] <path>... [--quarantine] [--json] [--output <file>] [--include-clean] [--quiet]
 kshatriya status [--dev]
 kshatriya quarantine list | add <file> | restore <id> [--to <path>] | delete <id>   [--service [--dev]]

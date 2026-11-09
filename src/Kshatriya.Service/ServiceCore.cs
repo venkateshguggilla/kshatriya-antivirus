@@ -6,6 +6,7 @@ using Kshatriya.Protocol;
 using Kshatriya.Response;
 using Kshatriya.Runtime;
 using Kshatriya.Runtime.Workers;
+using Kshatriya.Scanning.Targets;
 using Kshatriya.Service.Net;
 using Kshatriya.Service.RealTime;
 using Kshatriya.Updates;
@@ -40,6 +41,9 @@ public sealed record ServiceCoreOptions
 
     /// <summary>Removable-drive enumerator for real-time monitoring (tests); null uses DriveInfo.</summary>
     public Func<IEnumerable<string>>? RemovableDrives { get; init; }
+
+    /// <summary>Targets of quick and full scans (tests); null gathers them from this machine.</summary>
+    public Func<ScanKind, QuickScanScope, IReadOnlyList<string>>? ScanTargetProvider { get; init; }
 }
 
 /// <summary>
@@ -75,6 +79,12 @@ public sealed class ServiceCore : IDisposable
         typeof(ServiceCore).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";
 
     public ServiceSettings Settings { get; }
+
+    /// <summary>The paths of a quick or full scan for <paramref name="scope"/> (custom scans carry their own paths).</summary>
+    public IReadOnlyList<string> ResolveTargets(ScanKind kind, QuickScanScope scope) =>
+        _options.ScanTargetProvider is { } provider ? provider(kind, scope)
+        : kind == ScanKind.Full ? ScanTargets.FullSystem()
+        : ScanTargets.Quick(scope);
 
     public ScanCoordinator Coordinator { get; }
 

@@ -14,6 +14,9 @@ public interface IServiceGateway
 
     Task<ScanReport> ScanAsync(IReadOnlyList<string> paths, bool quarantine, IProgress<ScanProgressDto> progress, CancellationToken cancellationToken);
 
+    /// <summary>A quick or full scan (<see cref="ScanKinds"/>); the service determines the targets.</summary>
+    Task<ScanReport> ScanKindAsync(string kind, bool quarantine, IProgress<ScanProgressDto> progress, CancellationToken cancellationToken);
+
     Task<QuarantineListReplyDto> ListQuarantineAsync(CancellationToken cancellationToken);
 
     Task<OperationReplyDto> RestoreAsync(string id, string? targetPath, CancellationToken cancellationToken);
@@ -46,6 +49,12 @@ public sealed class ServiceGateway(ServiceEndpoint endpoint, string description)
     {
         await using ServiceClient client = await ConnectAsync(cancellationToken);
         return await client.ScanAsync(paths, includeClean: false, quarantine, progress, cancellationToken);
+    }
+
+    public async Task<ScanReport> ScanKindAsync(string kind, bool quarantine, IProgress<ScanProgressDto> progress, CancellationToken cancellationToken)
+    {
+        await using ServiceClient client = await ConnectAsync(cancellationToken);
+        return await client.ScanKindAsync(kind, includeClean: false, quarantine, progress, cancellationToken);
     }
 
     public Task<QuarantineListReplyDto> ListQuarantineAsync(CancellationToken cancellationToken) =>

@@ -104,6 +104,22 @@ if ((Test-Path $app) -and $PSCmdlet.ShouldProcess('Start menu', 'Add Kshatriya s
     $shortcut.Save()
 }
 
+# Explorer right-click "Scan with Kshatriya Antivirus" for files, folders and drives (on Windows 11 it is
+# under "Show more options"). Each item opens its own scan window; the service scans with the user's rights.
+if ((Test-Path $app) -and $PSCmdlet.ShouldProcess('Explorer context menu', 'Add "Scan with Kshatriya Antivirus"')) {
+    foreach ($class in '*', 'Directory', 'Drive') {
+        # .NET registry API: PowerShell registry paths would treat '*' as a wildcard.
+        $verb = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey("SOFTWARE\Classes\$class\shell\KshatriyaScan")
+        try {
+            $verb.SetValue('MUIVerb', 'Scan with Kshatriya Antivirus')
+            $verb.SetValue('Icon', "`"$app`"")
+            $command = $verb.CreateSubKey('command')
+            try { $command.SetValue('', "`"$app`" --scan `"%1`"") } finally { $command.Dispose() }
+        }
+        finally { $verb.Dispose() }
+    }
+}
+
 # Start the app in the notification area at sign-in, for every user, so findings from real-time protection
 # are shown as notifications. Each user can turn it off in Task Manager > Startup apps, or turn off
 # notifications from the tray icon.
