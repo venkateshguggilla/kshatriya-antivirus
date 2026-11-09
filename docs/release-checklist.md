@@ -29,8 +29,11 @@ missing before anyone should call a build "beta", let alone production.
 
 ## Not done: required before a beta label
 
-- [ ] Install and run the LocalSystem service end to end on clean Windows 10 22H2 and Windows 11 VMs
-      (so far exercised in development mode and by CI tests only).
+- [ ] Install and run the LocalSystem service end to end on clean Windows 10 22H2 and Windows 11 VMs.
+      Done once on a Windows 10 22H2 development machine (2026-11-09): install, `status`, service scan,
+      quarantine, refused and elevated restore, audit chain. It found three defects, all fixed (workers
+      could not start under LocalSystem, the scripts needed PowerShell 7, refused audit reads were not
+      audited). Clean VMs and Windows 11 are still to do.
 - [ ] Code-signing certificate and signed releases. (Installer decided: zip + install script, ADR 0013.)
 - [ ] Production content signing key, key-custody process and a first signed content release (ADR 0008).
 - [ ] A broader benign corpus (many machines and installers) and a labelled malware set run in an
