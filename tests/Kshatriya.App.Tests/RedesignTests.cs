@@ -55,6 +55,55 @@ public class RedesignTests
     }
 
     [Fact]
+    public async Task While_the_service_is_starting_the_dashboard_says_so_and_connects_when_it_is_up()
+    {
+        var gateway = new FakeGateway { Failure = new TimeoutException() };
+        var dashboard = new DashboardViewModel(gateway, new FakeHost())
+        {
+            AntivirusSource = () => AntivirusHealth.Good,
+            FolderAccessSource = () => null,
+            ServiceStartingSource = () => true,
+        };
+
+        await dashboard.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal("Kshatriya is starting", dashboard.Verdict);
+        Assert.Equal(Tone.Caution, dashboard.VerdictTone);
+        Assert.Contains(dashboard.Rows, r => r.Label == "Kshatriya service" && r.Value == "Starting");
+
+        // The service comes up: the next automatic retry connects without the user doing anything.
+        gateway.Failure = null;
+        await dashboard.RetryIfDisconnectedAsync();
+
+        Assert.True(dashboard.IsConnected);
+        Assert.NotEqual("Kshatriya is starting", dashboard.Verdict);
+    }
+
+    [Fact]
+    public async Task Retrying_does_nothing_while_connected()
+    {
+        var gateway = new FakeGateway();
+        var dashboard = new DashboardViewModel(gateway, new FakeHost()) { AntivirusSource = () => AntivirusHealth.Good, FolderAccessSource = () => null };
+        await dashboard.RefreshCommand.ExecuteAsync(null);
+        gateway.Failure = new TimeoutException(); // any further status query would now disconnect the page
+
+        await dashboard.RetryIfDisconnectedAsync();
+
+        Assert.True(dashboard.IsConnected);
+    }
+
+    [Theory]
+    [InlineData(2u, 60, true)]      // start pending
+    [InlineData(1u, 60, true)]      // stopped one minute after Windows started: delayed start
+    [InlineData(1u, 600, false)]    // stopped ten minutes after Windows started: not running
+    [InlineData(4u, 60, false)]     // running (yet unreachable): not "starting"
+    [InlineData(null, 60, false)]   // not installed
+    public void Starting_means_start_pending_or_stopped_soon_after_Windows_started(uint? state, int seconds, bool starting)
+    {
+        Assert.Equal(starting, ServiceStartup.IsStarting(state, TimeSpan.FromSeconds(seconds)));
+    }
+
+    [Fact]
     public async Task Quick_scan_on_the_dashboard_opens_the_scan_page_and_starts_it()
     {
         var gateway = new FakeGateway { NextReport = Report() };

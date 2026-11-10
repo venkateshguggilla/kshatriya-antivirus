@@ -123,13 +123,26 @@ public static partial class PipeNative
     public static partial bool GetNamedPipeClientProcessId(SafePipeHandle pipe, out uint processId);
 
     /// <summary>The process ID of a running service, or null if it is not installed, not running, or not queryable.</summary>
-    public static unsafe uint? QueryServiceProcessId(string serviceName)
+    public static uint? QueryServiceProcessId(string serviceName) =>
+        TryQueryService(serviceName, out ServiceStatusProcess status) && status.CurrentState == ServiceRunning && status.ProcessId != 0
+            ? status.ProcessId
+            : null;
+
+    /// <summary>
+    /// The service's state (SERVICE_STOPPED 1, START_PENDING 2, STOP_PENDING 3, RUNNING 4, ...), or null if it is
+    /// not installed or not queryable.
+    /// </summary>
+    public static uint? QueryServiceState(string serviceName) =>
+        TryQueryService(serviceName, out ServiceStatusProcess status) ? status.CurrentState : null;
+
+    private static unsafe bool TryQueryService(string serviceName, out ServiceStatusProcess status)
     {
+        status = default;
         ArgumentException.ThrowIfNullOrEmpty(serviceName);
         IntPtr manager = OpenSCManager(null, null, ScManagerConnect);
         if (manager == IntPtr.Zero)
         {
-            return null;
+            return false;
         }
 
         try
@@ -137,19 +150,19 @@ public static partial class PipeNative
             IntPtr service = OpenService(manager, serviceName, ServiceQueryStatus);
             if (service == IntPtr.Zero)
             {
-                return null;
+                return false;
             }
 
             try
             {
-                ServiceStatusProcess status;
-                if (!QueryServiceStatusEx(service, ScStatusProcessInfo, &status, (uint)sizeof(ServiceStatusProcess), out _)
-                    || status.CurrentState != ServiceRunning || status.ProcessId == 0)
+                ServiceStatusProcess result;
+                if (!QueryServiceStatusEx(service, ScStatusProcessInfo, &result, (uint)sizeof(ServiceStatusProcess), out _))
                 {
-                    return null;
+                    return false;
                 }
 
-                return status.ProcessId;
+                status = result;
+                return true;
             }
             finally
             {

@@ -18,6 +18,7 @@ public sealed partial class App : Application, IAppHost, IDisposable
     private const string ShowSignalName = @"Local\Kshatriya.App.Show";
     private static readonly TimeSpan s_pollInterval = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan s_driveInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan s_reconnectInterval = TimeSpan.FromSeconds(5);
 
     private string[] _args = [];
     private Mutex? _instance;
@@ -29,6 +30,7 @@ public sealed partial class App : Application, IAppHost, IDisposable
     private AppPreferences? _preferences;
     private DispatcherTimer? _timer;
     private DispatcherTimer? _driveTimer;
+    private DispatcherTimer? _reconnectTimer;
     private IServiceGateway? _gateway;
     private readonly ExternalDriveWatcher _drives = new();
     private ExternalDriveScanner? _driveScanner;
@@ -91,6 +93,11 @@ public sealed partial class App : Application, IAppHost, IDisposable
             : new ServiceGateway(ServiceEndpoint.Production, "installed Kshatriya service");
 
         _main = new MainViewModel(gateway, new WpfDialogs(), this);
+        if (!dev)
+        {
+            _main.Dashboard.ServiceStartingSource = () => ServiceStartup.IsStarting(ServiceEndpoint.Production.ServiceName);
+        }
+
         var window = new MainWindow { DataContext = _main };
         window.Closing += (_, args) =>
         {
@@ -119,6 +126,17 @@ public sealed partial class App : Application, IAppHost, IDisposable
         _driveTimer.Tick += async (_, _) => await CheckDrivesAsync();
         _driveTimer.Start();
         _ = CheckDrivesAsync(); // records the drives already connected
+        // While the window shows the service as unreachable (for example during its delayed start after
+        // sign-in), check again every few seconds so the page updates by itself.
+        _reconnectTimer = new DispatcherTimer { Interval = s_reconnectInterval };
+        _reconnectTimer.Tick += async (_, _) =>
+        {
+            if (MainWindow?.IsVisible == true && _main is not null)
+            {
+                await _main.Dashboard.RetryIfDisconnectedAsync();
+            }
+        };
+        _reconnectTimer.Start();
 
         if (!background)
         {
@@ -137,6 +155,7 @@ public sealed partial class App : Application, IAppHost, IDisposable
     {
         _timer?.Stop();
         _driveTimer?.Stop();
+        _reconnectTimer?.Stop();
         _driveScanner?.Dispose();
         _driveScanner = null;
         _tray?.Dispose();

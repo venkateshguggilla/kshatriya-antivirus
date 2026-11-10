@@ -162,6 +162,19 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
     /// <summary>Optional source of Windows antivirus health (tests replace it).</summary>
     public Func<AntivirusHealth> AntivirusSource { get; set; } = SecurityCenter.GetAntivirusHealth;
 
+    /// <summary>
+    /// True while the service is (probably) still starting, for example during its delayed start after
+    /// Windows starts. The app sets it for the installed service; tests replace it.
+    /// </summary>
+    public Func<bool> ServiceStartingSource { get; set; } = () => false;
+
+    /// <summary>
+    /// Checks again while the service is not reachable, so the page updates by itself once the service is
+    /// up (the shell calls this every few seconds while the window is shown).
+    /// </summary>
+    public Task RetryIfDisconnectedAsync() =>
+        IsConnected || IsBusy ? Task.CompletedTask : RefreshCommand.ExecuteAsync(null);
+
     protected override async Task RefreshCoreAsync()
     {
         Antivirus = AntivirusSource();
@@ -279,10 +292,13 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
 
     private void BuildDisconnected()
     {
+        bool starting = ServiceStartingSource();
         Rows.Clear();
-        Rows.Add(new StatusRow(Glyphs.Shield, "Kshatriya service", "Not reachable", Tone.Critical));
+        Rows.Add(new StatusRow(Glyphs.Shield, "Kshatriya service", starting ? "Starting" : "Not reachable", starting ? Tone.Caution : Tone.Critical));
         Rows.Add(new StatusRow(Glyphs.Shield, "Windows antivirus", SecurityCenter.Describe(Antivirus), Antivirus == AntivirusHealth.Good ? Tone.Success : Tone.Caution));
-        (Verdict, VerdictDetail, VerdictTone) = ("Kshatriya is not running", $"The {gateway.EndpointDescription} is not reachable. Scans and real-time monitoring need it; Microsoft Defender keeps protecting you.", Tone.Critical);
+        (Verdict, VerdictDetail, VerdictTone) = starting
+            ? ("Kshatriya is starting", "The service starts a minute or two after Windows does. This page updates by itself when it is ready; Microsoft Defender keeps protecting you meanwhile.", Tone.Caution)
+            : ("Kshatriya is not running", $"The {gateway.EndpointDescription} is not reachable. Scans and real-time monitoring need it; Microsoft Defender keeps protecting you. This page checks again every few seconds.", Tone.Critical);
         OnPropertyChanged(nameof(QuickScanCommand));
     }
 
