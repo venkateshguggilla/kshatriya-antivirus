@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/venkateshguggilla/kshatriya-antivirus/docs/schemas/browser-host.v1.schema.json",
   "title": "Kshatriya browser host reply, version 1",
-  "description": "Replies from the native messaging host com.kshatriya.browser_host to the browser extension (ADR 0018). Requests are {\"v\":1,\"type\":\"status\"}, {\"v\":1,\"type\":\"blocklist\"} (ADR 0019) or {\"v\":1,\"type\":\"scan\",\"path\":\"C:\\\\...\"}.",
+  "description": "Replies from the native messaging host com.kshatriya.browser_host to the browser extension (ADR 0018). Requests are {\"v\":1,\"type\":\"status\"}, {\"v\":1,\"type\":\"blocklist\",\"offset\":0} (ADR 0019: one page of the list; ask again from \"next\" until it equals \"total\") or {\"v\":1,\"type\":\"scan\",\"path\":\"C:\\\\...\"}.",
   "type": "object",
   "required": ["v", "type", "ok"],
   "properties": {
@@ -11,9 +11,12 @@
     "ok": { "type": "boolean" },
     "serviceVersion": { "type": "string", "maxLength": 200 },
     "sequence": { "type": "integer", "minimum": 0 },
+    "total": { "type": "integer", "minimum": 0, "maximum": 500000 },
+    "offset": { "type": "integer", "minimum": 0 },
+    "next": { "type": "integer", "minimum": 0 },
     "domains": {
       "type": "array",
-      "maxItems": 30000,
+      "maxItems": 500000,
       "items": { "type": "string", "maxLength": 253, "pattern": "^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9-]*[a-z-][a-z0-9-]*$" }
     },
     "status": { "enum": ["clean", "detected", "suspicious", "skipped", "notScanned"] },
@@ -53,7 +56,7 @@
     },
     {
       "if": { "properties": { "ok": { "const": true }, "type": { "const": "blocklist" } } },
-      "then": { "required": ["sequence", "domains"] }
+      "then": { "required": ["sequence", "total", "offset", "next", "domains"] }
     }
   ]
 }

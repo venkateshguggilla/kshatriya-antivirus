@@ -47,7 +47,7 @@ public static class MessageType
 public static class ProtocolVersion
 {
     public const int Worker = 3;
-    public const int Service = 10;
+    public const int Service = 11;
 }
 
 // ---- Shared ----
@@ -347,11 +347,28 @@ public sealed class DetectionsReplyDto
     public required List<DetectionRecordDto> Items { get; init; }
 }
 
-/// <summary>Dangerous web sites for the browser extension (ADR 0019). Readable by any local user.</summary>
+/// <summary>Asks for one page of the web blocklist, starting at <see cref="Offset"/>.</summary>
+public sealed class WebBlocklistQueryDto
+{
+    public required int Offset { get; init; }
+
+    /// <summary>Budget for the page: each domain counts its length plus 3 (JSON quotes and comma).</summary>
+    public required int MaxBytes { get; init; }
+}
+
+/// <summary>One page of the dangerous web sites for the browser extension (ADR 0019). Readable by any local user.</summary>
 public sealed class WebBlocklistReplyDto
 {
     /// <summary>Sequence of the content package the list came from; 0 when no package is installed.</summary>
     public required long Sequence { get; init; }
+
+    /// <summary>Number of domains in the whole list.</summary>
+    public required int Total { get; init; }
+
+    public required int Offset { get; init; }
+
+    /// <summary>Offset of the next page; equal to <see cref="Total"/> on the last page.</summary>
+    public required int Next { get; init; }
 
     public required List<string> Domains { get; init; }
 }
@@ -599,6 +616,7 @@ public static class ErrorCodes
 [JsonSerializable(typeof(ContentImportReplyDto))]
 [JsonSerializable(typeof(DetectionsQueryDto))]
 [JsonSerializable(typeof(DetectionsReplyDto))]
+[JsonSerializable(typeof(WebBlocklistQueryDto))]
 [JsonSerializable(typeof(WebBlocklistReplyDto))]
 internal sealed partial class ProtocolJsonContext : JsonSerializerContext
 {

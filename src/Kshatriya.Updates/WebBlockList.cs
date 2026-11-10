@@ -11,14 +11,22 @@ public static class WebBlockList
 {
     public const string Header = "# kshatriya-webblock v1";
 
-    /// <summary>Most domains across all lists; matches the 30,000 rules a browser guarantees an extension.</summary>
-    public const int MaxDomains = 30_000;
+    /// <summary>
+    /// Most domains across all lists. The extension puts 1,000 domains in each browser rule, so this is
+    /// 500 rules, far below the 30,000 dynamic rules a browser guarantees (ADR 0019).
+    /// </summary>
+    public const int MaxDomains = 500_000;
+
+    /// <summary>Most characters across all domains.</summary>
+    public const int MaxTotalChars = 16 * 1024 * 1024;
+
+    /// <summary>Smallest page budget a client may ask for (fits the longest domain).</summary>
+    public const int MinPageBytes = 1024;
 
     /// <summary>
-    /// Most characters across all domains, so the reply to the browser stays well inside the 1 MB limit
-    /// browsers put on a native-messaging message.
+    /// Largest page budget. Pages travel to the browser in one native message, which browsers limit to 1 MB.
     /// </summary>
-    public const int MaxTotalChars = 768 * 1024;
+    public const int MaxPageBytes = 900_000;
 
     private const int MaxDomainChars = 253;
     private const int MaxLabelChars = 63;
@@ -95,6 +103,35 @@ public static class WebBlockList
         }
 
         return all;
+    }
+
+    /// <summary>
+    /// The domains from <paramref name="offset"/> that fit in <paramref name="maxBytes"/>, counting each as its
+    /// length plus 3 (JSON quotes and comma), and the offset of the next page (the count when done). A page
+    /// always holds at least one domain while any remain.
+    /// </summary>
+    public static (IReadOnlyList<string> Page, int Next) Page(IReadOnlyList<string> domains, int offset, int maxBytes)
+    {
+        ArgumentNullException.ThrowIfNull(domains);
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(offset, domains.Count);
+        var page = new List<string>();
+        long used = 0;
+        int next = offset;
+        while (next < domains.Count)
+        {
+            int cost = domains[next].Length + 3;
+            if (page.Count > 0 && used + cost > maxBytes)
+            {
+                break;
+            }
+
+            page.Add(domains[next]);
+            used += cost;
+            next++;
+        }
+
+        return (page, next);
     }
 
     /// <summary>A lower-case ASCII host name with at least two labels whose last label is not numeric.</summary>

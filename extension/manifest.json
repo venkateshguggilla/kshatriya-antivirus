@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Kshatriya Antivirus (prototype)",
   "short_name": "Kshatriya",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Blocks listed dangerous sites, scans downloads with Kshatriya and warns about look-alike sites. Checks run on your PC; no browsing data is sent anywhere.",
   "minimum_chrome_version": "116",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs4IIFihGxYSoEj2CCkF3MMbB2Zb9p3JPYyO7+yEpoWGHJr/ap9KF/vccNhJfNgrLZGS25HCegDPGRKBfBz4lNSAjRr9ZC7gsBFwkmrkvtFpfQ3LfecWXbW94On00GsS3bVyCev37Qq76KVJHtyCSE5KfXCUrBfkWxCtg81L4/aLC6wWLcrt9auM/IdhhReBYTrUJYerwdcVSHIj0G4czSbeqw6V2ik7S3I+YF7fe7bryKBSM7wUdRyEcCYmgPWd0zl+3maVW9knFnnnYvfjdVMhr79Wd9XsGwicQANOPHFkwAF5Vek7u5gSE9clRZDzhzXku04W1CtgUCjcTcNm5pQIDAQAB",

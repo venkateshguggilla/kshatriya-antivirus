@@ -6,6 +6,7 @@ import { BLOCKED_RESOURCE_TYPES, blockRules, domainsFromRules, hostOf, matchList
 import { checkHost, describeLookalike, editDistance, skeleton } from '../../extension/lib/lookalike.js';
 import { baseName, blocklistRequest, describeScan, isBlockableDomain, parseReply, scanRequest } from '../../extension/lib/messages.js';
 import { decodeLabel, hostToUnicode } from '../../extension/lib/punycode.js';
+import { fetchBlocklist } from '../../extension/lib/blocklist.js';
 
 test('hostOf keeps only http(s) host names', () => {
   assert.equal(hostOf('https://WWW.Example.com./path?q=1'), 'www.example.com');
@@ -136,18 +137,59 @@ test('only well-formed domains are accepted from the host', () => {
 });
 
 test('blocklist replies are validated before rules are built from them', () => {
-  assert.deepEqual(blocklistRequest(), { v: 1, type: 'blocklist' });
-  assert.deepEqual(
-    parseReply({ v: 1, type: 'blocklist', ok: true, sequence: 4, domains: ['bad.example'] }, 'blocklist'),
-    { ok: true, sequence: 4, domains: ['bad.example'] },
-  );
+  assert.deepEqual(blocklistRequest(), { v: 1, type: 'blocklist', offset: 0 });
+  assert.deepEqual(blocklistRequest(2000), { v: 1, type: 'blocklist', offset: 2000 });
+  const page = { v: 1, type: 'blocklist', ok: true, sequence: 4, total: 1, offset: 0, next: 1, domains: ['bad.example'] };
+  assert.deepEqual(parseReply(page, 'blocklist'), { ok: true, sequence: 4, total: 1, offset: 0, next: 1, domains: ['bad.example'] });
   const bad = [
-    { v: 1, type: 'blocklist', ok: true, sequence: -1, domains: [] },
-    { v: 1, type: 'blocklist', ok: true, sequence: 1.5, domains: [] },
-    { v: 1, type: 'blocklist', ok: true, sequence: 1, domains: ['*'] },
-    { v: 1, type: 'blocklist', ok: true, sequence: 1, domains: 'bad.example' },
-    { v: 1, type: 'blocklist', ok: true, sequence: 1, domains: Array.from({ length: 30001 }, (_, i) => `d${i}.example`) },
-    { v: 1, type: 'scan', ok: true, sequence: 1, domains: [] },
+    { ...page, sequence: -1 },
+    { ...page, sequence: 1.5 },
+    { ...page, next: undefined },
+    { ...page, total: 500001 },
+    { ...page, domains: ['*'] },
+    { ...page, domains: 'bad.example' },
+    { ...page, extra: true },
+    { ...page, type: 'scan' },
   ];
   for (const reply of bad) assert.equal(parseReply(reply, 'blocklist').error, 'bad-reply');
+});
+
+/** A fake host serving `list` in pages of `size`, optionally changing sequence after `changeAfter` pages. */
+function fakeHost(list, size, { sequence = 7, changeAfter = Infinity } = {}) {
+  const asked = [];
+  const askPage = async (offset) => {
+    asked.push(offset);
+    const domains = list.slice(offset, offset + size);
+    const seq = asked.length > changeAfter ? sequence + 1 : sequence;
+    return { ok: true, sequence: seq, total: list.length, offset, next: offset + domains.length, domains };
+  };
+  return { askPage, asked };
+}
+
+test('the whole list is fetched page by page', async () => {
+  const list = Array.from({ length: 2500 }, (_, i) => `d${i}.example`);
+  const host = fakeHost(list, 1000);
+  const result = await fetchBlocklist(host.askPage);
+  assert.deepEqual(result, { ok: true, sequence: 7, domains: list });
+  assert.deepEqual(host.asked, [0, 1000, 2000]);
+  assert.deepEqual(await fetchBlocklist(fakeHost([], 1000).askPage), { ok: true, sequence: 7, domains: [] });
+});
+
+test('an unchanged list is recognised from its first page', async () => {
+  const host = fakeHost(Array.from({ length: 2500 }, (_, i) => `d${i}.example`), 1000);
+  const result = await fetchBlocklist(host.askPage, (first) => first.sequence === 7 && first.total === 2500);
+  assert.deepEqual(result, { ok: true, unchanged: true });
+  assert.deepEqual(host.asked, [0]);
+});
+
+test('a list that changes while it is fetched, or inconsistent pages, are not installed', async () => {
+  const list = Array.from({ length: 2500 }, (_, i) => `d${i}.example`);
+  assert.equal((await fetchBlocklist(fakeHost(list, 1000, { changeAfter: 1 }).askPage)).error, 'changed');
+
+  const skipping = async (offset) => ({ ok: true, sequence: 1, total: 10, offset, next: offset + 2, domains: ['a.example'] });
+  assert.equal((await fetchBlocklist(skipping)).error, 'bad-reply');
+  const stuck = async (offset) => ({ ok: true, sequence: 1, total: 10, offset, next: offset, domains: [] });
+  assert.equal((await fetchBlocklist(stuck)).error, 'bad-reply');
+  const failing = async () => ({ ok: false, error: 'service-unavailable', message: 'x' });
+  assert.equal((await fetchBlocklist(failing)).error, 'service-unavailable');
 });

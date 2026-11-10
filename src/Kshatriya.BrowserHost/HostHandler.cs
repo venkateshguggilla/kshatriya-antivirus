@@ -14,8 +14,8 @@ internal interface IHostService
     /// <summary>Report-only scan of one file, performed by the service as the signed-in user.</summary>
     Task<ScanReport> ScanFileAsync(string path, CancellationToken cancellationToken);
 
-    /// <summary>The dangerous web sites from the service's installed content (ADR 0019).</summary>
-    Task<WebBlocklistReplyDto> GetWebBlocklistAsync(CancellationToken cancellationToken);
+    /// <summary>One page of the dangerous web sites from the service's installed content (ADR 0019).</summary>
+    Task<WebBlocklistReplyDto> GetWebBlocklistAsync(int offset, int maxBytes, CancellationToken cancellationToken);
 }
 
 /// <summary>Answers one request. The host never opens the file; it only checks the path and asks the service.</summary>
@@ -53,7 +53,7 @@ internal sealed class HostHandler(IHostService service, Func<string, bool> isExi
 
             if (parsed.Type == HostRequest.Blocklist)
             {
-                return BlocklistReply(await service.GetWebBlocklistAsync(cancellationToken));
+                return BlocklistReply(await service.GetWebBlocklistAsync(parsed.Offset, WebBlockList.MaxPageBytes, cancellationToken));
             }
 
             ScanReport report = await service.ScanFileAsync(parsed.Path!, cancellationToken);
@@ -71,12 +71,15 @@ internal sealed class HostHandler(IHostService service, Func<string, bool> isExi
     }
 
     /// <summary>
-    /// The service's list, re-checked here: the extension turns it into browser rules, so only well-formed
-    /// domains within the limits are passed on, and the reply must fit in one native message.
+    /// A page of the service's list, re-checked here: the extension turns it into browser rules, so only
+    /// well-formed domains within the limits are passed on, and the reply must fit in one native message.
     /// </summary>
     internal static byte[] BlocklistReply(WebBlocklistReplyDto list)
     {
-        if (list.Sequence < 0 || list.Domains.Count > WebBlockList.MaxDomains || !list.Domains.All(WebBlockList.IsBlockable))
+        bool consistent = list.Sequence >= 0 && list.Total is >= 0 and <= WebBlockList.MaxDomains
+            && list.Offset >= 0 && list.Next == list.Offset + list.Domains.Count && list.Next <= list.Total
+            && (list.Domains.Count > 0 || list.Next == list.Total);
+        if (!consistent || !list.Domains.All(WebBlockList.IsBlockable))
         {
             return Error(HostRequest.Blocklist, HostErrors.BlocklistFailed, "The Kshatriya service sent an invalid web blocklist.");
         }
@@ -85,6 +88,9 @@ internal sealed class HostHandler(IHostService service, Func<string, bool> isExi
         {
             Begin(json, HostRequest.Blocklist, ok: true);
             json.WriteNumber("sequence", list.Sequence);
+            json.WriteNumber("total", list.Total);
+            json.WriteNumber("offset", list.Offset);
+            json.WriteNumber("next", list.Next);
             json.WriteStartArray("domains");
             foreach (string domain in list.Domains)
             {
@@ -178,9 +184,9 @@ internal sealed class ServiceHostAdapter(ServiceEndpoint endpoint) : IHostServic
         return await client.ScanAsync([path], includeClean: false, quarantine: false, cancellationToken: cancellationToken);
     }
 
-    public async Task<WebBlocklistReplyDto> GetWebBlocklistAsync(CancellationToken cancellationToken)
+    public async Task<WebBlocklistReplyDto> GetWebBlocklistAsync(int offset, int maxBytes, CancellationToken cancellationToken)
     {
         await using ServiceClient client = await ServiceClient.ConnectAsync(endpoint, "kshatriya-browser-host", s_connectTimeout, cancellationToken);
-        return await client.GetWebBlocklistAsync(cancellationToken);
+        return await client.GetWebBlocklistAsync(offset, maxBytes, cancellationToken);
     }
 }

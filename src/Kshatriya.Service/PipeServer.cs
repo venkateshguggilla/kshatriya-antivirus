@@ -9,6 +9,7 @@ using Kshatriya.Response;
 using Kshatriya.Runtime.Ipc;
 using Kshatriya.Scanning;
 using Kshatriya.Scanning.Targets;
+using Kshatriya.Updates;
 
 namespace Kshatriya.Service;
 
@@ -262,9 +263,7 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
                     break;
                 case MessageType.WebBlocklistQuery:
                     // Published content, the same for every caller: no impersonation or rights needed.
-                    ProtocolJson.Deserialize<EmptyDto>(frame.Json);
-                    WebBlocklistSnapshot web = core.WebBlocklist;
-                    await SendAsync(MessageType.WebBlocklistReply, new WebBlocklistReplyDto { Sequence = web.Sequence, Domains = [.. web.Domains] }, cancellationToken);
+                    await WebBlocklistAsync(ProtocolJson.Deserialize<WebBlocklistQueryDto>(frame.Json), cancellationToken);
                     break;
                 case MessageType.ContentImport:
                     await ContentImportAsync(ProtocolJson.Deserialize<ContentImportDto>(frame.Json), caller, actor, canManage, cancellationToken);
@@ -533,6 +532,26 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
         }
 
         await SendAsync(MessageType.ExclusionsReply, ExclusionsReply(), cancellationToken);
+    }
+
+    private async Task WebBlocklistAsync(WebBlocklistQueryDto request, CancellationToken cancellationToken)
+    {
+        WebBlocklistSnapshot web = core.WebBlocklist;
+        if (request.Offset < 0 || request.Offset > web.Domains.Count || request.MaxBytes is < WebBlockList.MinPageBytes or > WebBlockList.MaxPageBytes)
+        {
+            await SendErrorAsync(ErrorCodes.BadRequest, $"offset must be 0 to {web.Domains.Count} and maxBytes {WebBlockList.MinPageBytes} to {WebBlockList.MaxPageBytes}.", cancellationToken);
+            return;
+        }
+
+        (IReadOnlyList<string> page, int next) = WebBlockList.Page(web.Domains, request.Offset, request.MaxBytes);
+        await SendAsync(MessageType.WebBlocklistReply, new WebBlocklistReplyDto
+        {
+            Sequence = web.Sequence,
+            Total = web.Domains.Count,
+            Offset = request.Offset,
+            Next = next,
+            Domains = [.. page],
+        }, cancellationToken);
     }
 
     private async Task DetectionsAsync(DetectionsQueryDto request, WindowsIdentity caller, bool canManage, CancellationToken cancellationToken)

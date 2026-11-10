@@ -3,7 +3,10 @@ using System.Text.Json;
 namespace Kshatriya.BrowserHost;
 
 /// <summary>A validated request from the browser extension (schema: docs/schemas/browser-host.v1.schema.json).</summary>
-internal sealed record HostRequest(string Type, string? Path)
+/// <param name="Type">"status", "scan" or "blocklist".</param>
+/// <param name="Path">For scan requests: the file to scan.</param>
+/// <param name="Offset">For blocklist requests: the first domain of the page to return.</param>
+internal sealed record HostRequest(string Type, string? Path, int Offset = 0)
 {
     public const int Version = 1;
     public const string Status = "status";
@@ -39,6 +42,7 @@ internal sealed record HostRequest(string Type, string? Path)
             int? version = null;
             string? type = null;
             string? path = null;
+            int? offset = null;
             var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (JsonProperty property in root.EnumerateObject())
             {
@@ -58,6 +62,9 @@ internal sealed record HostRequest(string Type, string? Path)
                     case "path" when property.Value.ValueKind == JsonValueKind.String:
                         path = property.Value.GetString();
                         break;
+                    case "offset" when property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetInt32(out int o) && o >= 0:
+                        offset = o;
+                        break;
                     default:
                         return null;
                 }
@@ -71,10 +78,13 @@ internal sealed record HostRequest(string Type, string? Path)
 
             switch (type)
             {
-                case Status or Blocklist when path is null:
+                case Status when path is null && offset is null:
                     error = null;
-                    return new HostRequest(type, null);
-                case Scan when path is not null:
+                    return new HostRequest(Status, null);
+                case Blocklist when path is null:
+                    error = null;
+                    return new HostRequest(Blocklist, null, offset ?? 0);
+                case Scan when path is not null && offset is null:
                     if (!IsAcceptablePath(path))
                     {
                         error = HostErrors.InvalidPath;

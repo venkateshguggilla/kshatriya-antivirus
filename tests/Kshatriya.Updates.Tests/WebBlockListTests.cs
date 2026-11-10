@@ -83,8 +83,26 @@ public class WebBlockListTests
         List<string> many = [.. Enumerable.Range(0, WebBlockList.MaxDomains + 1).Select(i => $"d{i}.example")];
         Assert.Throws<FormatException>(() => WebBlockList.Combine([many]));
 
-        List<string> long_ = [.. Enumerable.Range(0, 4000).Select(i => $"{i:D5}{new string('a', 240)}.com")];
+        List<string> long_ = [.. Enumerable.Range(0, 70_000).Select(i => $"{i:D5}{new string('a', 240)}.com")];
         Assert.Throws<FormatException>(() => WebBlockList.Combine([long_]));
+    }
+
+    [Fact]
+    public void Pages_follow_the_byte_budget_and_cover_the_whole_list()
+    {
+        List<string> domains = [.. Enumerable.Range(0, 10).Select(i => $"d{i}.example")]; // 10 characters each
+
+        Assert.Equal("d0.example d1.example d2.example|3", Page(domains, 0, 39));
+        Assert.Equal("d9.example|10", Page(domains, 9, 1024));
+        Assert.Equal("|10", Page(domains, 10, 1024));
+        Assert.Equal("d4.example|5", Page(domains, 4, 1)); // at least one domain per page
+        Assert.Throws<ArgumentOutOfRangeException>(() => WebBlockList.Page(domains, 11, 1024));
+
+        static string Page(List<string> all, int offset, int budget)
+        {
+            (IReadOnlyList<string> page, int next) = WebBlockList.Page(all, offset, budget);
+            return $"{string.Join(' ', page)}|{next}";
+        }
     }
 
     [Fact]

@@ -6,6 +6,7 @@
 // - Look-alike sites: checked locally; a badge and one notification per site per browser session.
 // Nothing in this file sends URLs or browsing data off the device.
 
+import { fetchBlocklist } from './lib/blocklist.js';
 import { blockRules, domainsFromRules, hostOf, matchListedDomain } from './lib/domains.js';
 import { checkHost, describeLookalike } from './lib/lookalike.js';
 import { HOST_NAME, baseName, blocklistRequest, describeScan, parseReply, scanRequest, statusRequest } from './lib/messages.js';
@@ -21,13 +22,15 @@ const FIRST_DELIVERED_RULE_ID = 1;
 let blockedDomains = null;
 let refreshing = null;
 
-/** Domains of the built-in ruleset plus the list delivered by Kshatriya. */
+/**
+ * Domains of the built-in ruleset plus the list delivered by Kshatriya, read back from the installed
+ * dynamic rules (the list is not stored a second time: it can be larger than extension storage allows).
+ */
 async function getBlockedDomains() {
   if (!blockedDomains) {
     const response = await fetch(chrome.runtime.getURL('rules/blocklist.json'));
     const domains = domainsFromRules(await response.json());
-    const { deliveredDomains = [] } = await chrome.storage.local.get('deliveredDomains');
-    for (const domain of deliveredDomains) domains.add(domain);
+    for (const domain of domainsFromRules(await chrome.declarativeNetRequest.getDynamicRules())) domains.add(domain);
     blockedDomains = domains;
   }
   return blockedDomains;
@@ -41,18 +44,22 @@ function refreshBlocklist(maxAgeMs = BLOCKLIST_CHECK_MS) {
   refreshing ??= (async () => {
     const { blocklistCheckedAt = 0, delivered = null } = await chrome.storage.local.get(['blocklistCheckedAt', 'delivered']);
     if (Date.now() - blocklistCheckedAt < maxAgeMs) return;
-    const reply = await askHost(blocklistRequest(), 'blocklist');
+    const installed = await chrome.declarativeNetRequest.getDynamicRules();
+    const reply = await fetchBlocklist(
+      (offset) => askHost(blocklistRequest(offset), 'blocklist'),
+      (first) => delivered?.sequence === first.sequence && delivered?.domains === first.total && delivered?.rules === installed.length,
+    );
     if (!reply.ok) return;
     await chrome.storage.local.set({ blocklistCheckedAt: Date.now() });
-    const installed = await chrome.declarativeNetRequest.getDynamicRules();
-    if (delivered?.sequence === reply.sequence && delivered?.rules === installed.length) return;
+    if (reply.unchanged) return;
 
+    const started = Date.now();
     const rules = blockRules(reply.domains, FIRST_DELIVERED_RULE_ID);
     await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: installed.map((rule) => rule.id), addRules: rules });
     await chrome.storage.local.set({
-      delivered: { sequence: reply.sequence, domains: reply.domains.length, rules: rules.length, updated: Date.now() },
-      deliveredDomains: reply.domains,
+      delivered: { sequence: reply.sequence, domains: reply.domains.length, rules: rules.length, updated: Date.now(), installMs: Date.now() - started },
     });
+    await chrome.storage.local.remove('deliveredDomains'); // stored by 0.14.0; the rules are the copy now
     blockedDomains = null;
   })().catch(() => {}).finally(() => { refreshing = null; });
   return refreshing;

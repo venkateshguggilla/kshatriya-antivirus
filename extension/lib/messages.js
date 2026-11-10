@@ -6,8 +6,8 @@ export const HOST_NAME = 'com.kshatriya.browser_host';
 const STATUSES = new Set(['clean', 'detected', 'suspicious', 'skipped', 'notScanned']);
 const CATEGORIES = new Set(['malware', 'pua', 'suspicious', 'test']);
 const CONFIDENCES = new Set(['low', 'medium', 'high']);
-const REPLY_KEYS = new Set(['v', 'type', 'ok', 'serviceVersion', 'status', 'reason', 'detections', 'error', 'message', 'sequence', 'domains']);
-export const MAX_BLOCKED_DOMAINS = 30000;
+const REPLY_KEYS = new Set(['v', 'type', 'ok', 'serviceVersion', 'status', 'reason', 'detections', 'error', 'message', 'sequence', 'total', 'offset', 'next', 'domains']);
+export const MAX_BLOCKED_DOMAINS = 500000;
 const LABEL = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /** A lower-case ASCII host name with at least two labels whose last label is not numeric (as the service checks). */
@@ -25,8 +25,8 @@ export function scanRequest(path) {
 
 export const statusRequest = () => ({ v: 1, type: 'status' });
 
-/** Asks for the dangerous-site list from Kshatriya's signed content updates (ADR 0019). */
-export const blocklistRequest = () => ({ v: 1, type: 'blocklist' });
+/** Asks for one page of the dangerous-site list from Kshatriya's signed content updates (ADR 0019). */
+export const blocklistRequest = (offset = 0) => ({ v: 1, type: 'blocklist', offset });
 
 const text = (value) => typeof value === 'string' && value.length <= 200;
 
@@ -43,10 +43,11 @@ export function parseReply(reply, expectedType) {
     return text(reply.serviceVersion) ? { ok: true, serviceVersion: reply.serviceVersion } : bad;
   }
   if (expectedType === 'blocklist') {
-    const { sequence, domains } = reply;
-    if (!Number.isSafeInteger(sequence) || sequence < 0) return bad;
+    const { sequence, total, offset, next, domains } = reply;
+    const count = (n) => Number.isSafeInteger(n) && n >= 0;
+    if (![sequence, total, offset, next].every(count) || total > MAX_BLOCKED_DOMAINS) return bad;
     if (!Array.isArray(domains) || domains.length > MAX_BLOCKED_DOMAINS || !domains.every(isBlockableDomain)) return bad;
-    return { ok: true, sequence, domains };
+    return { ok: true, sequence, total, offset, next, domains };
   }
   if (!STATUSES.has(reply.status) || !Array.isArray(reply.detections) || reply.detections.length > 10) return bad;
   if (reply.reason !== undefined && !text(reply.reason)) return bad;

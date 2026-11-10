@@ -7,7 +7,7 @@
 .DESCRIPTION
     Reads one or more local text files with one entry per line: a domain ("bad.example"), a hosts-file
     line ("0.0.0.0 bad.example") or a URL ("http://bad.example/x"). Comments (#) and blank lines are
-    ignored. Domains are lower-cased, validated, de-duplicated and capped at 30,000, then written as
+    ignored. Domains are lower-cased, validated, de-duplicated and capped at -MaxDomains, then written as
     declarativeNetRequest blocking rules of up to 1,000 domains each. The test domain
     blocktest.kshatriya.invalid is always kept so the block page can be checked.
 
@@ -28,6 +28,10 @@
 .PARAMETER Format
     "ruleset" (default) writes extension/rules; "webblock" writes one .webblock file.
 
+.PARAMETER MaxDomains
+    Most domains to keep. Ruleset: at most 30,000 (default). Webblock: up to 500,000 (default 100,000);
+    the extension fetches the list in pages (ADR 0019).
+
 .EXAMPLE
     ./scripts/Build-BrowserBlocklist.ps1 -Source C:\lists\hostfile.txt -SourceName 'My list'
 
@@ -39,11 +43,13 @@ param(
     [Parameter(Mandatory)] [string[]] $Source,
     [Parameter(Mandatory)] [string] $SourceName,
     [ValidateSet('ruleset', 'webblock')] [string] $Format = 'ruleset',
+    [ValidateRange(1, 500000)] [int] $MaxDomains = 0,
     [string] $Output = (Join-Path (Split-Path -Parent $PSScriptRoot) 'extension/rules')
 )
 
 $ErrorActionPreference = 'Stop'
-$maxDomains = 30000
+$maxDomains = if ($MaxDomains -gt 0) { $MaxDomains } elseif ($Format -eq 'webblock') { 100000 } else { 30000 }
+if ($Format -eq 'ruleset' -and $maxDomains -gt 30000) { throw 'The built-in ruleset holds at most 30,000 domains.' }
 $perRule = 1000
 $testDomain = 'blocktest.kshatriya.invalid'
 $domainPattern = '^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$'
@@ -85,9 +91,9 @@ if ($protectedDropped.Count -gt 0) {
 
 # Over the limit: keep a sample ordered by SHA-256 of each domain. Unlike the first N lines, this is not
 # biased by how the source is sorted, and it stays mostly the same when the source changes.
-# Signed lists are also limited to 768 Ki characters in total, so the list fits in one native message.
+# Signed lists are also limited to 16 Mi characters in total (Kshatriya.Updates.WebBlockList).
 $room = if ($Format -eq 'ruleset') { $maxDomains - 1 } else { $maxDomains }
-$maxChars = 768 * 1024
+$maxChars = 16 * 1024 * 1024
 $selected = @($domains)
 $chars = ($selected | Measure-Object -Property Length -Sum).Sum
 if ($selected.Count -gt $room -or $chars -gt $maxChars) {

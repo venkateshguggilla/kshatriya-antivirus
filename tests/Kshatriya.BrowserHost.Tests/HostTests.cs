@@ -65,6 +65,7 @@ public class RequestTests
     {
         Assert.Equal(new HostRequest("status", null), Parse("""{"v":1,"type":"status"}""", out _));
         Assert.Equal(new HostRequest("blocklist", null), Parse("""{"v":1,"type":"blocklist"}""", out _));
+        Assert.Equal(new HostRequest("blocklist", null, 2000), Parse("""{"v":1,"type":"blocklist","offset":2000}""", out _));
         Assert.Equal(
             new HostRequest("scan", @"C:\Users\a\Downloads\setup.exe"),
             Parse("""{"v":1,"type":"scan","path":"C:\\Users\\a\\Downloads\\setup.exe"}""", out string? error));
@@ -78,6 +79,10 @@ public class RequestTests
     [InlineData("""{"v":1,"type":"status","path":"C:\\a"}""")]
     [InlineData("""{"v":1,"type":"scan"}""")]
     [InlineData("""{"v":1,"type":"blocklist","path":"C:\a"}""")]
+    [InlineData("""{"v":1,"type":"blocklist","offset":-1}""")]
+    [InlineData("""{"v":1,"type":"blocklist","offset":1.5}""")]
+    [InlineData("""{"v":1,"type":"blocklist","offset":"1"}""")]
+    [InlineData("""{"v":1,"type":"status","offset":0}""")]
     [InlineData("""{"v":1,"type":"delete","path":"C:\\a.txt"}""")]
     [InlineData("""{"v":1,"type":"status","type":"scan"}""")]
     [InlineData("""{"v":"1","type":"status"}""")]
@@ -124,7 +129,12 @@ public class HandlerTests
 
         public List<string> Scanned { get; } = [];
 
-        public WebBlocklistReplyDto Blocklist { get; init; } = new() { Sequence = 3, Domains = ["bad.example", "phish.test"] };
+        public List<string> Domains { get; init; } = ["bad.example", "phish.test"];
+
+        /// <summary>When set, returned as is instead of a page of <see cref="Domains"/>.</summary>
+        public WebBlocklistReplyDto? Reply { get; init; }
+
+        public List<int> Offsets { get; } = [];
 
         public Task<string> GetVersionAsync(CancellationToken cancellationToken) =>
             Failure is null ? Task.FromResult("0.12.0") : Task.FromException<string>(Failure);
@@ -135,8 +145,17 @@ public class HandlerTests
             return Failure is null ? Task.FromResult(Report!) : Task.FromException<ScanReport>(Failure);
         }
 
-        public Task<WebBlocklistReplyDto> GetWebBlocklistAsync(CancellationToken cancellationToken) =>
-            Failure is null ? Task.FromResult(Blocklist) : Task.FromException<WebBlocklistReplyDto>(Failure);
+        public Task<WebBlocklistReplyDto> GetWebBlocklistAsync(int offset, int maxBytes, CancellationToken cancellationToken)
+        {
+            Offsets.Add(offset);
+            if (Failure is not null)
+            {
+                return Task.FromException<WebBlocklistReplyDto>(Failure);
+            }
+
+            (IReadOnlyList<string> page, int next) = Kshatriya.Updates.WebBlockList.Page(Domains, offset, maxBytes);
+            return Task.FromResult(Reply ?? new WebBlocklistReplyDto { Sequence = 3, Total = Domains.Count, Offset = offset, Next = next, Domains = [.. page] });
+        }
     }
 
     private static ScanReport Report(params ScanItemResult[] items) => new()
@@ -218,13 +237,19 @@ public class HandlerTests
     }
 
     [Fact]
-    public async Task The_web_blocklist_is_passed_on_from_the_service()
+    public async Task The_web_blocklist_is_passed_on_from_the_service_one_page_at_a_time()
     {
-        JsonElement reply = await RunAsync(new HostHandler(new FakeService(), _ => true), """{"v":1,"type":"blocklist"}""");
+        var service = new FakeService();
+        JsonElement first = await RunAsync(new HostHandler(service, _ => true), """{"v":1,"type":"blocklist"}""");
+        JsonElement second = await RunAsync(new HostHandler(service, _ => true), """{"v":1,"type":"blocklist","offset":1}""");
 
-        Assert.True(reply.GetProperty("ok").GetBoolean());
-        Assert.Equal(3, reply.GetProperty("sequence").GetInt64());
-        Assert.Equal(["bad.example", "phish.test"], reply.GetProperty("domains").EnumerateArray().Select(d => d.GetString()!));
+        Assert.True(first.GetProperty("ok").GetBoolean());
+        Assert.Equal(3, first.GetProperty("sequence").GetInt64());
+        Assert.Equal(2, first.GetProperty("total").GetInt32());
+        Assert.Equal(2, first.GetProperty("next").GetInt32());
+        Assert.Equal(["bad.example", "phish.test"], first.GetProperty("domains").EnumerateArray().Select(d => d.GetString()!));
+        Assert.Equal(["phish.test"], second.GetProperty("domains").EnumerateArray().Select(d => d.GetString()!));
+        Assert.Equal([0, 1], service.Offsets);
     }
 
     [Theory]
@@ -235,26 +260,44 @@ public class HandlerTests
     [InlineData("sites.google.com")]
     public async Task A_malformed_web_blocklist_from_the_service_is_not_passed_on(string domain)
     {
-        var service = new FakeService { Blocklist = new() { Sequence = 3, Domains = ["ok.example", domain] } };
+        var service = new FakeService { Domains = ["ok.example", domain] };
         JsonElement reply = await RunAsync(new HostHandler(service, _ => true), """{"v":1,"type":"blocklist"}""");
 
         Assert.False(reply.GetProperty("ok").GetBoolean());
         Assert.Equal(HostErrors.BlocklistFailed, reply.GetProperty("error").GetString());
     }
 
-    [Fact]
-    public void The_largest_allowed_web_blocklist_fits_in_one_native_message()
+    [Theory]
+    [InlineData(2, 0, 2, 1)]   // next does not follow from offset and page size
+    [InlineData(1, 0, 2, 2)]   // next beyond total
+    [InlineData(3, 0, 0, 0)]   // empty page before the end
+    public void Inconsistent_pages_from_the_service_are_not_passed_on(int total, int offset, int next, int count)
     {
-        // 30,000 domains of the average length the character limit allows (26 characters each).
-        int perDomain = Kshatriya.Updates.WebBlockList.MaxTotalChars / Kshatriya.Updates.WebBlockList.MaxDomains;
-        List<string> domains = [.. Enumerable.Range(0, Kshatriya.Updates.WebBlockList.MaxDomains).Select(i => $"{i:D5}{new string('a', perDomain - 9)}.com")];
-        Assert.Equal(perDomain, domains[0].Length);
+        List<string> domains = [.. Enumerable.Range(0, count).Select(i => $"d{i}.example")];
+        byte[] reply = HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 1, Total = total, Offset = offset, Next = next, Domains = domains });
 
-        byte[] reply = HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 1, Domains = domains });
+        Assert.Equal(HostErrors.BlocklistFailed, JsonDocument.Parse(reply).RootElement.GetProperty("error").GetString());
+    }
+
+    [Theory]
+    [InlineData(4)]    // shortest domains: most per-domain JSON overhead
+    [InlineData(253)]  // longest domains
+    public void A_full_page_fits_in_one_native_message(int length)
+    {
+        List<string> domains = [.. Enumerable.Range(0, 300_000).Select(_ => Domain(length))];
+        (IReadOnlyList<string> page, int next) = Kshatriya.Updates.WebBlockList.Page(domains, 0, Kshatriya.Updates.WebBlockList.MaxPageBytes);
+
+        byte[] reply = HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 1, Total = domains.Count, Offset = 0, Next = next, Domains = [.. page] });
 
         Assert.True(JsonDocument.Parse(reply).RootElement.GetProperty("ok").GetBoolean());
-        Assert.True(reply.Length <= NativeFraming.MaxReplyBytes);
+        Assert.True(next < domains.Count, "The page is limited by its byte budget.");
+        Assert.InRange(reply.Length, NativeFraming.MaxReplyBytes - 200_000, NativeFraming.MaxReplyBytes);
     }
+
+    /// <summary>A valid domain of exactly 4 or 253 characters (pages need not be unique).</summary>
+    private static string Domain(int length) => length == 4
+        ? "a.bc"
+        : string.Join('.', Enumerable.Repeat(new string('a', 63), 3)) + "." + new string('b', 57) + ".com";
 
     [Fact]
     public async Task Every_reply_matches_the_published_schema()
@@ -267,9 +310,9 @@ public class HandlerTests
             HostHandler.ScanReply(Report(Eicar())),
             HostHandler.ScanReply(Report(notScanned)),
             HostHandler.Error("error", HostErrors.InvalidRequest, "x"),
-            HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 0, Domains = [] }),
-            HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 7, Domains = ["bad.example"] }),
-            HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 7, Domains = ["*"] }),
+            HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 0, Total = 0, Offset = 0, Next = 0, Domains = [] }),
+            HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 7, Total = 3, Offset = 1, Next = 2, Domains = ["bad.example"] }),
+            HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 7, Total = 1, Offset = 0, Next = 1, Domains = ["*"] }),
             await new HostHandler(new FakeService(), _ => true).HandleAsync("""{"v":1,"type":"status"}"""u8.ToArray(), CancellationToken.None),
         ];
 
