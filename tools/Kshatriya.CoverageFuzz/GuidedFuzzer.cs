@@ -52,6 +52,19 @@ internal sealed unsafe class GuidedFuzzer
 
     private List<byte[]> Seeds { get; }
 
+    /// <summary>
+    /// Gives instrumented code a coverage map before any fuzzer exists. Setting up a target can run
+    /// instrumented code (the content target imports its signing key), which otherwise dereferences a
+    /// null map and crashes. Each fuzzer replaces this scratch map with its own.
+    /// </summary>
+    public static void EnsureTraceMap()
+    {
+        if (Trace.SharedMem == null)
+        {
+            Trace.SharedMem = (byte*)NativeMemory.AllocZeroed(MapSize);
+        }
+    }
+
     /// <summary>Fuzzes for <paramref name="duration"/>; returns the number of failures.</summary>
     public int Run(TimeSpan duration)
     {

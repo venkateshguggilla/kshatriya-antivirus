@@ -30,6 +30,7 @@ if (Environment.GetEnvironmentVariable(InstrumentedVariable) != "1")
     return Launcher.RunInstrumented(instrumentedAssemblies, InstrumentedVariable, [target, seconds.ToString(CultureInfo.InvariantCulture), seed.ToString(CultureInfo.InvariantCulture), outDir]);
 }
 
+GuidedFuzzer.EnsureTraceMap();
 int failures = 0;
 foreach (string name in targets)
 {
