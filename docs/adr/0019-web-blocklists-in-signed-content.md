@@ -40,9 +40,22 @@ messages from the host to the extension are limited to 1 MB.
    rules differs it replaces its dynamic rules in one `updateDynamicRules` call (1,000 domains per rule,
    so at most 30 rules). Any failure leaves the installed rules in place. The domains are kept in
    `storage.local` so the warning page and "Continue anyway" recognise them. No new permission is needed.
-5. **Still no list is shipped.** Choosing a source whose licence allows redistribution remains an owner
-   decision (ADR 0018, point 3). `scripts/Build-BrowserBlocklist.ps1 -Format webblock` turns a list the
-   owner may use into a `.webblock` file.
+5. **Source: Phishing.Database (MIT).** On 2026-11-10 the owner chose
+   [Phishing.Database](https://github.com/Phishing-Database/Phishing.Database) (`phishing-domains-ACTIVE.txt`,
+   MIT). Other candidates were rejected: URLhaus terms forbid derivative works and charge for commercial
+   use, Phishing Army has no licence and defers to upstream terms, Hagezi is GPL (ADR 0003), and The Block
+   List Project's Unlicense covers data it copies from GPL lists. The list is not committed; the owner
+   builds packages with `scripts/Build-BrowserBlocklist.ps1 -Format webblock` and signs them with their
+   own key. The source held 392,178 active domains, more than the browser limit, so the script keeps a
+   sample ordered by SHA-256 of each domain (not biased by the source's alphabetical order) within
+   30,000 domains and 768 Ki characters: 28,878 domains in the first package. Lists only cover phishing;
+   Microsoft Defender SmartScreen and Google Safe Browsing remain the main protection.
+6. **Protected domains.** A listed domain blocks its subdomains, so listing a shared platform would block
+   many legitimate sites. The source listed `sites.google.com` and `bit.ly`. `protected-domains.txt` (in
+   `Kshatriya.Updates`, embedded) names shared hosting and document platforms, URL shorteners, sign-in
+   services and two-part public suffixes. The build script drops them; the service, and the host, refuse
+   any list that contains one of them or a parent of one. Sites hosted on those platforms
+   (`evil.github.io`) may still be listed.
 
 ## Consequences
 

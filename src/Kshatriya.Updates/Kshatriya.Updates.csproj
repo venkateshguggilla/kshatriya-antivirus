@@ -6,4 +6,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Kshatriya.Updates.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="protected-domains.txt" LogicalName="Kshatriya.Updates.protected-domains.txt" />
+  </ItemGroup>
 </Project>

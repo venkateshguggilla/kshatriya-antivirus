@@ -31,6 +31,32 @@ public class WebBlockListTests
         Assert.Contains("line 3", error.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("sites.google.com")]
+    [InlineData("google.com")]      // parent of docs.google.com
+    [InlineData("bit.ly")]
+    [InlineData("github.io")]
+    [InlineData("co.uk")]
+    [InlineData("core.windows.net")] // parent of web.core.windows.net
+    public void Shared_platforms_and_their_parents_reject_the_list(string entry)
+    {
+        Assert.True(WebBlockList.IsProtected(entry));
+        Assert.False(WebBlockList.IsBlockable(entry));
+        var error = Assert.Throws<FormatException>(() => WebBlockList.Parse($"# kshatriya-webblock v1\n{entry}\n", "test"));
+        Assert.Contains("legitimate sites", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("evil.github.io")]
+    [InlineData("phish.sites.google.com")]
+    [InlineData("docs-google.com")]
+    [InlineData("paypal-login.co.uk")]
+    public void Sites_hosted_on_shared_platforms_and_look_alikes_can_be_listed(string entry)
+    {
+        Assert.False(WebBlockList.IsProtected(entry));
+        Assert.Equal([entry], WebBlockList.Parse($"# kshatriya-webblock v1\n{entry}\n", "test"));
+    }
+
     [Fact]
     public void The_header_is_required()
     {

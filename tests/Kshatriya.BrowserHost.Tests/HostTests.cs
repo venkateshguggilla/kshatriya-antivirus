@@ -232,6 +232,7 @@ public class HandlerTests
     [InlineData("203.0.113.7")]
     [InlineData("localhost")]
     [InlineData("Bad.Example")]
+    [InlineData("sites.google.com")]
     public async Task A_malformed_web_blocklist_from_the_service_is_not_passed_on(string domain)
     {
         var service = new FakeService { Blocklist = new() { Sequence = 3, Domains = ["ok.example", domain] } };

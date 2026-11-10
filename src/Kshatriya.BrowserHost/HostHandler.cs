@@ -76,7 +76,7 @@ internal sealed class HostHandler(IHostService service, Func<string, bool> isExi
     /// </summary>
     internal static byte[] BlocklistReply(WebBlocklistReplyDto list)
     {
-        if (list.Sequence < 0 || list.Domains.Count > WebBlockList.MaxDomains || !list.Domains.All(WebBlockList.IsValidDomain))
+        if (list.Sequence < 0 || list.Domains.Count > WebBlockList.MaxDomains || !list.Domains.All(WebBlockList.IsBlockable))
         {
             return Error(HostRequest.Blocklist, HostErrors.BlocklistFailed, "The Kshatriya service sent an invalid web blocklist.");
         }

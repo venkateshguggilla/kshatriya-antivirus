@@ -1,0 +1,107 @@
+# Domains a web blocklist must never list (ADR 0019). A listed domain blocks all of its subdomains, so
+# listing one of these, or a parent of one, would block many legitimate sites: shared hosting and
+# document platforms, URL shorteners, sign-in services and two-part public suffixes.
+# Subdomains of these (such as evil.github.io) may still be listed.
+# Used by Kshatriya.Updates.WebBlockList (embedded) and scripts/Build-BrowserBlocklist.ps1.
+# Google
+google.com
+docs.google.com
+sites.google.com
+drive.google.com
+forms.gle
+goo.gl
+googleapis.com
+storage.googleapis.com
+googleusercontent.com
+appspot.com
+firebaseapp.com
+web.app
+translate.goog
+blogspot.com
+youtube.com
+# Microsoft
+microsoft.com
+live.com
+onedrive.live.com
+1drv.ms
+office.com
+sharepoint.com
+outlook.com
+azurewebsites.net
+windows.net
+web.core.windows.net
+# Other platforms and hosting
+apple.com
+icloud.com
+amazon.com
+amazonaws.com
+s3.amazonaws.com
+cloudfront.net
+github.com
+github.io
+githubusercontent.com
+gitlab.io
+pages.dev
+workers.dev
+r2.dev
+netlify.app
+vercel.app
+herokuapp.com
+wordpress.com
+wixsite.com
+weebly.com
+weeblysite.com
+000webhostapp.com
+square.site
+godaddysites.com
+webflow.io
+dropbox.com
+box.com
+ipfs.io
+cloudflare.com
+facebook.com
+instagram.com
+whatsapp.com
+linkedin.com
+twitter.com
+x.com
+wikipedia.org
+# URL shorteners and mail link services
+bit.ly
+t.co
+tinyurl.com
+mandrillapp.com
+sendgrid.net
+# Two-part public suffixes
+co.uk
+org.uk
+ac.uk
+gov.uk
+com.au
+net.au
+org.au
+co.in
+net.in
+org.in
+gov.in
+ac.in
+co.jp
+ne.jp
+or.jp
+com.br
+com.mx
+co.nz
+co.za
+com.sg
+com.cn
+com.tr
+com.hk
+com.tw
+co.kr
+com.ar
+co.id
+com.my
+com.ph
+com.pk
+com.sa
+com.eg

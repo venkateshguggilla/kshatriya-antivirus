@@ -49,9 +49,20 @@ $testDomain = 'blocktest.kshatriya.invalid'
 $domainPattern = '^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{1,62}$'
 $never = @('localhost', 'localhost.localdomain', 'local', 'broadcasthost', '0.0.0.0')
 
+# Shared platforms and public suffixes that must never be listed, nor any parent of them (listing a domain
+# blocks its subdomains). The service refuses signed lists that contain one; here they are dropped.
+$protectedFile = Join-Path (Split-Path -Parent $PSScriptRoot) 'src/Kshatriya.Updates/protected-domains.txt'
+$protected = New-Object 'System.Collections.Generic.HashSet[string]'
+foreach ($line in [System.IO.File]::ReadLines($protectedFile)) {
+    $p = $line.Trim()
+    if (-not $p -or $p.StartsWith('#')) { continue }
+    $labels = $p.Split('.')
+    for ($i = 0; $i -lt $labels.Count; $i++) { [void] $protected.Add(($labels[$i..($labels.Count - 1)] -join '.')) }
+}
+
 $domains = New-Object 'System.Collections.Generic.HashSet[string]'
-if ($Format -eq 'ruleset') { [void] $domains.Add($testDomain) }
 $rejected = 0
+$protectedDropped = New-Object 'System.Collections.Generic.List[string]'
 foreach ($file in $Source) {
     foreach ($line in [System.IO.File]::ReadLines((Resolve-Path $file).Path)) {
         $entry = ($line -replace '#.*$', '').Trim()
@@ -63,12 +74,38 @@ foreach ($file in $Source) {
         }
         $candidate = $candidate.ToLowerInvariant().TrimEnd('.')
         if ($never -contains $candidate -or $candidate -notmatch $domainPattern) { $rejected++; continue }
-        if ($domains.Count -ge $maxDomains) { Write-Warning "Stopped at $maxDomains domains."; break }
+        if ($protected.Contains($candidate)) { $protectedDropped.Add($candidate); continue }
         [void] $domains.Add($candidate)
     }
 }
 
-$sorted = @($domains | Sort-Object)
+if ($protectedDropped.Count -gt 0) {
+    Write-Warning "Dropped $($protectedDropped.Count) protected shared-platform domain(s): $(($protectedDropped | Select-Object -Unique) -join ', ')"
+}
+
+# Over the limit: keep a sample ordered by SHA-256 of each domain. Unlike the first N lines, this is not
+# biased by how the source is sorted, and it stays mostly the same when the source changes.
+# Signed lists are also limited to 768 Ki characters in total, so the list fits in one native message.
+$room = if ($Format -eq 'ruleset') { $maxDomains - 1 } else { $maxDomains }
+$maxChars = 768 * 1024
+$selected = @($domains)
+$chars = ($selected | Measure-Object -Property Length -Sum).Sum
+if ($selected.Count -gt $room -or $chars -gt $maxChars) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $ordered = $selected | Sort-Object { [BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($_))) }
+    $selected = New-Object 'System.Collections.Generic.List[string]'
+    $chars = 0
+    foreach ($domain in $ordered) {
+        if ($selected.Count -ge $room -or $chars + $domain.Length -gt $maxChars) { break }
+        $selected.Add($domain)
+        $chars += $domain.Length
+    }
+    $selected = @($selected)
+    Write-Warning "The sources hold $($domains.Count) domains; kept a sample of $($selected.Count) (limits: $room domains, $maxChars characters)."
+}
+if ($Format -eq 'ruleset') { $selected += $testDomain }
+
+$sorted = @($selected | Sort-Object)
 $utf8 = New-Object System.Text.UTF8Encoding $false
 if ($Format -eq 'webblock') {
     if ([System.IO.Path]::GetExtension($Output) -ne '.webblock') { throw "-Output must name a .webblock file when -Format is webblock." }

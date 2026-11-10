@@ -49,6 +49,11 @@ public static class WebBlockList
                 throw new FormatException($"{origin} line {i + 1}: '{Clip(line)}' is not a domain name.");
             }
 
+            if (IsProtected(domain))
+            {
+                throw new FormatException($"{origin} line {i + 1}: '{domain}' is a shared platform or public suffix (or a parent of one); listing it would block many legitimate sites.");
+            }
+
             if (seen.Add(domain))
             {
                 domains.Add(domain);
@@ -117,6 +122,27 @@ public static class WebBlockList
 
         return true;
     }
+
+    /// <summary>A valid domain that may be listed: not protected (see <see cref="IsProtected"/>).</summary>
+    public static bool IsBlockable(string domain) => IsValidDomain(domain) && !IsProtected(domain);
+
+    /// <summary>
+    /// True when blocking <paramref name="domain"/> would block a shared platform or public suffix from
+    /// <c>protected-domains.txt</c>: the domain is one of them, or a parent of one.
+    /// </summary>
+    public static bool IsProtected(string domain)
+    {
+        ArgumentNullException.ThrowIfNull(domain);
+        return s_protected.Value.Any(p => p == domain || p.EndsWith("." + domain, StringComparison.Ordinal));
+    }
+
+    private static readonly Lazy<string[]> s_protected = new(() =>
+    {
+        using Stream stream = typeof(WebBlockList).Assembly.GetManifestResourceStream("Kshatriya.Updates.protected-domains.txt")
+            ?? throw new InvalidOperationException("The protected-domains list is missing from the assembly.");
+        using var reader = new StreamReader(stream);
+        return [.. reader.ReadToEnd().Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0 && !l.StartsWith('#'))];
+    });
 
     private static string Clip(string text) => text.Length <= 80 ? text : text[..80] + "…";
 }
