@@ -8,6 +8,7 @@ internal sealed record HostRequest(string Type, string? Path)
     public const int Version = 1;
     public const string Status = "status";
     public const string Scan = "scan";
+    public const string Blocklist = "blocklist";
     private const int MaxPathChars = 32_767;
 
     /// <summary>
@@ -70,9 +71,9 @@ internal sealed record HostRequest(string Type, string? Path)
 
             switch (type)
             {
-                case Status when path is null:
+                case Status or Blocklist when path is null:
                     error = null;
-                    return new HostRequest(Status, null);
+                    return new HostRequest(type, null);
                 case Scan when path is not null:
                     if (!IsAcceptablePath(path))
                     {
@@ -106,4 +107,5 @@ internal static class HostErrors
     public const string NotAFile = "not-a-file";
     public const string ServiceUnavailable = "service-unavailable";
     public const string ScanFailed = "scan-failed";
+    public const string BlocklistFailed = "blocklist-failed";
 }

@@ -34,9 +34,14 @@ function render(state) {
   );
 
   const info = state.blocklist;
-  blocklistEl.textContent = info && info.source !== 'test'
-    ? `Blocklist: ${state.listedDomains} sites from ${info.source}, built ${info.built}.`
-    : 'Blocklist: test entry only. No list of dangerous sites has been added yet.';
+  const delivered = state.delivered;
+  if (delivered && delivered.domains > 0) {
+    blocklistEl.textContent = `Blocklist: ${delivered.domains} sites from Kshatriya update ${delivered.sequence}, installed ${new Date(delivered.updated).toLocaleDateString()}.`;
+  } else if (info && info.source !== 'test') {
+    blocklistEl.textContent = `Blocklist: ${state.listedDomains} sites from ${info.source}, built ${info.built}.`;
+  } else {
+    blocklistEl.textContent = 'Blocklist: test entry only. No list of dangerous sites has been installed yet.';
+  }
 
   for (const key of ['scanDownloads', 'lookalikeWarnings']) {
     const box = document.getElementById(key);

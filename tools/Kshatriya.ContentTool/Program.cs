@@ -8,7 +8,7 @@ if (args.Length == 0 || args[0] is "help" or "--help")
 {
     Console.WriteLine("""
         kshatriya-content keygen <private-key.pem> <public-key.txt>
-        kshatriya-content pack --key <private-key.pem> --sequence <n> [--channel stable] [--expires-days 30] --out <package.kstu> <file.hashdb|file.yar>...
+        kshatriya-content pack --key <private-key.pem> --sequence <n> [--channel stable] [--expires-days 30] --out <package.kstu> <file.hashdb|.yar|.model.json|.netblock|.webblock>...
         kshatriya-content verify --public-key <public-key.txt> <package.kstu>
 
         The public key file contains the base64 SubjectPublicKeyInfo to put in service.json "contentKeys".
@@ -73,6 +73,8 @@ static int Pack(string[] args)
 
     using ECDsa key = ECDsa.Create();
     key.ImportFromPem(File.ReadAllText(keyPath));
+    // Web blocklists are checked here too, so a bad list fails before it is signed rather than at import.
+    WebBlockList.Combine([.. files.Where(f => ContentPackage.KindOf(f) == "webblock").Select(f => WebBlockList.Parse(File.ReadAllText(f), Path.GetFileName(f)))]);
     DateTimeOffset now = DateTimeOffset.UtcNow;
     byte[] package = ContentPackage.Create(channel, sequence, now, now.AddDays(expiresDays), [.. files.Select(f => (Path.GetFileName(f), File.ReadAllBytes(f)))], key);
     File.WriteAllBytes(output, package);

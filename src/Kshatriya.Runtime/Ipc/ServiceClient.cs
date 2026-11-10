@@ -207,6 +207,10 @@ public sealed class ServiceClient : IAsyncDisposable
     public Task<DetectionsReplyDto> GetDetectionsAsync(int max, CancellationToken cancellationToken = default) =>
         RequestAsync<DetectionsQueryDto, DetectionsReplyDto>(MessageType.DetectionsQuery, new DetectionsQueryDto { Max = max }, MessageType.DetectionsReply, cancellationToken);
 
+    /// <summary>The dangerous web sites from the installed content, for the browser extension.</summary>
+    public Task<WebBlocklistReplyDto> GetWebBlocklistAsync(CancellationToken cancellationToken = default) =>
+        RequestAsync<EmptyDto, WebBlocklistReplyDto>(MessageType.WebBlocklistQuery, new EmptyDto(), MessageType.WebBlocklistReply, cancellationToken);
+
     /// <summary>Asks the service to verify and install a signed content package (administrator only).</summary>
     public Task<ContentImportReplyDto> ImportContentAsync(string packagePath, CancellationToken cancellationToken = default) =>
         RequestAsync<ContentImportDto, ContentImportReplyDto>(MessageType.ContentImport, new ContentImportDto { Path = packagePath }, MessageType.ContentImportReply, cancellationToken);

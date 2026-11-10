@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Kshatriya.BrowserHost;
 using Kshatriya.Core;
+using Kshatriya.Protocol;
 using Kshatriya.Runtime.Ipc;
 using NJsonSchema;
 
@@ -63,6 +64,7 @@ public class RequestTests
     public void Valid_requests_parse()
     {
         Assert.Equal(new HostRequest("status", null), Parse("""{"v":1,"type":"status"}""", out _));
+        Assert.Equal(new HostRequest("blocklist", null), Parse("""{"v":1,"type":"blocklist"}""", out _));
         Assert.Equal(
             new HostRequest("scan", @"C:\Users\a\Downloads\setup.exe"),
             Parse("""{"v":1,"type":"scan","path":"C:\\Users\\a\\Downloads\\setup.exe"}""", out string? error));
@@ -75,6 +77,7 @@ public class RequestTests
     [InlineData("""{"v":1,"type":"status","extra":true}""")]
     [InlineData("""{"v":1,"type":"status","path":"C:\\a"}""")]
     [InlineData("""{"v":1,"type":"scan"}""")]
+    [InlineData("""{"v":1,"type":"blocklist","path":"C:\a"}""")]
     [InlineData("""{"v":1,"type":"delete","path":"C:\\a.txt"}""")]
     [InlineData("""{"v":1,"type":"status","type":"scan"}""")]
     [InlineData("""{"v":"1","type":"status"}""")]
@@ -121,6 +124,8 @@ public class HandlerTests
 
         public List<string> Scanned { get; } = [];
 
+        public WebBlocklistReplyDto Blocklist { get; init; } = new() { Sequence = 3, Domains = ["bad.example", "phish.test"] };
+
         public Task<string> GetVersionAsync(CancellationToken cancellationToken) =>
             Failure is null ? Task.FromResult("0.12.0") : Task.FromException<string>(Failure);
 
@@ -129,6 +134,9 @@ public class HandlerTests
             Scanned.Add(path);
             return Failure is null ? Task.FromResult(Report!) : Task.FromException<ScanReport>(Failure);
         }
+
+        public Task<WebBlocklistReplyDto> GetWebBlocklistAsync(CancellationToken cancellationToken) =>
+            Failure is null ? Task.FromResult(Blocklist) : Task.FromException<WebBlocklistReplyDto>(Failure);
     }
 
     private static ScanReport Report(params ScanItemResult[] items) => new()
@@ -210,6 +218,44 @@ public class HandlerTests
     }
 
     [Fact]
+    public async Task The_web_blocklist_is_passed_on_from_the_service()
+    {
+        JsonElement reply = await RunAsync(new HostHandler(new FakeService(), _ => true), """{"v":1,"type":"blocklist"}""");
+
+        Assert.True(reply.GetProperty("ok").GetBoolean());
+        Assert.Equal(3, reply.GetProperty("sequence").GetInt64());
+        Assert.Equal(["bad.example", "phish.test"], reply.GetProperty("domains").EnumerateArray().Select(d => d.GetString()!));
+    }
+
+    [Theory]
+    [InlineData("*.bad.example")]
+    [InlineData("203.0.113.7")]
+    [InlineData("localhost")]
+    [InlineData("Bad.Example")]
+    public async Task A_malformed_web_blocklist_from_the_service_is_not_passed_on(string domain)
+    {
+        var service = new FakeService { Blocklist = new() { Sequence = 3, Domains = ["ok.example", domain] } };
+        JsonElement reply = await RunAsync(new HostHandler(service, _ => true), """{"v":1,"type":"blocklist"}""");
+
+        Assert.False(reply.GetProperty("ok").GetBoolean());
+        Assert.Equal(HostErrors.BlocklistFailed, reply.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public void The_largest_allowed_web_blocklist_fits_in_one_native_message()
+    {
+        // 30,000 domains of the average length the character limit allows (26 characters each).
+        int perDomain = Kshatriya.Updates.WebBlockList.MaxTotalChars / Kshatriya.Updates.WebBlockList.MaxDomains;
+        List<string> domains = [.. Enumerable.Range(0, Kshatriya.Updates.WebBlockList.MaxDomains).Select(i => $"{i:D5}{new string('a', perDomain - 9)}.com")];
+        Assert.Equal(perDomain, domains[0].Length);
+
+        byte[] reply = HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 1, Domains = domains });
+
+        Assert.True(JsonDocument.Parse(reply).RootElement.GetProperty("ok").GetBoolean());
+        Assert.True(reply.Length <= NativeFraming.MaxReplyBytes);
+    }
+
+    [Fact]
     public async Task Every_reply_matches_the_published_schema()
     {
         JsonSchema schema = await JsonSchema.FromFileAsync(Path.Combine(AppContext.BaseDirectory, "schemas", "browser-host.v1.schema.json"));
@@ -220,6 +266,9 @@ public class HandlerTests
             HostHandler.ScanReply(Report(Eicar())),
             HostHandler.ScanReply(Report(notScanned)),
             HostHandler.Error("error", HostErrors.InvalidRequest, "x"),
+            HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 0, Domains = [] }),
+            HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 7, Domains = ["bad.example"] }),
+            HostHandler.BlocklistReply(new WebBlocklistReplyDto { Sequence = 7, Domains = ["*"] }),
             await new HostHandler(new FakeService(), _ => true).HandleAsync("""{"v":1,"type":"status"}"""u8.ToArray(), CancellationToken.None),
         ];
 

@@ -22,6 +22,8 @@ public static class MessageType
     public const byte ScanProgress = 0x25;
     public const byte ScanResult = 0x26;
     public const byte Cancel = 0x27;
+    public const byte WebBlocklistQuery = 0x28;
+    public const byte WebBlocklistReply = 0x29;
     public const byte Error = 0x2F;
 
     public const byte QuarantineList = 0x30;
@@ -45,7 +47,7 @@ public static class MessageType
 public static class ProtocolVersion
 {
     public const int Worker = 3;
-    public const int Service = 9;
+    public const int Service = 10;
 }
 
 // ---- Shared ----
@@ -345,6 +347,15 @@ public sealed class DetectionsReplyDto
     public required List<DetectionRecordDto> Items { get; init; }
 }
 
+/// <summary>Dangerous web sites for the browser extension (ADR 0019). Readable by any local user.</summary>
+public sealed class WebBlocklistReplyDto
+{
+    /// <summary>Sequence of the content package the list came from; 0 when no package is installed.</summary>
+    public required long Sequence { get; init; }
+
+    public required List<string> Domains { get; init; }
+}
+
 public sealed class ContentStatusDto
 {
     /// <summary>Active package sequence; 0 when only built-in and configured content is loaded.</summary>
@@ -588,6 +599,7 @@ public static class ErrorCodes
 [JsonSerializable(typeof(ContentImportReplyDto))]
 [JsonSerializable(typeof(DetectionsQueryDto))]
 [JsonSerializable(typeof(DetectionsReplyDto))]
+[JsonSerializable(typeof(WebBlocklistReplyDto))]
 internal sealed partial class ProtocolJsonContext : JsonSerializerContext
 {
 }

@@ -1,28 +1,66 @@
 // Kshatriya browser extension service worker (ADR 0018).
-// - Blocked sites: the browser enforces rules/blocklist.json; this worker only swaps the browser's
-//   "blocked" error page for Kshatriya's warning page and handles "Continue anyway".
+// - Blocked sites: the browser enforces rules/blocklist.json plus the list from Kshatriya's signed content
+//   updates (ADR 0019), which this worker fetches from the native host and installs as dynamic rules. It
+//   swaps the browser's "blocked" error page for Kshatriya's warning page and handles "Continue anyway".
 // - Downloads: finished downloads are sent to the Kshatriya service through the native host (report only).
 // - Look-alike sites: checked locally; a badge and one notification per site per browser session.
 // Nothing in this file sends URLs or browsing data off the device.
 
-import { domainsFromRules, hostOf, matchListedDomain } from './lib/domains.js';
+import { blockRules, domainsFromRules, hostOf, matchListedDomain } from './lib/domains.js';
 import { checkHost, describeLookalike } from './lib/lookalike.js';
-import { HOST_NAME, baseName, describeScan, parseReply, scanRequest, statusRequest } from './lib/messages.js';
+import { HOST_NAME, baseName, blocklistRequest, describeScan, parseReply, scanRequest, statusRequest } from './lib/messages.js';
 
 const DEFAULT_SETTINGS = { scanDownloads: true, lookalikeWarnings: true };
 const MAX_RECENT = 20;
 const ALLOW_RULE_PRIORITY = 100;
 const ICON = 'icons/icon-128.png';
+const BLOCKLIST_CHECK_MS = 6 * 60 * 60 * 1000; // ask Kshatriya for a newer list at most every 6 hours
+const POPUP_CHECK_MS = 10 * 60 * 1000;
+const FIRST_DELIVERED_RULE_ID = 1;
 
 let blockedDomains = null;
+let refreshing = null;
 
+/** Domains of the built-in ruleset plus the list delivered by Kshatriya. */
 async function getBlockedDomains() {
   if (!blockedDomains) {
     const response = await fetch(chrome.runtime.getURL('rules/blocklist.json'));
-    blockedDomains = domainsFromRules(await response.json());
+    const domains = domainsFromRules(await response.json());
+    const { deliveredDomains = [] } = await chrome.storage.local.get('deliveredDomains');
+    for (const domain of deliveredDomains) domains.add(domain);
+    blockedDomains = domains;
   }
   return blockedDomains;
 }
+
+/**
+ * Fetches the dangerous-site list from Kshatriya's signed content (through the native host) and installs
+ * it as dynamic blocking rules when it changed. On any failure the rules already installed stay in place.
+ */
+function refreshBlocklist(maxAgeMs = BLOCKLIST_CHECK_MS) {
+  refreshing ??= (async () => {
+    const { blocklistCheckedAt = 0, delivered = null } = await chrome.storage.local.get(['blocklistCheckedAt', 'delivered']);
+    if (Date.now() - blocklistCheckedAt < maxAgeMs) return;
+    const reply = await askHost(blocklistRequest(), 'blocklist');
+    if (!reply.ok) return;
+    await chrome.storage.local.set({ blocklistCheckedAt: Date.now() });
+    const installed = await chrome.declarativeNetRequest.getDynamicRules();
+    if (delivered?.sequence === reply.sequence && delivered?.rules === installed.length) return;
+
+    const rules = blockRules(reply.domains, FIRST_DELIVERED_RULE_ID);
+    await chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: installed.map((rule) => rule.id), addRules: rules });
+    await chrome.storage.local.set({
+      delivered: { sequence: reply.sequence, domains: reply.domains.length, rules: rules.length, updated: Date.now() },
+      deliveredDomains: reply.domains,
+    });
+    blockedDomains = null;
+  })().catch(() => {}).finally(() => { refreshing = null; });
+  return refreshing;
+}
+
+chrome.runtime.onInstalled.addListener(() => refreshBlocklist(0));
+chrome.runtime.onStartup.addListener(() => refreshBlocklist());
+refreshBlocklist();
 
 async function getSettings() {
   const stored = await chrome.storage.local.get(DEFAULT_SETTINGS);
@@ -175,10 +213,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       getSettings(),
       chrome.storage.session.get('recent'),
       askHost(statusRequest(), 'status'),
-      getBlockedDomains(),
+      refreshBlocklist(POPUP_CHECK_MS).then(getBlockedDomains),
       fetch(chrome.runtime.getURL('rules/blocklist-info.json')).then((r) => r.json()).catch(() => null),
-    ]).then(([settings, { recent = [] }, status, domains, info]) =>
-      sendResponse({ settings, recent, status, listedDomains: domains.size, blocklist: info }));
+    ]).then(async ([settings, { recent = [] }, status, domains, info]) => {
+      const { delivered = null } = await chrome.storage.local.get('delivered');
+      sendResponse({ settings, recent, status, listedDomains: domains.size, blocklist: info, delivered });
+    });
     return true;
   }
   if (message?.type === 'set-setting' && fromPage('popup.html') && message.key in DEFAULT_SETTINGS) {

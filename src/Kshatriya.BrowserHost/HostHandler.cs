@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Kshatriya.Core;
+using Kshatriya.Protocol;
 using Kshatriya.Runtime.Ipc;
+using Kshatriya.Updates;
 
 namespace Kshatriya.BrowserHost;
 
@@ -11,6 +13,9 @@ internal interface IHostService
 
     /// <summary>Report-only scan of one file, performed by the service as the signed-in user.</summary>
     Task<ScanReport> ScanFileAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>The dangerous web sites from the service's installed content (ADR 0019).</summary>
+    Task<WebBlocklistReplyDto> GetWebBlocklistAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>Answers one request. The host never opens the file; it only checks the path and asks the service.</summary>
@@ -46,6 +51,11 @@ internal sealed class HostHandler(IHostService service, Func<string, bool> isExi
                 });
             }
 
+            if (parsed.Type == HostRequest.Blocklist)
+            {
+                return BlocklistReply(await service.GetWebBlocklistAsync(cancellationToken));
+            }
+
             ScanReport report = await service.ScanFileAsync(parsed.Path!, cancellationToken);
             return ScanReply(report);
         }
@@ -56,8 +66,36 @@ internal sealed class HostHandler(IHostService service, Func<string, bool> isExi
         }
         catch (ServiceException ex)
         {
-            return Error(parsed.Type, HostErrors.ScanFailed, Clip(ex.Message));
+            return Error(parsed.Type, parsed.Type == HostRequest.Blocklist ? HostErrors.BlocklistFailed : HostErrors.ScanFailed, Clip(ex.Message));
         }
+    }
+
+    /// <summary>
+    /// The service's list, re-checked here: the extension turns it into browser rules, so only well-formed
+    /// domains within the limits are passed on, and the reply must fit in one native message.
+    /// </summary>
+    internal static byte[] BlocklistReply(WebBlocklistReplyDto list)
+    {
+        if (list.Sequence < 0 || list.Domains.Count > WebBlockList.MaxDomains || !list.Domains.All(WebBlockList.IsValidDomain))
+        {
+            return Error(HostRequest.Blocklist, HostErrors.BlocklistFailed, "The Kshatriya service sent an invalid web blocklist.");
+        }
+
+        byte[] reply = Write(json =>
+        {
+            Begin(json, HostRequest.Blocklist, ok: true);
+            json.WriteNumber("sequence", list.Sequence);
+            json.WriteStartArray("domains");
+            foreach (string domain in list.Domains)
+            {
+                json.WriteStringValue(domain);
+            }
+
+            json.WriteEndArray();
+        });
+        return reply.Length <= NativeFraming.MaxReplyBytes
+            ? reply
+            : Error(HostRequest.Blocklist, HostErrors.BlocklistFailed, "The web blocklist is too large to send to the browser.");
     }
 
     internal static byte[] ScanReply(ScanReport report)
@@ -138,5 +176,11 @@ internal sealed class ServiceHostAdapter(ServiceEndpoint endpoint) : IHostServic
     {
         await using ServiceClient client = await ServiceClient.ConnectAsync(endpoint, "kshatriya-browser-host", s_connectTimeout, cancellationToken);
         return await client.ScanAsync([path], includeClean: false, quarantine: false, cancellationToken: cancellationToken);
+    }
+
+    public async Task<WebBlocklistReplyDto> GetWebBlocklistAsync(CancellationToken cancellationToken)
+    {
+        await using ServiceClient client = await ServiceClient.ConnectAsync(endpoint, "kshatriya-browser-host", s_connectTimeout, cancellationToken);
+        return await client.GetWebBlocklistAsync(cancellationToken);
     }
 }

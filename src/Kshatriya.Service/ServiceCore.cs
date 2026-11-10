@@ -105,6 +105,9 @@ public sealed class ServiceCore : IDisposable
     /// <summary>WFP network protection when enabled in settings.</summary>
     public NetworkProtection? Network { get; private set; }
 
+    /// <summary>Dangerous web sites for the browser extension, from the active content (ADR 0019).</summary>
+    public WebBlocklistSnapshot WebBlocklist { get; private set; } = WebBlocklistSnapshot.Empty;
+
     /// <summary>The real-time monitor while the service runs with it enabled.</summary>
     public RealTimeMonitor? RealTime { get; private set; }
 
@@ -180,6 +183,19 @@ public sealed class ServiceCore : IDisposable
             options.Paths.Production ? "production" : "development",
             string.Join(", ", pool.Engines.Select(e => $"{e.Id} {e.Version} [{e.ContentVersion}]")));
         var core = new ServiceCore(options, settings, new ScanCoordinator(pool, settings, exclusions), exclusions, quarantine, logger, contentStore, keys, content, contentProblem);
+        if (content is not null)
+        {
+            try
+            {
+                core.WebBlocklist = new WebBlocklistSnapshot(content.Manifest.Sequence, WebBlocks(content));
+            }
+            catch (FormatException ex)
+            {
+                core.ContentProblem = $"The installed web blocklist is invalid and was not applied: {ex.Message}";
+                Log.ContentProblem(logger, core.ContentProblem);
+            }
+        }
+
         if (settings.NetworkProtection)
         {
             core.Network = new NetworkProtection(logger);
@@ -205,6 +221,11 @@ public sealed class ServiceCore : IDisposable
         [.. content.Manifest.Files.Where(f => f.Kind == "netblock")
             .SelectMany(f => NetBlockList.Parse(System.Text.Encoding.UTF8.GetString(content.Files[f.Name]), f.Name))];
 
+    /// <summary>All web blocklists in a content package, merged (throws <see cref="FormatException"/> if any is invalid).</summary>
+    internal static IReadOnlyList<string> WebBlocks(VerifiedContent content) =>
+        WebBlockList.Combine(content.Manifest.Files.Where(f => f.Kind == "webblock")
+            .Select(f => WebBlockList.Parse(System.Text.Encoding.UTF8.GetString(content.Files[f.Name]), f.Name)));
+
     /// <summary>
     /// Verifies and activates a content package: signature, hashes, expiry, anti-rollback, then a new
     /// sandboxed worker pool must build its engines from it before it replaces the running pool. Any
@@ -226,6 +247,16 @@ public sealed class ServiceCore : IDisposable
             catch (FormatException ex)
             {
                 throw new ContentVerificationException(ContentErrors.ContentInvalid, $"The package's network blocklist is invalid: {ex.Message}");
+            }
+
+            IReadOnlyList<string> webBlocked;
+            try
+            {
+                webBlocked = WebBlocks(content);
+            }
+            catch (FormatException ex)
+            {
+                throw new ContentVerificationException(ContentErrors.ContentInvalid, $"The package's web blocklist is invalid: {ex.Message}");
             }
 
             long sequence = content.Manifest.Sequence;
@@ -256,6 +287,7 @@ public sealed class ServiceCore : IDisposable
             ActiveContent = content;
             ContentProblem = null;
             Network?.Apply(blocked);
+            WebBlocklist = new WebBlocklistSnapshot(sequence, webBlocked);
             Coordinator.Cache.Clear();
             Log.ContentActivated(_logger, sequence, content.Manifest.Channel, content.KeyId);
             return content;
@@ -426,4 +458,10 @@ public sealed class ServiceCore : IDisposable
     }
 
     private static string Iso(DateTimeOffset value) => value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
+}
+
+/// <summary>The web blocklist of the active content package; <see cref="Sequence"/> 0 means no package.</summary>
+public sealed record WebBlocklistSnapshot(long Sequence, IReadOnlyList<string> Domains)
+{
+    public static WebBlocklistSnapshot Empty { get; } = new(0, []);
 }

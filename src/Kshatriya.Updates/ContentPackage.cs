@@ -7,8 +7,8 @@ using System.Text.Json.Serialization;
 namespace Kshatriya.Updates;
 
 /// <summary>One content file listed in a manifest.</summary>
-/// <param name="Name">Simple file name (letters, digits, '.', '-', '_'), ending in .hashdb, .yar, .model.json or .netblock.</param>
-/// <param name="Kind">"hashdb", "yara", "model" or "netblock".</param>
+/// <param name="Name">Simple file name (letters, digits, '.', '-', '_'), ending in .hashdb, .yar, .model.json, .netblock or .webblock.</param>
+/// <param name="Kind">"hashdb", "yara", "model", "netblock" or "webblock".</param>
 /// <param name="Sha256">Lower-case hex SHA-256 of the file.</param>
 /// <param name="Size">Size in bytes.</param>
 public sealed record ContentFile(string Name, string Kind, string Sha256, long Size);
@@ -208,7 +208,7 @@ public static class ContentPackage
             Files = [.. files.Select(f => new ManifestFileDto
             {
                 Name = f.Name,
-                Kind = KindOf(f.Name) ?? throw new ArgumentException($"'{f.Name}' must end in .hashdb, .yar, .model.json or .netblock."),
+                Kind = KindOf(f.Name) ?? throw new ArgumentException($"'{f.Name}' must end in .hashdb, .yar, .model.json, .netblock or .webblock."),
                 Sha256 = Convert.ToHexStringLower(SHA256.HashData(f.Data)),
                 Size = f.Data.Length,
             })],
@@ -244,6 +244,7 @@ public static class ContentPackage
         : name.EndsWith(".yar", StringComparison.OrdinalIgnoreCase) ? "yara"
         : name.EndsWith(".model.json", StringComparison.OrdinalIgnoreCase) ? "model"
         : name.EndsWith(".netblock", StringComparison.OrdinalIgnoreCase) ? "netblock"
+        : name.EndsWith(".webblock", StringComparison.OrdinalIgnoreCase) ? "webblock"
         : null;
 
     private static ContentManifest ParseManifest(ReadOnlySpan<byte> bytes)

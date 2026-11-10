@@ -37,8 +37,8 @@ Platform facts this design relies on (Chrome for Developers documentation, check
 3. **The default list holds only a test domain** (`blocktest.kshatriya.invalid`). No list with a licence
    compatible with redistribution under Apache-2.0 has been chosen yet; that is an open owner decision.
    `scripts/Build-BrowserBlocklist.ps1` turns a domain or hosts file the owner is entitled to use into a
-   ruleset (capped at 30,000 domains). A list baked into the extension goes stale; delivering lists
-   through signed content packages (ADR 0008) via the service is the planned follow-up.
+   ruleset (capped at 30,000 domains). A list baked into the extension goes stale, so lists are also
+   delivered through signed content packages via the service ([ADR 0019](0019-web-blocklists-in-signed-content.md)).
 4. **Download scanning through Kshatriya.** When a download completes, the extension sends its path to
    the native host `com.kshatriya.browser_host` (`Kshatriya.BrowserHost.exe`). The host is a broker: it
    reads nothing from the file, checks that the path is a local, fully qualified path to an existing

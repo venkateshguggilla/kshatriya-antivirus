@@ -1,5 +1,5 @@
 // Mutation fuzz harness for Kshatriya parsers.
-//   dotnet run -c Release --project tools/Kshatriya.Fuzz -- <pe|zip|hashdb|frame|report|content|model|usn|all> [iterations] [seed] [crashDir]
+//   dotnet run -c Release --project tools/Kshatriya.Fuzz -- <pe|zip|hashdb|frame|report|content|model|usn|webblock|all> [iterations] [seed] [crashDir]
 // Any exception escaping a parser counts as a failure; the offending input is saved to crashDir.
 // This is unguided mutation fuzzing; coverage-guided fuzzing (SharpFuzz + libFuzzer) is future work.
 
@@ -21,7 +21,7 @@ int seed = args.Length > 2 ? int.Parse(args[2], CultureInfo.InvariantCulture) : 
 string crashDir = args.Length > 3 ? args[3] : Path.Combine(Path.GetTempPath(), "kshatriya-fuzz-crashes");
 
 int failures = 0;
-foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "report", "content", "model", "usn" } : [target])
+foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "report", "content", "model", "usn", "webblock" } : [target])
 {
     failures += t switch
     {
@@ -33,6 +33,7 @@ foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "
         "report" => FuzzReport(iterations, seed, crashDir),
         "content" => FuzzContent(iterations, seed, crashDir),
         "model" => FuzzModel(iterations, seed, crashDir),
+        "webblock" => FuzzWebBlock(iterations, seed, crashDir),
         _ => throw new ArgumentException($"Unknown target '{t}'."),
     };
 }
@@ -316,6 +317,46 @@ static int FuzzModel(long iterations, int seed, string crashDir)
     }
 
     Report("model", iterations, failures, sw.Elapsed, $"accepted {accepted:N0}");
+    return failures;
+}
+
+// Web blocklists (signed content for the browser extension): the only acceptable failure is FormatException,
+// and every accepted domain must pass the same check the browser host applies.
+static int FuzzWebBlock(long iterations, int seed, string crashDir)
+{
+    byte[] seedBytes = Encoding.UTF8.GetBytes("# kshatriya-webblock v1\n# comment\nbad.example\nPhish.Test\nxn--pypal-4ve.com\na-b.c0.example\n");
+    _ = WebBlockList.Parse(Encoding.UTF8.GetString(seedBytes), "seed"); // the seed itself must be valid
+    var mutator = new Mutator(seed);
+    long domains = 0;
+    int failures = 0;
+    var sw = Stopwatch.StartNew();
+    for (long i = 0; i < iterations; i++)
+    {
+        byte[] input = mutator.Mutate(seedBytes);
+        try
+        {
+            IReadOnlyList<string> parsed = WebBlockList.Combine([WebBlockList.Parse(Encoding.UTF8.GetString(input), "fuzz")]);
+            foreach (string domain in parsed)
+            {
+                if (!WebBlockList.IsValidDomain(domain))
+                {
+                    throw new InvalidOperationException($"Accepted an invalid domain '{domain}'.");
+                }
+            }
+
+            domains += parsed.Count;
+        }
+        catch (FormatException)
+        {
+            // Expected: refused.
+        }
+        catch (Exception ex)
+        {
+            failures += Save(crashDir, "webblock", i, input, ex);
+        }
+    }
+
+    Report("webblock", iterations, failures, sw.Elapsed, $"domains {domains:N0}");
     return failures;
 }
 

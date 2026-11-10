@@ -46,6 +46,28 @@ export function matchListedDomain(domains, host) {
   return null;
 }
 
+/** Request types a blocking rule covers: everything, including the page itself (main_frame). */
+export const BLOCKED_RESOURCE_TYPES = [
+  'main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object', 'xmlhttprequest', 'ping',
+  'csp_report', 'media', 'websocket', 'other',
+];
+
+const DOMAINS_PER_RULE = 1000;
+
+/** Blocking rules for domains, 1000 domains per rule, with ids from firstId upwards. */
+export function blockRules(domains, firstId) {
+  const rules = [];
+  for (let i = 0; i < domains.length; i += DOMAINS_PER_RULE) {
+    rules.push({
+      id: firstId + rules.length,
+      priority: 1,
+      action: { type: 'block' },
+      condition: { requestDomains: domains.slice(i, i + DOMAINS_PER_RULE), resourceTypes: BLOCKED_RESOURCE_TYPES },
+    });
+  }
+  return rules;
+}
+
 /** All requestDomains of the blocking rules in a declarativeNetRequest ruleset. */
 export function domainsFromRules(rules) {
   const domains = new Set();

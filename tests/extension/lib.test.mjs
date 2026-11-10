@@ -2,9 +2,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { domainToUnicode } from 'node:url';
-import { domainsFromRules, hostOf, matchListedDomain, registrableDomain } from '../../extension/lib/domains.js';
+import { BLOCKED_RESOURCE_TYPES, blockRules, domainsFromRules, hostOf, matchListedDomain, registrableDomain } from '../../extension/lib/domains.js';
 import { checkHost, describeLookalike, editDistance, skeleton } from '../../extension/lib/lookalike.js';
-import { baseName, describeScan, parseReply, scanRequest } from '../../extension/lib/messages.js';
+import { baseName, blocklistRequest, describeScan, isBlockableDomain, parseReply, scanRequest } from '../../extension/lib/messages.js';
 import { decodeLabel, hostToUnicode } from '../../extension/lib/punycode.js';
 
 test('hostOf keeps only http(s) host names', () => {
@@ -116,4 +116,38 @@ test('scan results become plain notifications', () => {
   assert.match(describeScan('x.iso', { ok: true, status: 'notScanned', reason: 'tooLarge', detections: [] }).message, /larger than the scan size limit/);
   assert.match(describeScan('x.exe', { ok: false, error: 'service-unavailable', message: '' }).message, /isn't running/);
   assert.equal(baseName('C:\\Users\\a\\Downloads\\setup.exe'), 'setup.exe');
+});
+
+test('delivered domains become blocking rules of at most 1000 domains each', () => {
+  const domains = Array.from({ length: 2500 }, (_, i) => `d${i}.example`);
+  const rules = blockRules(domains, 1);
+  assert.deepEqual(rules.map((r) => r.id), [1, 2, 3]);
+  assert.deepEqual(rules.map((r) => r.condition.requestDomains.length), [1000, 1000, 500]);
+  assert.ok(rules.every((r) => r.action.type === 'block' && r.condition.resourceTypes === BLOCKED_RESOURCE_TYPES));
+  assert.deepEqual([...domainsFromRules(rules)], domains);
+  assert.deepEqual(blockRules([], 1), []);
+});
+
+test('only well-formed domains are accepted from the host', () => {
+  for (const ok of ['bad.example', 'xn--pypal-4ve.com', 'a-b.c0.example']) assert.ok(isBlockableDomain(ok), ok);
+  for (const bad of ['*.bad.example', 'localhost', '203.0.113.7', 'Bad.Example', 'bad..example', '-a.example', 'a b.com', '', 7]) {
+    assert.equal(isBlockableDomain(bad), false, String(bad));
+  }
+});
+
+test('blocklist replies are validated before rules are built from them', () => {
+  assert.deepEqual(blocklistRequest(), { v: 1, type: 'blocklist' });
+  assert.deepEqual(
+    parseReply({ v: 1, type: 'blocklist', ok: true, sequence: 4, domains: ['bad.example'] }, 'blocklist'),
+    { ok: true, sequence: 4, domains: ['bad.example'] },
+  );
+  const bad = [
+    { v: 1, type: 'blocklist', ok: true, sequence: -1, domains: [] },
+    { v: 1, type: 'blocklist', ok: true, sequence: 1.5, domains: [] },
+    { v: 1, type: 'blocklist', ok: true, sequence: 1, domains: ['*'] },
+    { v: 1, type: 'blocklist', ok: true, sequence: 1, domains: 'bad.example' },
+    { v: 1, type: 'blocklist', ok: true, sequence: 1, domains: Array.from({ length: 30001 }, (_, i) => `d${i}.example`) },
+    { v: 1, type: 'scan', ok: true, sequence: 1, domains: [] },
+  ];
+  for (const reply of bad) assert.equal(parseReply(reply, 'blocklist').error, 'bad-reply');
 });

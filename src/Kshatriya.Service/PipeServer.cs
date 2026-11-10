@@ -260,6 +260,12 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
                 case MessageType.DetectionsQuery:
                     await DetectionsAsync(ProtocolJson.Deserialize<DetectionsQueryDto>(frame.Json), caller, canManage, cancellationToken);
                     break;
+                case MessageType.WebBlocklistQuery:
+                    // Published content, the same for every caller: no impersonation or rights needed.
+                    ProtocolJson.Deserialize<EmptyDto>(frame.Json);
+                    WebBlocklistSnapshot web = core.WebBlocklist;
+                    await SendAsync(MessageType.WebBlocklistReply, new WebBlocklistReplyDto { Sequence = web.Sequence, Domains = [.. web.Domains] }, cancellationToken);
+                    break;
                 case MessageType.ContentImport:
                     await ContentImportAsync(ProtocolJson.Deserialize<ContentImportDto>(frame.Json), caller, actor, canManage, cancellationToken);
                     break;
