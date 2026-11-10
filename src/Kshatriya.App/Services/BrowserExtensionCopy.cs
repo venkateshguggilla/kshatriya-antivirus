@@ -5,7 +5,8 @@ namespace Kshatriya.App.Services;
 /// <summary>
 /// Keeps a per-user copy of the browser extension (ADR 0018). Edge and Chrome write the compiled
 /// blocklist into an unpacked extension's own folder, so the read-only copy under Program Files cannot be
-/// loaded directly. The copy in %LOCALAPPDATA% is refreshed from the installed one whenever they differ.
+/// loaded directly. The copy in Documents is refreshed from the installed one whenever they differ; it is
+/// kept there rather than in the hidden AppData folder because people have to find it in a folder picker.
 /// </summary>
 public static class BrowserExtensionCopy
 {
@@ -15,7 +16,7 @@ public static class BrowserExtensionCopy
     public static string InstalledFolder => Path.Combine(AppContext.BaseDirectory, "browser-extension");
 
     public static string UserFolder =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Kshatriya", "browser-extension");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Kshatriya browser extension");
 
     /// <summary>
     /// Makes <paramref name="target"/> an exact copy of <paramref name="source"/> (apart from the browser's

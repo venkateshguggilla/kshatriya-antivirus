@@ -150,7 +150,7 @@ if ((Test-Path $browserHost) -and $PSCmdlet.ShouldProcess('Edge and Chrome', 'Re
         try { $key.SetValue('', $hostManifest) } finally { $key.Dispose() }
     }
     # Browsers write into an unpacked extension's folder, so users load the per-user copy the app keeps
-    # in %LOCALAPPDATA%\Kshatriya\browser-extension, not this read-only one.
+    # in Documents\Kshatriya browser extension, not this read-only one.
     Write-Host "Browser extension: in the Kshatriya tray menu choose 'Set up the browser extension', then in edge://extensions or chrome://extensions turn on Developer mode, choose 'Load unpacked' and select the folder that opens."
 }
 
