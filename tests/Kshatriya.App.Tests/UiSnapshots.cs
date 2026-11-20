@@ -29,14 +29,14 @@ public class UiSnapshots
 
     private static void RenderAll(string folder)
     {
-        int pages = new MainViewModel(Gateway(), new FakeDialogs(), new FakeHost()).Pages.Count;
+        int pages = new MainViewModel(Gateway(), new FakeDialogs(), new FakeHost()).AllPages.Count();
         foreach ((int width, int height, string size) in new[] { (1180, 780, "desktop"), (760, 900, "narrow") })
         {
             for (int index = 0; index < pages; index++)
             {
                 // A fresh window per page: its first frame already shows the page with its data loaded.
                 var main = new MainViewModel(Gateway(), new FakeDialogs(), new FakeHost());
-                PageViewModel page = main.Pages[index];
+                PageViewModel page = main.AllPages.ElementAt(index);
                 main.Current = page;
                 page.RefreshCommand.Execute(null); // the first page is already current, so selecting it does not refresh
                 if (page is ScanViewModel scan)

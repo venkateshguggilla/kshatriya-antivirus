@@ -20,7 +20,7 @@ public class RedesignTests
     [Fact]
     public async Task The_dashboard_gives_one_verdict_backed_by_status_rows()
     {
-        var dashboard = new DashboardViewModel(new FakeGateway(), new FakeHost())
+        var dashboard = new HomeViewModel(new FakeGateway(), new FakeHost())
         {
             AntivirusSource = () => AntivirusHealth.Good,
             FolderAccessSource = () => 1,
@@ -44,7 +44,7 @@ public class RedesignTests
     [Fact]
     public async Task Windows_antivirus_off_needs_action_and_comes_first()
     {
-        var dashboard = new DashboardViewModel(new FakeGateway(), new FakeHost())
+        var dashboard = new HomeViewModel(new FakeGateway(), new FakeHost())
         {
             AntivirusSource = () => AntivirusHealth.Snoozed,
             FolderAccessSource = () => null,
@@ -62,7 +62,7 @@ public class RedesignTests
     [Fact]
     public async Task Without_the_service_the_verdict_says_so_and_scanning_is_unavailable()
     {
-        var dashboard = new DashboardViewModel(new FakeGateway { Failure = new TimeoutException() }, new FakeHost())
+        var dashboard = new HomeViewModel(new FakeGateway { Failure = new TimeoutException() }, new FakeHost())
         {
             AntivirusSource = () => AntivirusHealth.Good,
             FolderAccessSource = () => null,
@@ -80,7 +80,7 @@ public class RedesignTests
     public async Task While_the_service_is_starting_the_dashboard_says_so_and_connects_when_it_is_up()
     {
         var gateway = new FakeGateway { Failure = new TimeoutException() };
-        var dashboard = new DashboardViewModel(gateway, new FakeHost())
+        var dashboard = new HomeViewModel(gateway, new FakeHost())
         {
             AntivirusSource = () => AntivirusHealth.Good,
             FolderAccessSource = () => null,
@@ -105,7 +105,7 @@ public class RedesignTests
     public async Task Retrying_does_nothing_while_connected()
     {
         var gateway = new FakeGateway();
-        var dashboard = new DashboardViewModel(gateway, new FakeHost()) { AntivirusSource = () => AntivirusHealth.Good, FolderAccessSource = () => null };
+        var dashboard = new HomeViewModel(gateway, new FakeHost()) { AntivirusSource = () => AntivirusHealth.Good, FolderAccessSource = () => null };
         await dashboard.RefreshCommand.ExecuteAsync(null);
         gateway.Failure = new TimeoutException(); // any further status query would now disconnect the page
 
@@ -130,11 +130,11 @@ public class RedesignTests
     {
         var gateway = new FakeGateway { NextReport = Report() };
         var main = new MainViewModel(gateway, new FakeDialogs(), new FakeHost());
-        main.Dashboard.AntivirusSource = () => AntivirusHealth.Good;
-        main.Dashboard.FolderAccessSource = () => 1;
-        await main.Dashboard.RefreshCommand.ExecuteAsync(null);
+        main.Home.AntivirusSource = () => AntivirusHealth.Good;
+        main.Home.FolderAccessSource = () => 1;
+        await main.Home.RefreshCommand.ExecuteAsync(null);
 
-        main.Dashboard.QuickScanCommand.Execute(null);
+        main.Home.QuickScanCommand.Execute(null);
         await Task.Delay(50);
 
         Assert.Same(main.Scan, main.Current);

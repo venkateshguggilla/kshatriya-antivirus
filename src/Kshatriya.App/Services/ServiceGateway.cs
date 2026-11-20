@@ -30,6 +30,9 @@ public interface IServiceGateway
     Task<AuditReplyDto> GetAuditAsync(int max, CancellationToken cancellationToken);
 
     Task<DetectionsReplyDto> GetDetectionsAsync(int max, CancellationToken cancellationToken);
+
+    /// <summary>Asks the service to verify and install a signed content package; it reads the file as the caller.</summary>
+    Task<ContentImportReplyDto> ImportContentAsync(string packagePath, CancellationToken cancellationToken);
 }
 
 /// <summary>Talks to the service over its authenticated pipe; one connection per operation.</summary>
@@ -78,6 +81,9 @@ public sealed class ServiceGateway(ServiceEndpoint endpoint, string description)
     public Task<DetectionsReplyDto> GetDetectionsAsync(int max, CancellationToken cancellationToken) =>
         WithClient(c => c.GetDetectionsAsync(max, cancellationToken), cancellationToken);
 
+    public Task<ContentImportReplyDto> ImportContentAsync(string packagePath, CancellationToken cancellationToken) =>
+        WithClient(c => c.ImportContentAsync(packagePath, cancellationToken), cancellationToken);
+
     private Task<ServiceClient> ConnectAsync(CancellationToken cancellationToken) =>
         ServiceClient.ConnectAsync(endpoint, $"kshatriya-app/{AppInfo.Version}", s_connectTimeout, cancellationToken);
 
@@ -93,7 +99,7 @@ public static class ErrorText
 {
     public static string Describe(Exception ex) => ex switch
     {
-        ServiceException { Code: ErrorCodes.AccessDenied } s => s.Message + " Use \"Restart as administrator\" on the Dashboard.",
+        ServiceException { Code: ErrorCodes.AccessDenied } s => s.Message + " Use \"Restart as administrator\" on the Home page (Technical details).",
         ServiceException s => s.Message,
         ServiceAuthenticationException a => "The service could not be verified, so nothing was sent: " + a.Message,
         TimeoutException or IOException => "The Kshatriya service is not reachable. Is it installed and running?",

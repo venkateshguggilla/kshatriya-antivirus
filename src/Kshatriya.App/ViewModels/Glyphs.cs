@@ -22,6 +22,8 @@ public static class Glyphs
     public const string Sync = "";
     public const string Calendar = "";
     public const string Document = "";
+    public const string Settings = "";
+    public const string Download = "";
     public const string Processing = "";
 }
 

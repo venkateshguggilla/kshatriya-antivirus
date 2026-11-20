@@ -1,0 +1,36 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:Kshatriya.App.ViewModels">
+  <!-- Actions log (a History tab). Tokens and shared styles live in Theme.xaml. -->
+
+  <DataTemplate DataType="{x:Type vm:AuditLogViewModel}">
+    <StackPanel>
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PageHeader}" Focusable="False" />
+      <Border Style="{StaticResource Banner}" Tag="{Binding ChainTone}" Margin="0,20,0,0"
+              Visibility="{Binding ChainState, Converter={x:Static vm:Converters.NotEmptyToVisibility}}">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Left" Style="{StaticResource ToneGlyph}" Tag="{Binding ChainTone}" FontSize="18" Margin="0,1,12,0" VerticalAlignment="Top" />
+          <TextBlock Text="{Binding ChainState}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+        </DockPanel>
+      </Border>
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
+      <WrapPanel Margin="0,16,0,0">
+        <Button Content="Refresh" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryButton}" />
+      </WrapPanel>
+      <TextBlock Text="No audit records yet." Style="{StaticResource Secondary}" Margin="0,12,0,0"
+                 Visibility="{Binding Records.Count, Converter={x:Static vm:Converters.ZeroToVisible}}" />
+      <DataGrid ItemsSource="{Binding Records}" Style="{StaticResource ResultGrid}" MaxHeight="520" AutomationProperties.Name="Audit records"
+                Visibility="{Binding Records.Count, Converter={x:Static vm:Converters.NonZeroToVisible}}">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="#" Binding="{Binding Seq}" Width="50" />
+          <DataGridTextColumn Header="Time" Binding="{Binding TimeLocal}" Width="140" />
+          <DataGridTextColumn Header="User" Binding="{Binding User}" Width="*" />
+          <DataGridTextColumn Header="Action" Binding="{Binding Action}" Width="110" />
+          <DataGridTextColumn Header="Outcome" Binding="{Binding Outcome}" Width="90" />
+          <DataGridTextColumn Header="Target" Binding="{Binding Target}" Width="2*" />
+          <DataGridTextColumn Header="Details" Binding="{Binding Detail}" Width="2*" />
+        </DataGrid.Columns>
+      </DataGrid>
+    </StackPanel>
+  </DataTemplate>
+</ResourceDictionary>

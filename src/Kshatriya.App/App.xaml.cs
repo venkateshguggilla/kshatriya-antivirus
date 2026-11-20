@@ -12,7 +12,7 @@ using Kshatriya.Scanning.Targets;
 
 namespace Kshatriya.App;
 
-public sealed partial class App : Application, IAppHost, IDisposable
+public sealed partial class App : Application, IAppHost, IAppSettings, IDisposable
 {
     private const string InstanceName = @"Local\Kshatriya.App.Instance";
     private const string ShowSignalName = @"Local\Kshatriya.App.Show";
@@ -63,6 +63,51 @@ public sealed partial class App : Application, IAppHost, IDisposable
         }
     }
 
+    /// <summary>Opens the Windows Security app on its antivirus page. Kshatriya only shows, never changes, its settings.</summary>
+    public void OpenWindowsSecurity()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("windowsdefender://threat/") { UseShellExecute = true });
+        }
+        catch (Win32Exception)
+        {
+            // Windows Security is not available (for example on some Server editions); nothing to open.
+        }
+    }
+
+    public void OpenBrowserExtension() => OpenBrowserExtensionFolder();
+
+    bool IAppSettings.Notifications => _preferences?.Notifications ?? true;
+
+    bool IAppSettings.ScanExternalDrives => _preferences?.ScanExternalDrives ?? true;
+
+    // From the Settings page: save, and keep the notification-area menu's check marks in step.
+    void IAppSettings.SetNotifications(bool enabled)
+    {
+        _preferences?.SetNotifications(enabled);
+        _tray?.SetChecked(notifications: enabled, scanDrives: null);
+    }
+
+    void IAppSettings.SetScanExternalDrives(bool enabled)
+    {
+        _preferences?.SetScanExternalDrives(enabled);
+        _tray?.SetChecked(notifications: null, scanDrives: enabled);
+    }
+
+    // From the notification-area menu: save, and let an open Settings page show the change.
+    private void SetNotificationsFromTray(bool enabled)
+    {
+        _preferences?.SetNotifications(enabled);
+        _main?.Settings.PreferencesChanged();
+    }
+
+    private void SetScanDrivesFromTray(bool enabled)
+    {
+        _preferences?.SetScanExternalDrives(enabled);
+        _main?.Settings.PreferencesChanged();
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -92,10 +137,11 @@ public sealed partial class App : Application, IAppHost, IDisposable
             ? new ServiceGateway(ServiceEndpoint.Development(), "development service")
             : new ServiceGateway(ServiceEndpoint.Production, "installed Kshatriya service");
 
-        _main = new MainViewModel(gateway, new WpfDialogs(), this);
+        _preferences = new AppPreferences();
+        _main = new MainViewModel(gateway, new WpfDialogs(), this, this);
         if (!dev)
         {
-            _main.Dashboard.ServiceStartingSource = () => ServiceStartup.IsStarting(ServiceEndpoint.Production.ServiceName);
+            _main.Home.ServiceStartingSource = () => ServiceStartup.IsStarting(ServiceEndpoint.Production.ServiceName);
         }
 
         var window = new MainWindow { DataContext = _main };
@@ -111,10 +157,9 @@ public sealed partial class App : Application, IAppHost, IDisposable
         MainWindow = window;
 
         _gateway = gateway;
-        _preferences = new AppPreferences();
         _watcher = new DetectionWatcher(gateway);
         _driveScanner = new ExternalDriveScanner(gateway);
-        _tray = new TrayIcon(_preferences.Notifications, _preferences.ScanExternalDrives, () => ShowMainWindow(detections: false), _preferences.SetNotifications, _preferences.SetScanExternalDrives, ExitApp, OpenBrowserExtensionFolder);
+        _tray = new TrayIcon(_preferences.Notifications, _preferences.ScanExternalDrives, () => ShowMainWindow(detections: false), SetNotificationsFromTray, SetScanDrivesFromTray, ExitApp, OpenBrowserExtensionFolder);
         _ = Task.Run(SyncBrowserExtension);
         // Each notification decides what clicking it does (open Detections, or scan a newly attached drive).
         _tray.NotificationClicked += () => (_clickAction ?? (() => ShowMainWindow(detections: true)))();
@@ -133,7 +178,7 @@ public sealed partial class App : Application, IAppHost, IDisposable
         {
             if (MainWindow?.IsVisible == true && _main is not null)
             {
-                await _main.Dashboard.RetryIfDisconnectedAsync();
+                await _main.Home.RetryIfDisconnectedAsync();
             }
         };
         _reconnectTimer.Start();
@@ -278,11 +323,11 @@ public sealed partial class App : Application, IAppHost, IDisposable
         window.Activate();
         if (detections)
         {
-            _main.Current = _main.Detections;
+            _main.ShowDetections();
         }
-        else if (_main.Current == _main.Dashboard)
+        else if (_main.Current == _main.Home)
         {
-            _main.Dashboard.RefreshCommand.Execute(null);
+            _main.Home.RefreshCommand.Execute(null);
         }
     }
 
@@ -428,4 +473,10 @@ internal sealed class WpfDialogs : IDialogs
 
     public bool Confirm(string title, string message) =>
         MessageBox.Show(Application.Current.MainWindow, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
+
+    public string? PickUpdatePackage()
+    {
+        var dialog = new OpenFileDialog { Title = "Choose a signed update", Filter = "Kshatriya update (*.kstu)|*.kstu" };
+        return dialog.ShowDialog(Application.Current.MainWindow) == true ? dialog.FileName : null;
+    }
 }

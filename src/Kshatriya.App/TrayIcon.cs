@@ -59,6 +59,20 @@ internal sealed class TrayIcon : IDisposable
     /// <summary>Raised when the user clicks the latest notification.</summary>
     public event Action? NotificationClicked;
 
+    /// <summary>Updates the menu's check marks after the same preference changed on the Settings page.</summary>
+    public void SetChecked(bool? notifications, bool? scanDrives)
+    {
+        if (notifications is { } n && _notifications.Checked != n)
+        {
+            _notifications.Checked = n;
+        }
+
+        if (scanDrives is { } d && _scanDrives.Checked != d)
+        {
+            _scanDrives.Checked = d;
+        }
+    }
+
     /// <summary>Tooltip text; Windows limits it to 127 characters.</summary>
     public void SetStatus(string text) => _icon.Text = text.Length <= 127 ? text : text[..127];
 

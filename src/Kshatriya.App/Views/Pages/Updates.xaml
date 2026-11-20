@@ -1,0 +1,42 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:Kshatriya.App.ViewModels">
+  <!-- Updates page template (ADR 0021). Tokens and shared styles live in Theme.xaml. -->
+
+  <DataTemplate DataType="{x:Type vm:UpdatesViewModel}">
+    <StackPanel>
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PageHeader}" Focusable="False" />
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
+
+      <Border Style="{StaticResource Surface}" Margin="0,20,0,0">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Left" Style="{StaticResource ToneGlyph}" Tag="{Binding Tone}" FontSize="24" Margin="0,2,16,0" VerticalAlignment="Top" />
+          <WrapPanel DockPanel.Dock="Right" VerticalAlignment="Top">
+            <Button Content="Install an update…" Command="{Binding ImportCommand}" Style="{StaticResource PrimaryButton}" Margin="16,0,0,0"
+                    AutomationProperties.HelpText="Choose a signed .kstu package; the service verifies it before installing" />
+            <Button Content="Refresh" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" />
+          </WrapPanel>
+          <StackPanel>
+            <TextBlock Text="{Binding Installed}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"
+                       AutomationProperties.HeadingLevel="Level2" AutomationProperties.LiveSetting="Polite" />
+            <TextBlock Text="{Binding Validity}" Style="{StaticResource Secondary}" Margin="0,4,0,0" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <TextBlock Text="How updates are checked" Style="{StaticResource SectionTitle}" AutomationProperties.HeadingLevel="Level2" />
+      <TextBlock Text="{Binding Explanation}" Style="{StaticResource Secondary}" />
+
+      <TextBlock Text="Engines" Style="{StaticResource SectionTitle}" AutomationProperties.HeadingLevel="Level2" />
+      <Border Style="{StaticResource Surface}">
+        <ItemsControl ItemsSource="{Binding Engines}" AutomationProperties.Name="Engines and their content versions" Focusable="False">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,2" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Border>
+    </StackPanel>
+  </DataTemplate>
+</ResourceDictionary>

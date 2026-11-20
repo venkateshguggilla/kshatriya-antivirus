@@ -46,12 +46,20 @@ internal sealed class FakeGateway : IServiceGateway
             }));
     }
 
-    public Task<ScanReport> ScanAsync(IReadOnlyList<string> paths, bool quarantine, IProgress<ScanProgressDto> progress, CancellationToken cancellationToken)
+    /// <summary>How long a custom scan takes (zero: it finishes at once).</summary>
+    public TimeSpan ScanDelay { get; set; }
+
+    public async Task<ScanReport> ScanAsync(IReadOnlyList<string> paths, bool quarantine, IProgress<ScanProgressDto> progress, CancellationToken cancellationToken)
     {
         ThrowIfFailing();
         LastScanQuarantine = quarantine;
         Calls.Add("scan:" + string.Join("|", paths));
-        return Task.FromResult(NextReport!);
+        if (ScanDelay > TimeSpan.Zero)
+        {
+            await Task.Delay(ScanDelay, cancellationToken);
+        }
+
+        return NextReport!;
     }
 
     public Task<ScanReport> ScanKindAsync(string kind, bool quarantine, IProgress<ScanProgressDto> progress, CancellationToken cancellationToken)
@@ -129,6 +137,15 @@ internal sealed class FakeGateway : IServiceGateway
         });
     }
 
+    public string? LastImport { get; private set; }
+
+    public Task<ContentImportReplyDto> ImportContentAsync(string packagePath, CancellationToken cancellationToken)
+    {
+        ThrowIfFailing();
+        LastImport = packagePath;
+        return Task.FromResult(new ContentImportReplyDto { Succeeded = true, Code = "none", Sequence = 43, ExpiresUtc = "2026-12-31T00:00:00Z" });
+    }
+
     private void ThrowIfFailing()
     {
         if (Failure is not null)
@@ -152,6 +169,10 @@ internal sealed class FakeDialogs : IDialogs
 
     public string? PickRestoreLocation(string suggestedFileName) => RestoreLocation;
 
+    public string? UpdatePackage { get; set; }
+
+    public string? PickUpdatePackage() => UpdatePackage;
+
     public bool Confirm(string title, string message)
     {
         Confirmations++;
@@ -166,6 +187,14 @@ internal sealed class FakeHost : IAppHost
     public bool Restarted { get; private set; }
 
     public void RestartElevated() => Restarted = true;
+
+    public int WindowsSecurityOpened { get; private set; }
+
+    public int BrowserExtensionOpened { get; private set; }
+
+    public void OpenWindowsSecurity() => WindowsSecurityOpened++;
+
+    public void OpenBrowserExtension() => BrowserExtensionOpened++;
 }
 
 public class ViewModelTests
@@ -185,7 +214,7 @@ public class ViewModelTests
     [Fact]
     public async Task Dashboard_shows_status_and_reminds_about_defender()
     {
-        var vm = new DashboardViewModel(new FakeGateway(), new FakeHost()) { AntivirusSource = () => AntivirusHealth.Poor, FolderAccessSource = () => 0 };
+        var vm = new HomeViewModel(new FakeGateway(), new FakeHost()) { AntivirusSource = () => AntivirusHealth.Poor, FolderAccessSource = () => 0 };
 
         await vm.RefreshCommand.ExecuteAsync(null);
 
@@ -202,7 +231,7 @@ public class ViewModelTests
     [Fact]
     public async Task Dashboard_explains_an_unreachable_service_without_crashing()
     {
-        var vm = new DashboardViewModel(new FakeGateway { Failure = new ServiceException("The Kshatriya service is not reachable.") }, new FakeHost())
+        var vm = new HomeViewModel(new FakeGateway { Failure = new ServiceException("The Kshatriya service is not reachable.") }, new FakeHost())
         {
             AntivirusSource = () => AntivirusHealth.Good,
         };
@@ -325,7 +354,7 @@ public class ViewModelTests
     [Fact]
     public async Task History_warns_when_the_audit_chain_is_broken()
     {
-        var vm = new HistoryViewModel(new FakeGateway());
+        var vm = new AuditLogViewModel(new FakeGateway());
 
         await vm.RefreshCommand.ExecuteAsync(null);
 
@@ -340,10 +369,12 @@ public class ViewModelTests
         gateway.Quarantine.Add(Item("d4"));
         var main = new MainViewModel(gateway, new FakeDialogs(), new FakeHost());
 
-        main.Current = main.Quarantine;
+        main.Current = main.History;
+        main.History.Selected = main.Quarantine;
 
         Assert.Single(main.Quarantine.Items);
-        Assert.Equal(7, main.Pages.Count);
+        Assert.Equal(["Home", "Scan", "Protection", "History", "Updates"], main.Pages.Select(p => p.Title));
+        Assert.Equal(["Settings", "Help and about"], main.FooterPages.Select(p => p.Title));
         Assert.Contains("prototype", main.Title, StringComparison.Ordinal);
     }
 
@@ -362,7 +393,7 @@ public class ViewModelTests
     [Fact]
     public async Task Dashboard_explains_that_real_time_monitoring_cannot_block()
     {
-        var vm = new DashboardViewModel(new FakeGateway(), new FakeHost()) { AntivirusSource = () => AntivirusHealth.Good };
+        var vm = new HomeViewModel(new FakeGateway(), new FakeHost()) { AntivirusSource = () => AntivirusHealth.Good };
 
         await vm.RefreshCommand.ExecuteAsync(null);
 

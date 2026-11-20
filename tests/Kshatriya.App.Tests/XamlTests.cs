@@ -37,7 +37,7 @@ public class XamlTests
         window.Show();
         try
         {
-            foreach (PageViewModel page in main.Pages)
+            foreach (PageViewModel page in main.AllPages)
             {
                 main.Current = page;
                 window.UpdateLayout();

@@ -1,0 +1,41 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:Kshatriya.App.ViewModels">
+  <!-- Settings page template (ADR 0021). Tokens and shared styles live in Theme.xaml. -->
+
+  <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+    <StackPanel>
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PageHeader}" Focusable="False" />
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
+
+      <TextBlock Text="This app" Style="{StaticResource SectionTitle}" AutomationProperties.HeadingLevel="Level2" />
+      <Border Style="{StaticResource Surface}">
+        <StackPanel>
+          <CheckBox IsChecked="{Binding Notifications}" AutomationProperties.Name="Show notifications">
+            <StackPanel>
+              <TextBlock Text="Show notifications" FontWeight="SemiBold" />
+              <TextBlock Style="{StaticResource Secondary}" Text="When real-time monitoring, a scheduled scan or behaviour detection finds something while you work." />
+            </StackPanel>
+          </CheckBox>
+          <CheckBox IsChecked="{Binding ScanExternalDrives}" Margin="0,14,0,0" AutomationProperties.Name="Scan USB drives when connected">
+            <StackPanel>
+              <TextBlock Text="Scan USB drives when connected" FontWeight="SemiBold" />
+              <TextBlock Style="{StaticResource Secondary}" Text="USB sticks, external disks and memory cards, when the service does not already scan them." />
+            </StackPanel>
+          </CheckBox>
+          <TextBlock Text="{Binding StartupNote}" Style="{StaticResource Caption}" Margin="0,14,0,0" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="Browser extension" Style="{StaticResource SectionTitle}" AutomationProperties.HeadingLevel="Level2" />
+      <Border Style="{StaticResource Surface}">
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Content="Set up…" Command="{Binding SetUpBrowserExtensionCommand}" Style="{StaticResource SecondaryButton}" VerticalAlignment="Top" Margin="16,0,0,0" />
+          <TextBlock Style="{StaticResource Secondary}" Text="Opens your copy of the Edge and Chrome extension. Load that folder with Load unpacked in the browser's extensions page (developer mode)." />
+        </DockPanel>
+      </Border>
+
+      <ContentControl Content="{Binding Exclusions}" Focusable="False" Margin="0,36,0,0" />
+    </StackPanel>
+  </DataTemplate>
+</ResourceDictionary>

@@ -1,0 +1,46 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:Kshatriya.App.ViewModels">
+  <!-- Exclusions (part of Settings). Tokens and shared styles live in Theme.xaml. -->
+
+  <DataTemplate DataType="{x:Type vm:ExclusionsViewModel}">
+    <StackPanel>
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PageHeader}" Focusable="False" />
+      <TextBlock Style="{StaticResource Caption}" Margin="0,6,0,0"
+                 Text="Excluded items are still listed as skipped in every report. Changing exclusions needs an administrator. This never changes Microsoft Defender." />
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
+
+      <TextBlock Text="Add an exclusion" Style="{StaticResource SectionTitle}" />
+      <Border Style="{StaticResource Surface}">
+        <StackPanel>
+          <TextBlock Text="Full path or SHA-256" FontWeight="SemiBold" Margin="0,0,0,6" />
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Content="Add" Command="{Binding AddValueCommand}" Style="{StaticResource PrimaryButton}" MinWidth="80" Margin="8,0,0,0" />
+            <TextBox Text="{Binding NewValue, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Path or SHA-256 to exclude"
+                     ToolTip="A full path such as C:\Tools\build, or a SHA-256 value" />
+          </DockPanel>
+          <TextBlock Style="{StaticResource Caption}" Margin="0,6,0,0" Text="For example C:\Tools\build, or the 64-character SHA-256 of a file." />
+          <Button Content="Choose a folder…" Command="{Binding AddFolderCommand}" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" Margin="0,12,0,0" />
+        </StackPanel>
+      </Border>
+
+      <DockPanel Margin="0,28,0,0">
+        <WrapPanel DockPanel.Dock="Right">
+          <Button Content="Remove selected" Command="{Binding RemoveCommand}" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" />
+          <Button Content="Refresh" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" />
+        </WrapPanel>
+        <TextBlock Text="Current exclusions" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center" />
+      </DockPanel>
+      <TextBlock Text="No exclusions. Kshatriya scans everything it can read." Style="{StaticResource Secondary}" Margin="0,12,0,0"
+                 Visibility="{Binding Items.Count, Converter={x:Static vm:Converters.ZeroToVisible}}" />
+      <DataGrid ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}" Style="{StaticResource ResultGrid}" SelectionMode="Single"
+                MaxHeight="360" AutomationProperties.Name="Exclusions"
+                Visibility="{Binding Items.Count, Converter={x:Static vm:Converters.NonZeroToVisible}}">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="90" />
+          <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*" />
+        </DataGrid.Columns>
+      </DataGrid>
+    </StackPanel>
+  </DataTemplate>
+</ResourceDictionary>

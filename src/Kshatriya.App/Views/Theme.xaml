@@ -202,13 +202,27 @@
     </DataTemplate.Triggers>
   </DataTemplate>
 
-  <!-- Page header: title, lead text and a loading bar while the page refreshes. -->
+  <!-- Page header: title, lead text and a loading bar while the page refreshes. A page shown inside another
+       page (a History tab, Exclusions in Settings) gets a section-sized, level-2 heading instead. -->
   <DataTemplate x:Key="PageHeader">
     <StackPanel>
-      <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" />
-      <TextBlock Text="{Binding Description}" Style="{StaticResource PageLead}" />
+      <TextBlock x:Name="HeaderTitle" Text="{Binding Title}" Style="{StaticResource PageTitle}" />
+      <TextBlock x:Name="HeaderLead" Text="{Binding Description}" Style="{StaticResource PageLead}" />
       <ProgressBar Style="{StaticResource LoadingBar}" Margin="0,12,0,0"
                    Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
     </StackPanel>
+    <DataTemplate.Triggers>
+      <DataTrigger Binding="{Binding IsEmbedded}" Value="True">
+        <Setter TargetName="HeaderTitle" Property="Style" Value="{StaticResource SectionTitle}" />
+        <Setter TargetName="HeaderTitle" Property="AutomationProperties.HeadingLevel" Value="Level2" />
+        <Setter TargetName="HeaderTitle" Property="Margin" Value="0" />
+        <Setter TargetName="HeaderLead" Property="Style" Value="{StaticResource Secondary}" />
+      </DataTrigger>
+    </DataTemplate.Triggers>
+  </DataTemplate>
+
+  <!-- A status icon column for result grids (bound to the row's Tone). -->
+  <DataTemplate x:Key="ToneCell">
+    <TextBlock Style="{StaticResource ToneGlyph}" Tag="{Binding Tone}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,3,0,0" FontSize="14" />
   </DataTemplate>
 </ResourceDictionary>

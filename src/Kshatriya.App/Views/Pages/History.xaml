@@ -1,0 +1,21 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:Kshatriya.App.ViewModels">
+  <!-- History page (ADR 0021): findings, quarantine and the actions log as tabs, each with its own template. -->
+
+  <DataTemplate DataType="{x:Type vm:HistoryHubViewModel}">
+    <TabControl ItemsSource="{Binding Tabs}" SelectedItem="{Binding Selected, Mode=TwoWay}" AutomationProperties.Name="History"
+                Background="Transparent" BorderThickness="0" Padding="0,16,0,0">
+      <TabControl.ItemTemplate>
+        <DataTemplate>
+          <TextBlock Text="{Binding Title}" />
+        </DataTemplate>
+      </TabControl.ItemTemplate>
+      <TabControl.ContentTemplate>
+        <DataTemplate>
+          <ContentControl Content="{Binding}" Focusable="False" />
+        </DataTemplate>
+      </TabControl.ContentTemplate>
+    </TabControl>
+  </DataTemplate>
+</ResourceDictionary>

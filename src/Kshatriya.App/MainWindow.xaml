@@ -7,6 +7,22 @@
         WindowStartupLocation="CenterScreen"
         Icon="pack://application:,,,/Kshatriya.App;component/Assets/kshatriya.ico"
         Background="{DynamicResource ApplicationBackgroundBrush}">
+  <Window.Resources>
+    <!-- A navigation item: icon, title (hidden in the icon rail) and a dot while something runs on the page. -->
+    <DataTemplate x:Key="NavItemTemplate">
+      <Grid>
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource Glyph}" Text="{Binding Glyph}" Width="20" TextAlignment="Center" />
+          <TextBlock Text="{Binding Title}" Margin="12,0,0,0" VerticalAlignment="Center"
+                     Visibility="{Binding IsCompact, RelativeSource={RelativeSource AncestorType=Window}, Converter={x:Static vm:Converters.FalseToVisible}}" />
+        </StackPanel>
+        <Ellipse Width="7" Height="7" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="17,0,0,0"
+                 Fill="{DynamicResource AccentFillColorDefaultBrush}"
+                 Visibility="{Binding HasActivity, Converter={StaticResource BoolToVisibility}}"
+                 ToolTip="Running" AutomationProperties.Name="Running" />
+      </Grid>
+    </DataTemplate>
+  </Window.Resources>
   <Grid>
     <Grid.ColumnDefinitions>
       <ColumnDefinition Width="Auto" />
@@ -34,20 +50,18 @@
         <TextBlock x:Name="Footnote" DockPanel.Dock="Bottom" Style="{StaticResource Caption}" Margin="14,12,10,0"
                    Text="Runs alongside Microsoft Defender. Keep Defender on." />
 
+        <!-- Footer pages (Settings, Help and about), as NavigationView keeps them at the bottom. -->
+        <ListBox DockPanel.Dock="Bottom" ItemsSource="{Binding FooterPages}" SelectedItem="{Binding Current, Mode=TwoWay}"
+                 ItemContainerStyle="{StaticResource NavItem}" ItemTemplate="{StaticResource NavItemTemplate}"
+                 Background="Transparent" BorderThickness="0" Padding="0" Margin="0,12,0,0"
+                 AutomationProperties.Name="Settings and help" KeyboardNavigation.TabNavigation="Once"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+
         <ListBox ItemsSource="{Binding Pages}" SelectedItem="{Binding Current, Mode=TwoWay}"
-                 ItemContainerStyle="{StaticResource NavItem}" Background="Transparent" BorderThickness="0" Padding="0"
+                 ItemContainerStyle="{StaticResource NavItem}" ItemTemplate="{StaticResource NavItemTemplate}"
+                 Background="Transparent" BorderThickness="0" Padding="0"
                  AutomationProperties.Name="Pages" KeyboardNavigation.TabNavigation="Once"
-                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-          <ListBox.ItemTemplate>
-            <DataTemplate>
-              <StackPanel Orientation="Horizontal">
-                <TextBlock Style="{StaticResource Glyph}" Text="{Binding Glyph}" Width="20" TextAlignment="Center" />
-                <TextBlock Text="{Binding Title}" Margin="12,0,0,0" VerticalAlignment="Center"
-                           Visibility="{Binding IsCompact, RelativeSource={RelativeSource AncestorType=Window}, Converter={x:Static vm:Converters.FalseToVisible}}" />
-              </StackPanel>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
       </DockPanel>
     </Border>
 

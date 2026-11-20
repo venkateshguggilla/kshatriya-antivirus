@@ -234,3 +234,19 @@ settings file an administrator edits.
 6. Android: UDF state and persisted findings in `Kshatriya.Mobile`, with tests.
 7. Android: Material 3 navigation, Home, Apps and finding sheet, onboarding (after the licence check).
 8. Android: edge-to-edge, predictive back, notification channels.
+
+## Implementation notes
+
+- **Slice 1 (2026-11-20):** `Kshatriya.Presentation` with the status model, `DesktopStatusEvaluator` and
+  `NotificationPolicy`. Home's verdict and "Needs your attention" come from the evaluator. Findings are not
+  yet inputs: they need the review actions of slice 4.
+- **Slice 2 (2026-11-20):** the navigation shows Home, Scan, Protection, History and Updates, with Settings
+  and Help and about at the bottom. A dot marks Scan while a scan runs. As steps towards the full design:
+  - History holds the existing Detections, Quarantine and Actions log pages as tabs until slice 4 merges
+    them.
+  - Protection shows the service's state read-only and names the settings file an administrator edits.
+  - Updates installs a chosen `.kstu` through the existing, signature-checked service import.
+  - Settings carries the notification-area preferences (kept in step with the tray menu), the browser
+    extension and Exclusions.
+  - A page shown inside another page gets a level-2 heading.
+  - View models and page templates are one file per page.
