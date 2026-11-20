@@ -9,7 +9,7 @@ namespace Kshatriya.App.ViewModels;
 public sealed class SettingsViewModel(IAppSettings settings, IAppHost host, ExclusionsViewModel exclusions)
     : PageViewModel("Settings", "Your preferences for this app, and exclusions", Glyphs.Settings)
 {
-    /// <summary>Show a notification when background protection finds something (default on).</summary>
+    /// <summary>Show informational notifications (scan results, external drives); critical ones are always shown (default on).</summary>
     public bool Notifications
     {
         get => settings.Notifications;

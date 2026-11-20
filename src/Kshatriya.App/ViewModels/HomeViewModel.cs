@@ -7,8 +7,11 @@ using Kshatriya.Presentation;
 using Kshatriya.Protocol;
 
 namespace Kshatriya.App.ViewModels;
-public sealed class HomeViewModel(IServiceGateway gateway, IAppHost host) : PageViewModel("Home", "Protection status at a glance", Glyphs.Home)
+public sealed class HomeViewModel(IServiceGateway gateway, IAppHost host, StatusStore? store = null) : PageViewModel("Home", "Protection status at a glance", Glyphs.Home)
 {
+    /// <summary>The shared status snapshot this page shows (and refreshes).</summary>
+    public StatusStore Store { get; } = store ?? new StatusStore(gateway);
+
     private string _serviceState = "Checking…";
     private string _connectedAs = string.Empty;
     private bool _isConnected;
@@ -89,11 +92,12 @@ public sealed class HomeViewModel(IServiceGateway gateway, IAppHost host) : Page
 
     protected override async Task RefreshCoreAsync()
     {
-        Antivirus = AntivirusSource();
-        FolderAccessText = SecurityCenter.DescribeControlledFolderAccess(FolderAccessSource());
-        try
+        // Windows Security Center and WMI can take a moment: read them off the UI thread.
+        Antivirus = await Task.Run(AntivirusSource);
+        FolderAccessText = SecurityCenter.DescribeControlledFolderAccess(await Task.Run(FolderAccessSource));
+        await Store.RefreshAsync();
+        if (Store.Connected && Store.Hello is { } hello && Store.Status is { } status)
         {
-            var (hello, status) = await gateway.GetStatusAsync(CancellationToken.None);
             IsConnected = true;
             IsAdmin = hello.IsAdmin;
             ServiceState = $"{hello.Service} is running ({status.Mode}) since {Local(status.StartedUtc)}.";
@@ -124,17 +128,17 @@ public sealed class HomeViewModel(IServiceGateway gateway, IAppHost host) : Page
                 Schedules.Add("No scheduled scans are configured.");
             }
 
-            (_unresolvedConfirmed, _unresolvedSuspicious) = await CountFindingsAsync();
+            (_unresolvedConfirmed, _unresolvedSuspicious) = HistoryViewModel.CountUnresolved(HistoryViewModel.Build(Store.Detections, Store.Vault, Reviews));
             BuildStatus(status);
             ShowInfo(null);
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
+        else
         {
             IsConnected = false;
             ServiceState = $"Not connected to the {gateway.EndpointDescription}.";
             ConnectedAs = string.Empty;
             BuildDisconnected();
-            ShowError(ex);
+            ShowError(Store.Error ?? new InvalidOperationException("The service did not answer."));
         }
     }
 
@@ -278,20 +282,6 @@ public sealed class HomeViewModel(IServiceGateway gateway, IAppHost host) : Page
     private int _unresolvedConfirmed;
     private int _unresolvedSuspicious;
 
-    /// <summary>Findings neither quarantined nor kept, from the service's recent history; none when it cannot be read.</summary>
-    private async Task<(int Confirmed, int Suspicious)> CountFindingsAsync()
-    {
-        try
-        {
-            DetectionsReplyDto detections = await gateway.GetDetectionsAsync(500, CancellationToken.None);
-            QuarantineListReplyDto vault = await gateway.ListQuarantineAsync(CancellationToken.None);
-            return HistoryViewModel.CountUnresolved(HistoryViewModel.Build(detections.Items, vault.Items, Reviews));
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            return (0, 0);
-        }
-    }
 
     private void BuildDisconnected()
     {

@@ -22,7 +22,7 @@ public sealed class AppPreferences
         }
     }
 
-    /// <summary>Show desktop notifications for new background findings (default on).</summary>
+    /// <summary>Show informational notifications (scan results, external drives); critical ones are always shown (ADR 0021). Default on.</summary>
     public bool Notifications { get; private set; } = true;
 
     /// <summary>Scan USB drives, external disks and memory cards as soon as they are connected (default on).</summary>

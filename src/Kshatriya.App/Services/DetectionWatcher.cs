@@ -35,7 +35,17 @@ public sealed class DetectionWatcher(IServiceGateway gateway)
             return [];
         }
 
-        var timed = reply.Items
+        return Observe(reply.Items);
+    }
+
+    /// <summary>
+    /// Returns the background findings in <paramref name="items"/> that are newer than the last call (the shared
+    /// status store fetches them; ADR 0021). The first call only sets the starting point.
+    /// </summary>
+    public IReadOnlyList<DetectionRecordDto> Observe(IReadOnlyList<DetectionRecordDto> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        var timed = items
             .Select(item => (Item: item, Time: ParseTime(item.TimeUtc)))
             .Where(x => x.Time is not null)
             .Select(x => (x.Item, Time: x.Time!.Value))

@@ -11,10 +11,10 @@
       <TextBlock Text="This app" Style="{StaticResource SectionTitle}" AutomationProperties.HeadingLevel="Level2" />
       <Border Style="{StaticResource Surface}">
         <StackPanel>
-          <CheckBox IsChecked="{Binding Notifications}" AutomationProperties.Name="Show notifications">
+          <CheckBox IsChecked="{Binding Notifications}" AutomationProperties.Name="Show informational notifications">
             <StackPanel>
-              <TextBlock Text="Show notifications" FontWeight="SemiBold" />
-              <TextBlock Style="{StaticResource Secondary}" Text="When real-time monitoring, a scheduled scan or behaviour detection finds something while you work." />
+              <TextBlock Text="Show informational notifications" FontWeight="SemiBold" />
+              <TextBlock Style="{StaticResource Secondary}" Text="Scan results while Kshatriya is in the notification area, and external drives. Threats found in the background, the service stopping and a failed audit check are always shown." />
             </StackPanel>
           </CheckBox>
           <CheckBox IsChecked="{Binding ScanExternalDrives}" Margin="0,14,0,0" AutomationProperties.Name="Scan USB drives when connected">

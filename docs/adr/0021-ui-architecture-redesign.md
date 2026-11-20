@@ -266,3 +266,12 @@ settings file an administrator edits.
   - **Home:** unresolved findings now feed Home's status. Home's verdict shows the status's own action
     (Review, See updates, …), and the History item shows a count of findings that need a decision. The
     separate Detections, Quarantine and Actions log pages are gone.
+- **Slice 5 (2026-11-21):** `StatusStore` is the app's single poller (status, findings and quarantine
+  together). Home renders it, and the tray icon follows Home's verdict:
+  - an amber or red dot on the icon;
+  - the headline as the tooltip and the menu's first line;
+  - a Quick scan menu item.
+
+  `StatusAlerts` turns state changes into critical notifications: the service stopping (not during its
+  delayed start or while the app exits) and the audit log failing its check. Notifications follow
+  `NotificationPolicy`; ADR 0015 is amended accordingly.

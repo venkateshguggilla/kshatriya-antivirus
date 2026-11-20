@@ -29,6 +29,7 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
     private MainViewModel? _main;
     private DetectionWatcher? _watcher;
     private AppPreferences? _preferences;
+    private readonly StatusAlerts _alerts = new();
     private DispatcherTimer? _timer;
     private DispatcherTimer? _driveTimer;
     private DispatcherTimer? _reconnectTimer;
@@ -192,9 +193,24 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
         _gateway = gateway;
         _watcher = new DetectionWatcher(gateway);
         _driveScanner = new ExternalDriveScanner(gateway);
-        _tray = new TrayIcon(_preferences.Notifications, _preferences.ScanExternalDrives, () => ShowMainWindow(detections: false), SetNotificationsFromTray, SetScanDrivesFromTray, ExitApp, OpenBrowserExtensionFolder);
+        _tray = new TrayIcon(_preferences.Notifications, _preferences.ScanExternalDrives, () => ShowMainWindow(detections: false), QuickScanFromTray, SetNotificationsFromTray, SetScanDrivesFromTray, ExitApp, OpenBrowserExtensionFolder);
         _ = Task.Run(SyncBrowserExtension);
         _main.Scan.Session.Finished += OnScanFinished;
+        _main.Home.Store.Refreshed += OnStatusRefreshed;
+        _main.Home.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(HomeViewModel.Status))
+            {
+                UpdateTray();
+            }
+        };
+        _main.Scan.Session.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(ScanSession.IsRunning) or nameof(ScanSession.StatusLine))
+            {
+                UpdateTray();
+            }
+        };
         // Each notification decides what clicking it does (open Detections, or scan a newly attached drive).
         _tray.NotificationClicked += () => (_clickAction ?? (() => ShowMainWindow(detections: true)))();
         _timer = new DispatcherTimer { Interval = s_pollInterval };
@@ -257,6 +273,18 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
         {
             return false;
         }
+    }
+
+    /// <summary>The tray menu's Quick scan: show the app and start one.</summary>
+    private void QuickScanFromTray()
+    {
+        if (_main is null)
+        {
+            return;
+        }
+
+        ShowMainWindow(detections: false);
+        _main.Home.QuickScanCommand.Execute(null);
     }
 
     /// <summary>A scan finished while the window was hidden: say how it ended (ADR 0021 notification policy).</summary>
@@ -416,7 +444,7 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
                 : ConnectAction.Offer;
             foreach (DriveDescription drive in attached)
             {
-                if (_preferences.Notifications)
+                if (NotificationPolicy.ShouldNotify(NotificationCategory.ExternalDrive, Preferences(), appInForeground: false))
                 {
                     FindingNotice notice = ExternalDriveWatcher.Describe(drive, action);
                     _clickAction = action == ConnectAction.Offer ? () => ScanDrive(drive.Root) : () => ShowMainWindow(detections: false);
@@ -444,9 +472,10 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
         }
 
         FindingNotice result = await _driveScanner.ScanAsync(drive, CancellationToken.None);
-        if (_preferences.Notifications && !_exiting)
+        bool findings = result.IsThreat || result.Title.StartsWith("Suspicious", StringComparison.Ordinal);
+        NotificationCategory category = findings ? NotificationCategory.BackgroundFinding : NotificationCategory.ExternalDrive;
+        if (!_exiting && NotificationPolicy.ShouldNotify(category, Preferences(), appInForeground: false))
         {
-            bool findings = result.IsThreat || result.Title.StartsWith("Suspicious", StringComparison.Ordinal);
             _clickAction = () => ShowMainWindow(detections: findings);
             _tray.Notify(result.Title, result.Message, result.IsThreat);
         }
@@ -478,9 +507,10 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
         _ = _main.Scan.ScanDriveAsync(root);
     }
 
+    /// <summary>Refreshes the shared status (ADR 0021): Home, the tray icon and notifications all follow from it.</summary>
     private async Task PollAsync()
     {
-        if (_polling || _watcher is null || _tray is null || _preferences is null)
+        if (_polling || _main is null)
         {
             return;
         }
@@ -488,20 +518,65 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
         _polling = true;
         try
         {
-            IReadOnlyList<DetectionRecordDto> fresh = await _watcher.PollAsync(CancellationToken.None);
-            _tray.SetStatus(_watcher.ServiceReachable ? "Kshatriya Antivirus" : "Kshatriya Antivirus: service not reachable");
-            if (fresh.Count > 0 && _preferences.Notifications)
-            {
-                FindingNotice notice = DetectionWatcher.Describe(fresh);
-                _clickAction = () => ShowMainWindow(detections: true);
-                _tray.Notify(notice.Title, notice.Message, notice.IsThreat);
-            }
+            await _main.Home.RefreshCommand.ExecuteAsync(null);
         }
         finally
         {
             _polling = false;
         }
     }
+
+    /// <summary>After each status refresh: announce new background findings and critical state changes.</summary>
+    private void OnStatusRefreshed(StatusStore store)
+    {
+        if (_tray is null || _watcher is null || _main is null)
+        {
+            return;
+        }
+
+        if (store.Connected)
+        {
+            IReadOnlyList<DetectionRecordDto> fresh = _watcher.Observe(store.Detections);
+            if (fresh.Count > 0 && NotificationPolicy.ShouldNotify(NotificationCategory.BackgroundFinding, Preferences(), appInForeground: false))
+            {
+                FindingNotice notice = DetectionWatcher.Describe(fresh);
+                _clickAction = () => ShowMainWindow(detections: true);
+                _tray.Notify(notice.Title, notice.Message, notice.IsThreat);
+            }
+        }
+
+        bool starting = !store.Connected && _main.Home.ServiceStartingSource();
+        MainViewModel main = _main;
+        foreach (StatusAlert alert in _alerts.Observe(store.Connected, store.Status?.AuditChainValid, starting, _exiting))
+        {
+            if (NotificationPolicy.ShouldNotify(alert.Category, Preferences(), appInForeground: false))
+            {
+                _clickAction = alert.Category == NotificationCategory.AuditFailure
+                    ? () => { ShowMainWindow(detections: false); main.Perform(StatusActions.OpenHistory, this); }
+                    : () => ShowMainWindow(detections: false);
+                _tray.Notify(alert.Title, alert.Message, warning: true);
+            }
+        }
+    }
+
+    /// <summary>The tray icon and its tooltip follow Home's verdict.</summary>
+    private void UpdateTray()
+    {
+        if (_tray is null || _main is null)
+        {
+            return;
+        }
+
+        StatusSnapshot status = _main.Home.Status;
+        string text = _main.Scan.Session.IsRunning ? _main.Scan.Session.StatusLine : "Kshatriya Antivirus: " + status.Headline;
+        _tray.SetLevel(status.Level, text);
+    }
+
+    private NotificationPreferences Preferences() => new()
+    {
+        ScanResults = _preferences?.Notifications ?? true,
+        ExternalDrives = _preferences?.Notifications ?? true,
+    };
 }
 
 /// <summary>Standard Windows dialogs.</summary>

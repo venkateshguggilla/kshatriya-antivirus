@@ -47,3 +47,19 @@ Options considered for showing a notification from the per-user desktop app:
 - The service keeps its findings history in memory (500 entries); if more than that arrive between two polls,
   the oldest are not announced individually (the count is still shown).
 - No new dependency: Windows Forms ships with the .NET Windows desktop runtime the app already uses.
+
+## Amendment (2026-11-21): critical and informational notifications (ADR 0021)
+
+Notifications follow `NotificationPolicy` in `Kshatriya.Presentation`.
+
+- **Critical, always shown:**
+  - findings from background protection;
+  - the service stopping while the app was connected;
+  - the audit log failing its integrity check.
+- **Informational, behind the user's switch:** a finished scan while the window is hidden, and external
+  drives. The tray menu and Settings call the switch "Show informational notifications".
+- **Never shown:** "all clear" or promotional notifications.
+
+The app no longer polls findings separately. One `StatusStore` refresh every 15 seconds fetches status,
+findings and the quarantine list together. The notification-area icon shows the protection level with a
+small dot, and its tooltip and the menu's first line say it in words.
