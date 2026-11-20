@@ -87,8 +87,18 @@ internal static class Ui
         {
             avatar.Text = string.Empty;
             Drawable? drawable = context.GetDrawable(leading);
-            drawable?.SetTint(Color(context, colour));
-            avatar.SetCompoundDrawablesRelativeWithIntrinsicBounds(drawable, null, null, null);
+            if (context.Resources!.GetResourceTypeName(leading) == "mipmap")
+            {
+                // The logo keeps its own colours, at icon size.
+                drawable?.SetBounds(0, 0, Dp(context, 24), Dp(context, 24));
+                avatar.SetCompoundDrawablesRelative(drawable, null, null, null);
+            }
+            else
+            {
+                drawable?.SetTint(Color(context, colour));
+                avatar.SetCompoundDrawablesRelativeWithIntrinsicBounds(drawable, null, null, null);
+            }
+
             avatar.SetPadding(Dp(context, 8), 0, 0, 0);
         }
         else

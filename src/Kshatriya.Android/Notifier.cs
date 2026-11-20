@@ -66,7 +66,7 @@ internal static class Notifier
         open.SetFlags(ActivityFlags.NewTask | ActivityFlags.ClearTop);
         PendingIntent? tap = PendingIntent.GetActivity(context, 0, open, PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent);
         Notification notification = new Notification.Builder(context, channel)
-            .SetSmallIcon(Resource.Drawable.ic_shield)
+            .SetSmallIcon(Resource.Mipmap.appicon) // the Kshatriya logo, as before the redesign
             .SetContentTitle(title)
             .SetContentText(text)
             .SetStyle(new Notification.BigTextStyle().BigText(text))

@@ -425,7 +425,7 @@ public sealed class MainActivity : AppCompatActivity
         list.AddView(Ui.Row(list, new RowItem("Notifications", notifications ? "Allowed: you hear about risky new apps." : "Off: you only see findings when you open Kshatriya.", notifications ? ResultTone.Info : ResultTone.Warn, Icon: Resource.Drawable.ic_bell), OpenNotificationSettings));
 
         Section(list, "About");
-        list.AddView(Ui.Row(list, new RowItem("Kshatriya Antivirus · prototype", "Version " + (PackageManager!.GetPackageInfo(PackageName!, 0)?.VersionName ?? "?") + ". Not a replacement for Google Play Protect or any commercial antivirus.", ResultTone.Info, Icon: Resource.Drawable.ic_shield)));
+        list.AddView(Ui.Row(list, new RowItem("Kshatriya Antivirus · prototype", "Version " + (PackageManager!.GetPackageInfo(PackageName!, 0)?.VersionName ?? "?") + ". Not a replacement for Google Play Protect or any commercial antivirus.", ResultTone.Info, Icon: Resource.Mipmap.appicon)));
         list.AddView(Ui.Row(list, new RowItem("Privacy", "Checks run on this phone. Nothing about your apps or files is sent anywhere. With automatic updates on, the update server sees your IP address.", ResultTone.Info, Icon: Resource.Drawable.ic_lock)));
         list.AddView(Ui.Row(list, new RowItem("Show the introduction again", string.Empty, ResultTone.Info, Icon: Resource.Drawable.ic_history), () => ShowOnboarding(0)));
     }
@@ -917,7 +917,7 @@ public sealed class MainActivity : AppCompatActivity
 
         (int icon, string title, string body, string note, string primary, string? secondary) = step switch
         {
-            0 => (Resource.Drawable.ic_shield, "Welcome to Kshatriya",
+            0 => (Resource.Mipmap.appicon, "Welcome to Kshatriya",
                 "Kshatriya checks your installed apps and the files you choose against known threats, including stalkerware. It works alongside Google Play Protect: keep Play Protect on.",
                 "Checks run on this phone. Nothing about your apps or files is sent anywhere.",
                 "Continue", (string?)null),
@@ -933,7 +933,12 @@ public sealed class MainActivity : AppCompatActivity
         int total = OperatingSystem.IsAndroidVersionAtLeast(33) ? 3 : 2;
         int shown = step == 2 && total == 2 ? 2 : step + 1;
         overlay.FindViewById<TextView>(Resource.Id.onboarding_step)!.Text = $"Step {shown} of {total}";
-        overlay.FindViewById<ImageView>(Resource.Id.onboarding_icon)!.SetImageResource(icon);
+        var iconView = overlay.FindViewById<ImageView>(Resource.Id.onboarding_icon)!;
+        iconView.SetImageResource(icon);
+        // The welcome step shows the Kshatriya logo in its own colours; the other steps use tinted symbols.
+        iconView.ImageTintList = step == 0
+            ? null
+            : Android.Content.Res.ColorStateList.ValueOf(new Android.Graphics.Color(MaterialColors.GetColor(overlay, Resource.Attribute.colorOnPrimaryContainer)));
         overlay.FindViewById<TextView>(Resource.Id.onboarding_title)!.Text = title;
         overlay.FindViewById<TextView>(Resource.Id.onboarding_body)!.Text = body;
         overlay.FindViewById<TextView>(Resource.Id.onboarding_note)!.Text = note;
