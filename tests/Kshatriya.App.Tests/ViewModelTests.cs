@@ -1,4 +1,4 @@
-using Kshatriya.App.Services;
+﻿using Kshatriya.App.Services;
 using Kshatriya.App.ViewModels;
 using Kshatriya.Core;
 using Kshatriya.Protocol;
@@ -156,6 +156,59 @@ internal sealed class FakeGateway : IServiceGateway
         return Task.FromResult(new ContentImportReplyDto { Succeeded = true, Code = "none", Sequence = 43, ExpiresUtc = "2026-12-31T00:00:00Z" });
     }
 
+    public List<PostureCheckDto> Posture { get; } =
+    [
+        new() { Id = "uac.adminPrompt", Area = "installs", State = "attention", Title = "Installs need only a click", Detail = "Require the password.", Fix = "uac.credentialPrompt", FixApplied = false },
+        new() { Id = "asr.usb", Area = "usb", State = "info", Title = "Block unsigned programs on USB drives: audit only", Detail = "Recording.", Fix = "asr.usb", FixApplied = true },
+        new() { Id = "network.smb1", Area = "network", State = "ok", Title = "SMBv1 is off", Detail = "Fine.", FixApplied = false },
+        new() { Id = "network.firewall.public", Area = "network", State = "risk", Title = "Firewall is off for Public networks", Detail = "Turn it on.", FixApplied = false },
+    ];
+
+    public Task<PostureReplyDto> GetPostureAsync(CancellationToken cancellationToken)
+    {
+        ThrowIfFailing();
+        return Task.FromResult(new PostureReplyDto { CheckedUtc = "2026-11-21T10:00:00Z", Checks = [.. Posture] });
+    }
+
+    public Task<OperationReplyDto> HardenAsync(string fix, bool undo, bool block, CancellationToken cancellationToken)
+    {
+        ThrowIfFailing();
+        Calls.Add($"harden:{fix}:{(undo ? "undo" : block ? "block" : "apply")}");
+        return Task.FromResult(new OperationReplyDto { Succeeded = true, Code = "none", Message = "Done." });
+    }
+
+    public DeviceLockReplyDto Lock { get; set; } = new() { Enabled = false, PasswordSet = false, State = "off", RetryAfterSeconds = 0, Drives = [] };
+
+    public Task<DeviceLockReplyDto> GetDeviceLockAsync(CancellationToken cancellationToken)
+    {
+        ThrowIfFailing();
+        return Task.FromResult(Lock);
+    }
+
+    public Task<OperationReplyDto> UnlockDeviceAsync(string id, string password, CancellationToken cancellationToken)
+    {
+        ThrowIfFailing();
+        Calls.Add($"unlock:{id}");
+        bool ok = password == "correct horse";
+        return Task.FromResult(new OperationReplyDto { Succeeded = ok, Code = ok ? "none" : "wrongPassword", Message = ok ? "Unlocked." : "Wrong password." });
+    }
+
+    public Task<OperationReplyDto> ConfigureDeviceLockAsync(bool enabled, CancellationToken cancellationToken)
+    {
+        ThrowIfFailing();
+        Calls.Add($"lock:{enabled}");
+        Lock = new DeviceLockReplyDto { Enabled = enabled, PasswordSet = Lock.PasswordSet, State = enabled ? "on" : "off", RetryAfterSeconds = 0, Drives = [] };
+        return Task.FromResult(new OperationReplyDto { Succeeded = true, Code = "none", Message = enabled ? "On." : "Off." });
+    }
+
+    public Task<OperationReplyDto> SetPasswordAsync(string newPassword, string? currentPassword, CancellationToken cancellationToken)
+    {
+        ThrowIfFailing();
+        Calls.Add("password");
+        Lock = new DeviceLockReplyDto { Enabled = Lock.Enabled, PasswordSet = true, State = Lock.State, RetryAfterSeconds = 0, Drives = Lock.Drives };
+        return Task.FromResult(new OperationReplyDto { Succeeded = true, Code = "none", Message = "Set." });
+    }
+
     private void ThrowIfFailing()
     {
         if (Failure is not null)
@@ -188,11 +241,16 @@ internal sealed class FakeDialogs : IDialogs
         Confirmations++;
         return Answer;
     }
+
+    /// <summary>Returned by <see cref="AskPassword"/> (null: cancelled).</summary>
+    public string? Password { get; set; }
+
+    public string? AskPassword(string title, string message, bool confirm) => Password;
 }
 
 internal sealed class FakeHost : IAppHost
 {
-    public bool IsElevated => false;
+    public bool IsElevated { get; set; }
 
     public bool Restarted { get; private set; }
 

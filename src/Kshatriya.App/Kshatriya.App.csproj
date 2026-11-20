@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Kshatriya.Runtime\Kshatriya.Runtime.csproj" />
     <ProjectReference Include="..\Kshatriya.Presentation\Kshatriya.Presentation.csproj" />
+    <ProjectReference Include="..\Kshatriya.Posture\Kshatriya.Posture.csproj" />
     <PackageReference Include="System.Management" />
   </ItemGroup>
   <ItemGroup>

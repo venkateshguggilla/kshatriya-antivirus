@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using Kshatriya.App.Infrastructure;
 using Kshatriya.App.Services;
 using Kshatriya.Presentation;
@@ -25,7 +25,7 @@ public sealed class MainViewModel : ObservableObject
             scan.Choice = ScanChoice.Quick;
             scan.QuickScanCommand.Execute(null);
         };
-        Protection = new ProtectionViewModel(gateway, host);
+        Protection = new ProtectionViewModel(gateway, host, dialogs);
         History = new HistoryViewModel(gateway, dialogs, host, reviews);
         Updates = new UpdatesViewModel(gateway, dialogs);
         Settings = new SettingsViewModel(settings ?? new InMemorySettings(), host, new ExclusionsViewModel(gateway, dialogs) { IsEmbedded = true });

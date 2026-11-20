@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.Security.Principal;
 using System.Windows;
@@ -40,6 +40,9 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
     private bool _polling;
     private bool _checkingDrives;
     private bool _exiting;
+    private bool _lockEnabled;
+    private bool _checkingLock;
+    private readonly HashSet<string> _promptedDrives = new(StringComparer.OrdinalIgnoreCase);
 
     public bool IsElevated { get; } = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
 
@@ -218,7 +221,11 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
         _timer.Start();
         _ = PollAsync(); // sets the starting point, so older findings are not announced
         _driveTimer = new DispatcherTimer { Interval = s_driveInterval };
-        _driveTimer.Tick += async (_, _) => await CheckDrivesAsync();
+        _driveTimer.Tick += async (_, _) =>
+        {
+            await CheckDrivesAsync();
+            await CheckLockedDrivesAsync(force: false);
+        };
         _driveTimer.Start();
         _ = CheckDrivesAsync(); // records the drives already connected
         // While the window shows the service as unreachable (for example during its delayed start after
@@ -519,10 +526,74 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
         try
         {
             await _main.Home.RefreshCommand.ExecuteAsync(null);
+            await CheckLockedDrivesAsync(force: true);
         }
         finally
         {
             _polling = false;
+        }
+    }
+
+    /// <summary>
+    /// USB drive lock (ADR 0023): when the service has locked a newly connected drive, ask for the Kshatriya
+    /// password at once (a dialog on top of other windows, plus a notification). Checked every few seconds while
+    /// the lock is on, and with each status refresh otherwise.
+    /// </summary>
+    private async Task CheckLockedDrivesAsync(bool force)
+    {
+        if (_checkingLock || _gateway is null || _exiting || (!force && !_lockEnabled))
+        {
+            return;
+        }
+
+        _checkingLock = true;
+        try
+        {
+            DeviceLockReplyDto status = await _gateway.GetDeviceLockAsync(CancellationToken.None);
+            _lockEnabled = status.Enabled;
+            var locked = status.Drives.Where(d => d.State == "locked").ToList();
+            _promptedDrives.IntersectWith(locked.Select(d => d.Id));
+            foreach (LockedDriveDto drive in locked.Where(d => _promptedDrives.Add(d.Id)))
+            {
+                await PromptUnlockAsync(drive);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // The service is not reachable or does not know the lock yet; try again on the next tick.
+        }
+        finally
+        {
+            _checkingLock = false;
+        }
+    }
+
+    private async Task PromptUnlockAsync(LockedDriveDto drive)
+    {
+        // Always shown: a locked drive is something the user is waiting for, not an informational notice.
+        _tray?.Notify("USB drive locked", $"{drive.Name} stays locked until the Kshatriya password is entered.", warning: true);
+        _clickAction = () => ShowMainWindow(detections: false);
+        string message = $"{drive.Name} was connected. Enter the Kshatriya password to use it, or cancel to keep it locked. You can unlock it later on the Protection page.";
+        while (!_exiting)
+        {
+            string? password = PasswordDialog.Ask(MainWindow, "Unlock USB drive", message, confirm: false);
+            if (password is null || _gateway is null)
+            {
+                return;
+            }
+
+            OperationReplyDto reply = await _gateway.UnlockDeviceAsync(drive.Id, password, CancellationToken.None);
+            if (reply.Succeeded || reply.Code == "notFound")
+            {
+                if (_main?.Current == _main?.Protection)
+                {
+                    _ = _main!.Protection.RefreshCommand.ExecuteAsync(null);
+                }
+
+                return;
+            }
+
+            message = (reply.Message ?? "The drive could not be unlocked.") + $" {drive.Name} is still locked.";
         }
     }
 
@@ -608,4 +679,7 @@ internal sealed class WpfDialogs : IDialogs
         var dialog = new OpenFileDialog { Title = "Choose a signed update", Filter = "Kshatriya update (*.kstu)|*.kstu" };
         return dialog.ShowDialog(Application.Current.MainWindow) == true ? dialog.FileName : null;
     }
+
+    public string? AskPassword(string title, string message, bool confirm) =>
+        PasswordDialog.Ask(Application.Current.MainWindow, title, message, confirm);
 }

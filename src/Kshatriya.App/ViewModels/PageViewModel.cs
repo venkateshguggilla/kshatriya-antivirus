@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Globalization;
 using Kshatriya.App.Infrastructure;
 using Kshatriya.App.Services;
@@ -18,6 +18,9 @@ public interface IDialogs
 
     /// <summary>Asks for a signed content update package (.kstu); null when cancelled.</summary>
     string? PickUpdatePackage();
+
+    /// <summary>Asks for a password (twice when <paramref name="confirm"/>); null when cancelled or the two differ.</summary>
+    string? AskPassword(string title, string message, bool confirm);
 }
 
 /// <summary>Process-level actions: restart elevated, open Windows Security, open the browser extension folder.</summary>
@@ -143,6 +146,13 @@ public abstract class PageViewModel : ObservableObject
     {
         IsError = true;
         Message = ErrorText.Describe(ex);
+    }
+
+    /// <summary>Shows a refusal or failure the service explained in words.</summary>
+    protected void ShowError(string text)
+    {
+        IsError = true;
+        Message = text;
     }
 
     protected void ShowInfo(string? text)

@@ -1,4 +1,4 @@
-using Kshatriya.Core;
+﻿using Kshatriya.Core;
 using Kshatriya.Protocol;
 using Kshatriya.Runtime.Ipc;
 
@@ -36,6 +36,21 @@ public interface IServiceGateway
 
     /// <summary>Asks the service to verify and install a signed content package; it reads the file as the caller.</summary>
     Task<ContentImportReplyDto> ImportContentAsync(string packagePath, CancellationToken cancellationToken);
+
+    /// <summary>Runs the read-only security check (ADR 0022).</summary>
+    Task<PostureReplyDto> GetPostureAsync(CancellationToken cancellationToken);
+
+    /// <summary>Applies or undoes a hardening fix; needs an elevated administrator.</summary>
+    Task<OperationReplyDto> HardenAsync(string fix, bool undo, bool block, CancellationToken cancellationToken);
+
+    /// <summary>The USB drive lock and the drives it knows (ADR 0023).</summary>
+    Task<DeviceLockReplyDto> GetDeviceLockAsync(CancellationToken cancellationToken);
+
+    Task<OperationReplyDto> UnlockDeviceAsync(string id, string password, CancellationToken cancellationToken);
+
+    Task<OperationReplyDto> ConfigureDeviceLockAsync(bool enabled, CancellationToken cancellationToken);
+
+    Task<OperationReplyDto> SetPasswordAsync(string newPassword, string? currentPassword, CancellationToken cancellationToken);
 }
 
 /// <summary>Talks to the service over its authenticated pipe; one connection per operation.</summary>
@@ -89,6 +104,24 @@ public sealed class ServiceGateway(ServiceEndpoint endpoint, string description)
 
     public Task<ContentImportReplyDto> ImportContentAsync(string packagePath, CancellationToken cancellationToken) =>
         WithClient(c => c.ImportContentAsync(packagePath, cancellationToken), cancellationToken);
+
+    public Task<PostureReplyDto> GetPostureAsync(CancellationToken cancellationToken) =>
+        WithClient(c => c.GetPostureAsync(cancellationToken), cancellationToken);
+
+    public Task<OperationReplyDto> HardenAsync(string fix, bool undo, bool block, CancellationToken cancellationToken) =>
+        WithClient(c => c.HardenAsync(fix, undo, block, cancellationToken), cancellationToken);
+
+    public Task<DeviceLockReplyDto> GetDeviceLockAsync(CancellationToken cancellationToken) =>
+        WithClient(c => c.GetDeviceLockAsync(cancellationToken), cancellationToken);
+
+    public Task<OperationReplyDto> UnlockDeviceAsync(string id, string password, CancellationToken cancellationToken) =>
+        WithClient(c => c.UnlockDeviceAsync(id, password, cancellationToken), cancellationToken);
+
+    public Task<OperationReplyDto> ConfigureDeviceLockAsync(bool enabled, CancellationToken cancellationToken) =>
+        WithClient(c => c.ConfigureDeviceLockAsync(enabled, cancellationToken), cancellationToken);
+
+    public Task<OperationReplyDto> SetPasswordAsync(string newPassword, string? currentPassword, CancellationToken cancellationToken) =>
+        WithClient(c => c.SetPasswordAsync(newPassword, currentPassword, cancellationToken), cancellationToken);
 
     private Task<ServiceClient> ConnectAsync(CancellationToken cancellationToken) =>
         ServiceClient.ConnectAsync(endpoint, $"kshatriya-app/{AppInfo.Version}", s_connectTimeout, cancellationToken);
