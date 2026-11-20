@@ -63,6 +63,28 @@
 
 Scans without `--quarantine` (and the service without quarantine requests or schedules) **never modify, move or delete files**.
 
+## Android (prototype)
+
+An early Android app ([ADR 0020](docs/adr/0020-android-prototype.md)) runs alongside Google Play Protect.
+It compares installed apps (their APK files), and files or folders you pick, with known threats by exact
+SHA-256, checks new and updated apps about every 15 minutes in the background, and imports signed
+content packages with the same verification as on Windows. It reports only: tapping an app finding opens
+Android's app details, where you can uninstall it. It has no real-time file protection, parses no file
+formats and has no web protection yet. Only the EICAR test signature is built in, so it detects real
+threats only once a signed update with real APK fingerprints is imported.
+
+Building it needs the .NET `android` workload (`dotnet workload install android`), the Android SDK and
+**JDK 21** (the .NET Android tools do not support the JDK 25 that Android Studio bundles):
+
+```powershell
+dotnet publish src/Kshatriya.Android -c Release -p:RuntimeIdentifier=android-arm64 -p:AndroidPackageFormat=apk -p:JavaSdkDirectory=<JDK 21 folder>
+```
+
+Use `android-x64` for the emulator. Install the `*-Signed.apk` from `bin/Release/net10.0-android/<runtime>/publish`
+with `adb install`. A Debug build cannot be installed that way: it keeps the code outside the APK (Fast
+Deployment) and needs `dotnet build -t:Run`. The APK is signed with the .NET debug key; Play Store
+publishing and a release key are open owner decisions.
+
 ## Build and test
 
 Requirements: Windows 10 22H2 or Windows 11 (x64), .NET SDK 10.0.100 or later (pinned in [global.json](global.json)).
@@ -241,6 +263,8 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 | `src/Kshatriya.Cli` | `kshatriya` command-line tool |
 | `src/Kshatriya.BrowserHost` | Native messaging helper for the browser extension (asks the service to scan downloads) |
 | `extension/` | Edge and Chrome extension (Manifest V3, no build step); tests in `tests/extension` |
+| `src/Kshatriya.Mobile` | Platform-independent logic of the Android app: SHA-256 scanner, signed content store, wording |
+| `src/Kshatriya.Android` | Android app (prototype, .NET for Android; not in `Kshatriya.slnx`) |
 | `tests/` | xUnit tests (shared helpers in `tests/Shared`) |
 | `docs/` | [Architecture](docs/architecture.md), [threat model](docs/threat-model.md), [ADRs](docs/adr), [schemas](docs/schemas) |
 | `tools/Kshatriya.ContentTool` | `kshatriya-content`: signing keys and content packages |

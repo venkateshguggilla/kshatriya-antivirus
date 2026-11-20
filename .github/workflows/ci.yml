@@ -64,3 +64,28 @@ jobs:
           path: |
             TestResults
             artifacts/release-gates.json
+
+  android:
+    # Android prototype (ADR 0020). Kept out of Kshatriya.slnx because it needs the android workload.
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '21'
+
+      - name: Install the .NET Android workload
+        run: dotnet workload install android
+
+      - name: Build the Android app (warnings are errors)
+        shell: pwsh
+        run: dotnet build src/Kshatriya.Android -c Release "-p:JavaSdkDirectory=$env:JAVA_HOME" "-p:AndroidSdkDirectory=$env:ANDROID_SDK_ROOT"

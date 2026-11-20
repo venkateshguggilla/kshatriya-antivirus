@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Kshatriya.Mobile</RootNamespace>
+    <!-- Used by the Android app, which is trimmed: keep this library trim-safe. -->
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Kshatriya.Engines.Hash\Kshatriya.Engines.Hash.csproj" />
+    <ProjectReference Include="..\Kshatriya.Updates\Kshatriya.Updates.csproj" />
+  </ItemGroup>
+</Project>

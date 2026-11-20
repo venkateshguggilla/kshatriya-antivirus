@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Android prototype (ADR 0020). Needs the .NET "android" workload, so it is not in Kshatriya.slnx;
+       build it with: dotnet build src/Kshatriya.Android -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Kshatriya.AndroidApp</RootNamespace>
+    <ApplicationId>com.kshatriya.antivirus</ApplicationId>
+    <ApplicationTitle>Kshatriya</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <!-- Local defaults: Android Studio's SDK, and JDK 21 (the .NET Android tools do not support the JDK 25
+         that Android Studio bundles). Set JavaSdkDirectory to use another JDK 21; CI passes its own. -->
+    <AndroidSdkDirectory Condition="'$(AndroidSdkDirectory)' == '' and Exists('$(LOCALAPPDATA)\Android\Sdk')">$(LOCALAPPDATA)\Android\Sdk</AndroidSdkDirectory>
+    <JavaSdkDirectory Condition="'$(JavaSdkDirectory)' == '' and Exists('$(LOCALAPPDATA)\Kshatriya\jdk\jdk-21.0.13.1+2')">$(LOCALAPPDATA)\Kshatriya\jdk\jdk-21.0.13.1+2</JavaSdkDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Kshatriya.Mobile\Kshatriya.Mobile.csproj" />
+  </ItemGroup>
+</Project>
