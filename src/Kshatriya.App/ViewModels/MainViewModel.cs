@@ -31,6 +31,21 @@ public sealed class MainViewModel : ObservableObject
         Updates = new UpdatesViewModel(gateway, dialogs);
         Settings = new SettingsViewModel(settings ?? new InMemorySettings(), host, new ExclusionsViewModel(gateway, dialogs) { IsEmbedded = true });
         About = new AboutViewModel(gateway);
+        Scan.Session.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(ScanSession.IsRunning) or nameof(ScanSession.StatusLine))
+            {
+                OnPropertyChanged(nameof(ShowScanStrip));
+            }
+        };
+        Scan.Session.Finished += s =>
+        {
+            if (s.Report is { } report)
+            {
+                Home.LastScanAccessDenied = ScanViewModel.CountAccessDenied(report);
+            }
+        };
+        OpenScanCommand = new RelayCommand(_ => Current = Scan);
         Pages = [Home, Scan, Protection, History, Updates];
         FooterPages = [Settings, About];
         _current = Home;
@@ -68,6 +83,12 @@ public sealed class MainViewModel : ObservableObject
 
     public ExclusionsViewModel Exclusions => Settings.Exclusions;
 
+    /// <summary>A scan is running and another page is shown: the shell shows a strip with its progress.</summary>
+    public bool ShowScanStrip => Scan.Session.IsRunning && !ReferenceEquals(Current, Scan);
+
+    /// <summary>Opens the Scan page (the strip's View button).</summary>
+    public RelayCommand OpenScanCommand { get; }
+
     /// <summary>Opens History on its findings tab (for example from a notification).</summary>
     public void ShowDetections()
     {
@@ -86,6 +107,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (value is not null && Set(ref _current, value))
             {
+                OnPropertyChanged(nameof(ShowScanStrip));
                 value.RefreshCommand.Execute(null);
             }
         }

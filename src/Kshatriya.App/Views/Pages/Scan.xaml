@@ -95,10 +95,31 @@
 
       <!-- In progress -->
       <Border Style="{StaticResource Surface}" Margin="0,20,0,0" Visibility="{Binding IsScanning, Converter={StaticResource BoolToVisibility}}">
-        <StackPanel>
-          <TextBlock Text="Scanning…" FontWeight="SemiBold" />
-          <ProgressBar Style="{StaticResource LoadingBar}" Margin="0,10,0,10" AutomationProperties.Name="Scan in progress" />
-          <TextBlock Text="{Binding Progress}" Style="{StaticResource Secondary}" AutomationProperties.LiveSetting="Polite" />
+        <StackPanel DataContext="{Binding Session}">
+          <TextBlock FontWeight="SemiBold" FontSize="16" AutomationProperties.HeadingLevel="Level2">
+            <Run Text="{Binding Label, Mode=OneWay}" /><Run Text=" in progress" />
+          </TextBlock>
+          <ProgressBar Style="{StaticResource LoadingBar}" Margin="0,10,0,14" AutomationProperties.Name="Scan in progress" />
+          <UniformGrid Columns="4" AutomationProperties.Name="Scan counters" AutomationProperties.LiveSetting="Polite">
+            <StackPanel>
+              <TextBlock Text="{Binding ItemsChecked, StringFormat={}{0:N0}}" FontSize="20" FontWeight="SemiBold" />
+              <TextBlock Text="items checked" Style="{StaticResource Caption}" />
+            </StackPanel>
+            <StackPanel>
+              <TextBlock Text="{Binding Findings, StringFormat={}{0:N0}}" FontSize="20" FontWeight="SemiBold" />
+              <TextBlock Text="findings" Style="{StaticResource Caption}" />
+            </StackPanel>
+            <StackPanel>
+              <TextBlock Text="{Binding MiBRead, StringFormat={}{0:N1}}" FontSize="20" FontWeight="SemiBold" />
+              <TextBlock Text="MiB read" Style="{StaticResource Caption}" />
+            </StackPanel>
+            <StackPanel>
+              <TextBlock Text="{Binding ElapsedText}" FontSize="20" FontWeight="SemiBold" />
+              <TextBlock Text="elapsed" Style="{StaticResource Caption}" />
+            </StackPanel>
+          </UniformGrid>
+          <TextBlock Text="You can leave this page: the scan keeps running and Scan shows a dot until it finishes. Closing Kshatriya stops it."
+                     Style="{StaticResource Caption}" Margin="0,14,0,0" TextWrapping="Wrap" />
         </StackPanel>
       </Border>
 
@@ -114,16 +135,48 @@
         </DockPanel>
       </Border>
 
-      <DataGrid ItemsSource="{Binding Results}" Style="{StaticResource ResultGrid}" MaxHeight="440" AutomationProperties.Name="Scan results"
+      <!-- Findings grouped by what the user has to do (ADR 0021). -->
+      <StackPanel Visibility="{Binding NeedsDecision.Count, Converter={x:Static vm:Converters.NonZeroToVisible}}">
+        <TextBlock Text="Needs your decision" Style="{StaticResource SectionTitle}" AutomationProperties.HeadingLevel="Level2" />
+        <TextBlock Text="Flagged by heuristics, not confirmed. Kshatriya never acts on these by itself; review them in History." Style="{StaticResource Caption}" Margin="0,0,0,8" TextWrapping="Wrap" />
+        <ItemsControl ItemsSource="{Binding NeedsDecision}" ItemTemplate="{StaticResource FindingCardTemplate}" AutomationProperties.Name="Suspicious items" Focusable="False" />
+      </StackPanel>
+      <StackPanel Visibility="{Binding Threats.Count, Converter={x:Static vm:Converters.NonZeroToVisible}}">
+        <TextBlock Text="Threats" Style="{StaticResource SectionTitle}" AutomationProperties.HeadingLevel="Level2" />
+        <ItemsControl ItemsSource="{Binding Threats}" ItemTemplate="{StaticResource FindingCardTemplate}" AutomationProperties.Name="Detected threats" Focusable="False" />
+      </StackPanel>
+
+      <!-- Not scanned: always reported, grouped by reason with what to do. -->
+      <Expander Margin="0,20,0,0" Visibility="{Binding NotScannedTotal, Converter={x:Static vm:Converters.NonZeroToVisible}}"
+                AutomationProperties.Name="Items that were not scanned">
+        <Expander.Header>
+          <TextBlock FontWeight="SemiBold"><Run Text="{Binding NotScannedTotal, Mode=OneWay, StringFormat={}{0:N0}}" /><Run Text=" item(s) were not scanned" /></TextBlock>
+        </Expander.Header>
+        <ItemsControl ItemsSource="{Binding NotScanned}" Margin="4,8,0,0" Focusable="False">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Margin="0,0,0,10">
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding Hint}" Style="{StaticResource Secondary}"
+                           Visibility="{Binding Hint, Converter={x:Static vm:Converters.NotEmptyToVisibility}}" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Expander>
+
+      <Expander Header="All listed items" Margin="0,12,0,0" AutomationProperties.Name="All listed items"
                 Visibility="{Binding Results.Count, Converter={x:Static vm:Converters.NonZeroToVisible}}">
-        <DataGrid.Columns>
-          <DataGridTemplateColumn Header="" Width="36" CellTemplate="{StaticResource ToneCell}" />
-          <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
-          <DataGridTextColumn Header="File" Binding="{Binding Path}" Width="3*" />
-          <DataGridTextColumn Header="Details" Binding="{Binding Detail}" Width="2*" />
-          <DataGridTextColumn Header="Action" Binding="{Binding Action}" Width="120" />
-        </DataGrid.Columns>
-      </DataGrid>
+        <DataGrid ItemsSource="{Binding Results}" Style="{StaticResource ResultGrid}" MaxHeight="440" Margin="0,8,0,0" AutomationProperties.Name="Scan results">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="" Width="36" CellTemplate="{StaticResource ToneCell}" />
+            <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
+            <DataGridTextColumn Header="File" Binding="{Binding Path}" Width="3*" />
+            <DataGridTextColumn Header="Details" Binding="{Binding Detail}" Width="2*" />
+            <DataGridTextColumn Header="Action" Binding="{Binding Action}" Width="120" />
+          </DataGrid.Columns>
+        </DataGrid>
+      </Expander>
     </StackPanel>
   </DataTemplate>
 </ResourceDictionary>

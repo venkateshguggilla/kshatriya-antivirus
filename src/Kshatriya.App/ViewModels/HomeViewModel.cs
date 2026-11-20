@@ -236,6 +236,7 @@ public sealed class HomeViewModel(IServiceGateway gateway, IAppHost host) : Page
             ContentSequence = c.Sequence,
             ContentExpired = c.Expired,
             ContentExpiresUtc = DateTimeOffset.TryParse(c.ExpiresUtc, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTimeOffset expires) ? expires : null,
+            LastScanAccessDenied = LastScanAccessDenied,
             Dismissed = Dismissed,
             Now = Clock(),
         }));
@@ -244,6 +245,9 @@ public sealed class HomeViewModel(IServiceGateway gateway, IAppHost host) : Page
 
     /// <summary>The current time (tests replace it).</summary>
     public Func<DateTimeOffset> Clock { get; set; } = () => DateTimeOffset.UtcNow;
+
+    /// <summary>Items the last user scan could not read for lack of rights (set by the scan session).</summary>
+    public int LastScanAccessDenied { get; set; }
 
     private void BuildDisconnected()
     {

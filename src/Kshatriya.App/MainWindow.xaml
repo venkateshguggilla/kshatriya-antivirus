@@ -65,9 +65,22 @@
       </DockPanel>
     </Border>
 
-    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
-      <ContentControl x:Name="PageHost" Content="{Binding Current}" Focusable="False"
-                      Margin="{StaticResource PagePadding}" MaxWidth="{StaticResource ContentMaxWidth}" HorizontalAlignment="Stretch" />
-    </ScrollViewer>
+    <DockPanel Grid.Column="1">
+      <!-- A scan keeps running while another page is shown (ADR 0021): a slim strip says so. -->
+      <Border DockPanel.Dock="Top" Background="{DynamicResource LayerFillColorDefaultBrush}"
+              BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Padding="20,8"
+              Visibility="{Binding ShowScanStrip, Converter={StaticResource BoolToVisibility}}"
+              AutomationProperties.Name="Scan running">
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Content="View" Command="{Binding OpenScanCommand}" Style="{StaticResource SecondaryButton}" Margin="12,0,0,0" />
+          <ProgressBar DockPanel.Dock="Left" Style="{StaticResource LoadingBar}" Width="48" Margin="0,0,12,0" VerticalAlignment="Center" AutomationProperties.Name="Scan in progress" />
+          <TextBlock Text="{Binding Scan.Session.StatusLine}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" AutomationProperties.LiveSetting="Polite" />
+        </DockPanel>
+      </Border>
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+        <ContentControl x:Name="PageHost" Content="{Binding Current}" Focusable="False"
+                        Margin="{StaticResource PagePadding}" MaxWidth="{StaticResource ContentMaxWidth}" HorizontalAlignment="Stretch" />
+      </ScrollViewer>
+    </DockPanel>
   </Grid>
 </Window>

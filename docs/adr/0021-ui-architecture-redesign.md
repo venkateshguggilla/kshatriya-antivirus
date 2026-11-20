@@ -250,3 +250,9 @@ settings file an administrator edits.
     extension and Exclusions.
   - A page shown inside another page gets a level-2 heading.
   - View models and page templates are one file per page.
+- **Slice 3 (2026-11-21):** `ScanSession` owns the user's scan and its live counters and outcome.
+  - While a scan runs on another page, the shell shows a strip with a View button.
+  - A scan that ends while the window is hidden is notified through `NotificationPolicy`.
+  - Results group findings into "Needs your decision" (suspicious) and "Threats" cards. Items that were not
+    scanned are grouped by reason with what to do, and the full table moves into an expander.
+  - The last scan's access-denied count feeds Home's status.

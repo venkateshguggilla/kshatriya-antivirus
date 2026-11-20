@@ -221,6 +221,24 @@
     </DataTemplate.Triggers>
   </DataTemplate>
 
+  <!-- A finding as a card (scan results): status icon, name and badge, path, why, and what happened. -->
+  <DataTemplate x:Key="FindingCardTemplate">
+    <Border Style="{StaticResource Surface}" Margin="0,0,0,8" Padding="18,14">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Left" Style="{StaticResource ToneGlyph}" Tag="{Binding Tone}" FontSize="18" Margin="0,1,14,0" VerticalAlignment="Top" />
+        <StackPanel>
+          <WrapPanel>
+            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="0,0,10,0" />
+            <TextBlock Text="{Binding Badge}" Style="{StaticResource Caption}" VerticalAlignment="Center" />
+          </WrapPanel>
+          <TextBlock Text="{Binding Path}" FontFamily="Consolas" TextWrapping="Wrap" Margin="0,4,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+          <TextBlock Text="{Binding Why}" Style="{StaticResource Secondary}" Margin="0,4,0,0" />
+          <TextBlock Text="{Binding Outcome}" TextWrapping="Wrap" Margin="0,4,0,0" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+  </DataTemplate>
+
   <!-- A status icon column for result grids (bound to the row's Tone). -->
   <DataTemplate x:Key="ToneCell">
     <TextBlock Style="{StaticResource ToneGlyph}" Tag="{Binding Tone}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,3,0,0" FontSize="14" />

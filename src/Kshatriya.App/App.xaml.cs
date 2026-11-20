@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using Microsoft.Win32;
 using Kshatriya.App.Services;
 using Kshatriya.App.ViewModels;
+using Kshatriya.Presentation;
 using Kshatriya.Protocol;
 using Kshatriya.Runtime.Ipc;
 using Kshatriya.Scanning.Targets;
@@ -161,6 +162,7 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
         _driveScanner = new ExternalDriveScanner(gateway);
         _tray = new TrayIcon(_preferences.Notifications, _preferences.ScanExternalDrives, () => ShowMainWindow(detections: false), SetNotificationsFromTray, SetScanDrivesFromTray, ExitApp, OpenBrowserExtensionFolder);
         _ = Task.Run(SyncBrowserExtension);
+        _main.Scan.Session.Finished += OnScanFinished;
         // Each notification decides what clicking it does (open Detections, or scan a newly attached drive).
         _tray.NotificationClicked += () => (_clickAction ?? (() => ShowMainWindow(detections: true)))();
         _timer = new DispatcherTimer { Interval = s_pollInterval };
@@ -223,6 +225,26 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
         {
             return false;
         }
+    }
+
+    /// <summary>A scan finished while the window was hidden: say how it ended (ADR 0021 notification policy).</summary>
+    private void OnScanFinished(ScanSession session)
+    {
+        bool visible = MainWindow?.IsVisible == true && MainWindow.WindowState != WindowState.Minimized;
+        var preferences = new NotificationPreferences { ScanResults = _preferences?.Notifications ?? true };
+        if (_tray is null || _exiting || _main is null || !NotificationPolicy.ShouldNotify(NotificationCategory.ScanFinished, preferences, visible))
+        {
+            return;
+        }
+
+        (string title, string message, bool warning) = session.Outcome();
+        MainViewModel main = _main;
+        _clickAction = () =>
+        {
+            ShowMainWindow(detections: false);
+            main.Current = main.Scan;
+        };
+        _tray.Notify(title, message, warning);
     }
 
     /// <summary>Opens the folder to choose in the browser's "Load unpacked" dialog.</summary>

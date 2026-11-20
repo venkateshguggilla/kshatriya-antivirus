@@ -18,6 +18,15 @@ public sealed record ResultRow(string Status, string Path, string Detail, string
     };
 }
 
+/// <summary>One finding in the scan results, as a card: what, where, why and what happened.</summary>
+public sealed record FindingCard(string Name, string Path, string Why, string Badge, Tone Tone, string Outcome, bool Quarantined);
+
+/// <summary>Items not scanned for one reason.</summary>
+public sealed record NotScannedGroup(string Reason, int Count, string Hint)
+{
+    public string Title => Count == 1 ? $"1 item: {Reason}" : $"{Count:N0} items: {Reason}";
+}
+
 /// <summary>The scan types offered on the Scan page.</summary>
 public enum ScanChoice
 {
@@ -42,7 +51,6 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
     private readonly IServiceGateway _gateway;
     private readonly IDialogs _dialogs;
     private readonly Func<IReadOnlyList<DriveChoice>> _drives;
-    private CancellationTokenSource? _cancel;
     private bool _quarantine;
     private bool _isScanning;
     private string _progress = string.Empty;
@@ -52,6 +60,13 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
     public ScanViewModel(IServiceGateway gateway, IDialogs dialogs, Func<IReadOnlyList<DriveChoice>>? drives = null)
         : base("Scan", "Quick, full, external-drive and custom scans with your own access rights", Glyphs.Search)
     {
+        Session.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ScanSession.IsRunning))
+            {
+                IsScanning = Session.IsRunning;
+            }
+        };
         _gateway = gateway;
         _dialogs = dialogs;
         _drives = drives ?? LocalDrives;
@@ -69,7 +84,7 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
             _ => RunScanAsync($"Scan of {SelectedDrive!.Root}", (progress, token) => _gateway.ScanAsync([SelectedDrive!.Root], Quarantine, progress, token)),
             _ => !IsScanning && SelectedDrive is not null,
             ShowError);
-        CancelCommand = new RelayCommand(_ => _cancel?.Cancel(), _ => IsScanning);
+        CancelCommand = new RelayCommand(_ => Session.Cancel(), _ => IsScanning);
         LoadDrives();
     }
 
@@ -142,7 +157,10 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
         }
     }
 
-    public void Dispose() => _cancel?.Dispose();
+    public void Dispose() => Session.Dispose();
+
+    /// <summary>The current scan, shared with the shell and the notification area.</summary>
+    public ScanSession Session { get; } = new();
 
     /// <summary>Refreshing the page re-reads the drive list (for example after a USB drive was attached).</summary>
     protected override Task RefreshCoreAsync()
@@ -177,34 +195,135 @@ public sealed class ScanViewModel : PageViewModel, IDisposable
 
     private async Task RunScanAsync(string label, Func<IProgress<ScanProgressDto>, CancellationToken, Task<ScanReport>> start)
     {
-        _cancel = new CancellationTokenSource();
-        IsScanning = true;
-        Results.Clear();
-        Summary = string.Empty;
+        if (Session.IsRunning)
+        {
+            return;
+        }
+
+        ClearResults();
         ShowInfo(null);
         Progress = $"{label}: starting…";
+        void Update(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(ScanSession.StatusLine) && Session.IsRunning)
+            {
+                Progress = $"{label}: {Session.ItemsChecked:N0} item(s) checked, {Session.Findings:N0} finding(s), {Session.MiBRead:N1} MiB read";
+            }
+        }
+
+        Session.PropertyChanged += Update;
         try
         {
-            var progress = new Progress<ScanProgressDto>(p =>
-                Progress = $"{label}: {p.ItemsCompleted:N0} item(s) checked, {p.Detected:N0} finding(s), {p.BytesScanned / (1024.0 * 1024):N1} MiB read");
-            ScanReport report = await start(progress, _cancel.Token);
-            ShowReport(report, label);
-        }
-        catch (OperationCanceledException)
-        {
-            Progress = string.Empty;
-            ShowInfo($"{label} was cancelled. Results are incomplete.");
+            ScanReport? report = await Session.RunAsync(label, start);
+            if (report is not null)
+            {
+                ShowReport(report, label);
+            }
+            else
+            {
+                Progress = string.Empty;
+                ShowInfo($"{label} was cancelled. Results are incomplete.");
+            }
         }
         finally
         {
-            IsScanning = false;
-            _cancel.Dispose();
-            _cancel = null;
+            Session.PropertyChanged -= Update;
         }
     }
 
+    /// <summary>Finding cards shown at most (the full list stays in the table and the saved report).</summary>
+    internal const int MaxCards = 200;
+
+    /// <summary>Suspicious items: heuristics, never acted on automatically; the user decides.</summary>
+    public ObservableCollection<FindingCard> NeedsDecision { get; } = [];
+
+    /// <summary>Confirmed detections, quarantined or reported.</summary>
+    public ObservableCollection<FindingCard> Threats { get; } = [];
+
+    /// <summary>Items that were not scanned, grouped by reason with what the user can do about it.</summary>
+    public ObservableCollection<NotScannedGroup> NotScanned { get; } = [];
+
+    private int _notScannedTotal;
+
+    public int NotScannedTotal { get => _notScannedTotal; private set => Set(ref _notScannedTotal, value); }
+
+    /// <summary>Items the last completed scan could not read for lack of rights (a Home recommendation).</summary>
+    public int LastAccessDenied { get; private set; }
+
+    internal static int CountAccessDenied(ScanReport report) =>
+        report.Items.Count(i => i.Status == ScanStatus.NotScanned && i.Reason == ScanReason.AccessDenied);
+
+    private void ClearResults()
+    {
+        Results.Clear();
+        NeedsDecision.Clear();
+        Threats.Clear();
+        NotScanned.Clear();
+        NotScannedTotal = 0;
+        Summary = string.Empty;
+    }
+
+    private static FindingCard Card(ScanItemResult item)
+    {
+        Detection? first = item.Detections.FirstOrDefault(d => d.Category != DetectionCategory.Suspicious) ?? (item.Detections.Count > 0 ? item.Detections[0] : null);
+        string name = first?.Name ?? Path.GetFileName(item.Path);
+        string badge = first is null ? "Finding" : $"{Category(first.Category)} · {WireNames.Of(first.Confidence)} confidence";
+        string why = string.Join("; ", item.Detections.Select(d => d.Name + (d.Location is null ? string.Empty : $" in {d.Location}")));
+        string outcome = item.Action switch
+        {
+            null => item.Status == ScanStatus.Detected ? "Reported only. Quarantine it from History if you did not expect it." : "Flagged by a heuristic, not a confirmed detection. Nothing was changed.",
+            { Succeeded: true } => "Moved to quarantine with a verified copy. An administrator can restore it.",
+            { } a => $"Could not be quarantined ({WireNames.Of(a.Failure)}).",
+        };
+        Tone tone = item.Status == ScanStatus.Detected ? Tone.Critical : Tone.Caution;
+        return new FindingCard(name, item.Path, why, badge, tone, outcome, item.Action is { Succeeded: true });
+    }
+
+    private static string Category(DetectionCategory category) => category switch
+    {
+        DetectionCategory.Malware => "Malware",
+        DetectionCategory.PotentiallyUnwanted => "Potentially unwanted",
+        DetectionCategory.TestFile => "Test file",
+        DetectionCategory.Suspicious => "Suspicious",
+        _ => "Finding",
+    };
+
+    /// <summary>What the user can do about items not scanned for a reason (empty: nothing to do).</summary>
+    internal static string Hint(ScanReason reason) => reason switch
+    {
+        ScanReason.AccessDenied => "Your account may not read them. Restart Kshatriya as administrator and scan again to include them.",
+        ScanReason.Locked => "Another program had them open. Scan again later.",
+        ScanReason.CloudPlaceholder => "Cloud-only files are not downloaded just to scan them. They are scanned once they are on this PC.",
+        ScanReason.TooLarge => "Larger than the scan size limit.",
+        ScanReason.Timeout => "Took longer than the per-file time limit.",
+        ScanReason.ArchiveEncrypted => "Password-protected archives cannot be looked into.",
+        ScanReason.Excluded => "Excluded in Settings.",
+        ScanReason.ReparsePoint or ScanReason.LoopDetected => "Links are not followed, so nothing is scanned twice or outside the chosen folders.",
+        _ => string.Empty,
+    };
+
     internal void ShowReport(ScanReport report, string label = "Scan")
     {
+        ClearResults();
+        foreach (ScanItemResult item in report.Items.Where(i => i.Status == ScanStatus.Detected).Take(MaxCards))
+        {
+            Threats.Add(Card(item));
+        }
+
+        foreach (ScanItemResult item in report.Items.Where(i => i.Status == ScanStatus.Suspicious).Take(MaxCards))
+        {
+            NeedsDecision.Add(Card(item));
+        }
+
+        foreach (IGrouping<ScanReason, ScanItemResult> group in report.Items.Where(i => i.Status == ScanStatus.NotScanned)
+                     .GroupBy(i => i.Reason).OrderByDescending(g => g.Count()))
+        {
+            NotScanned.Add(new NotScannedGroup(WireNames.Of(group.Key), group.Count(), Hint(group.Key)));
+        }
+
+        NotScannedTotal = NotScanned.Sum(g => g.Count);
+        LastAccessDenied = CountAccessDenied(report);
+
         // Findings first; at most MaxRows rows, so a full scan's long list of unreadable files stays usable.
         foreach (ScanItemResult item in report.Items.OrderBy(i => i.Status switch
                  {
