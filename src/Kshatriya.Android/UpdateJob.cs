@@ -76,7 +76,12 @@ public sealed class UpdateJob : JobService
         {
             try
             {
-                await RunAsync(this, CancellationToken.None);
+                UpdateCheckResult result = await RunAsync(this, CancellationToken.None);
+                if (result.Outcome == UpdateCheckOutcome.Installed)
+                {
+                    // Informational, on its own low-importance channel (ADR 0021); findings were notified already.
+                    Notifier.ShowUpdateInstalled(this, result.Message);
+                }
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {

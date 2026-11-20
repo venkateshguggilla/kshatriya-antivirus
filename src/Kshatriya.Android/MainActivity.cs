@@ -65,7 +65,7 @@ public sealed class MainActivity : AppCompatActivity
     private IReadOnlyList<InstalledApp> _installed = [];
     private bool _busy;
     private string _busyText = string.Empty;
-    private int _onboardingStep;
+    private int _onboardingStep = -1;
     private RowAdapter? _appsAdapter;
     private RowAdapter? _historyAdapter;
 
@@ -76,6 +76,9 @@ public sealed class MainActivity : AppCompatActivity
         DynamicColors.ApplyToActivityIfAvailable(this);
         base.OnCreate(savedInstanceState);
         SetContentView(Resource.Layout.activity_main);
+        ApplyEdgeToEdge();
+        _back = new BackCallback(HandleBack);
+        OnBackPressedDispatcher.AddCallback(this, _back);
         _protection = Protection.Load(this);
         _findings = Protection.Findings(this);
         Notifier.EnsureChannel(this);
@@ -84,13 +87,14 @@ public sealed class MainActivity : AppCompatActivity
         var nav = FindViewById<BottomNavigationView>(Resource.Id.nav)!;
         nav.SetOnItemSelectedListener(new NavListener(id =>
         {
+            // The bar selects the item itself after this returns: do not select it again (that would recurse).
             Show(id switch
             {
                 var x when x == Resource.Id.nav_apps => Page.Apps,
                 var x when x == Resource.Id.nav_history => Page.History,
                 var x when x == Resource.Id.nav_settings => Page.Settings,
                 _ => Page.Home,
-            });
+            }, fromNavigationBar: true);
             return true;
         }));
 
@@ -122,9 +126,57 @@ public sealed class MainActivity : AppCompatActivity
 
     // ===================== Navigation =====================
 
-    private void Show(Page page)
+    private BackCallback? _back;
+
+    /// <summary>
+    /// Edge-to-edge (enforced for apps targeting Android 15 and later): the app draws behind the system bars and
+    /// pads its own content. The navigation bar pads itself for the gesture area.
+    /// </summary>
+    private void ApplyEdgeToEdge()
+    {
+        AndroidX.Activity.EdgeToEdge.Enable(this);
+        View main = FindViewById(Resource.Id.main)!;
+        View onboarding = FindViewById(Resource.Id.onboarding)!;
+        int pad = Ui.Dp(this, 24);
+        AndroidX.Core.View.ViewCompat.SetOnApplyWindowInsetsListener(FindViewById(Resource.Id.root)!, new InsetsListener(bars =>
+        {
+            main.SetPadding(bars.Left, bars.Top, bars.Right, 0);
+            onboarding.SetPadding(pad + bars.Left, pad + bars.Top, pad + bars.Right, pad + bars.Bottom);
+        }));
+    }
+
+    /// <summary>
+    /// Back (predictive back on Android 13 and later): steps back through onboarding, otherwise returns to Home
+    /// from another page. On Home the system handles it, so the predictive animation shows leaving the app.
+    /// </summary>
+    private void HandleBack()
+    {
+        if (_onboardingStep > 0)
+        {
+            ShowOnboarding(_onboardingStep == 2 && !OperatingSystem.IsAndroidVersionAtLeast(33) ? 0 : _onboardingStep - 1);
+        }
+        else if (_onboardingStep == 0)
+        {
+            FinishOnboarding();
+        }
+        else
+        {
+            Show(Page.Home);
+        }
+    }
+
+    private void UpdateBack()
+    {
+        if (_back is not null)
+        {
+            _back.Enabled = _onboardingStep >= 0 || _page != Page.Home;
+        }
+    }
+
+    private void Show(Page page, bool fromNavigationBar = false)
     {
         _page = page;
+        UpdateBack();
         var content = FindViewById<FrameLayout>(Resource.Id.content)!;
         content.RemoveAllViews();
         if (!_pages.TryGetValue(page, out View? view))
@@ -142,7 +194,7 @@ public sealed class MainActivity : AppCompatActivity
             Page.Settings => Resource.Id.nav_settings,
             _ => Resource.Id.nav_home,
         };
-        if (nav.SelectedItemId != id)
+        if (!fromNavigationBar && nav.SelectedItemId != id)
         {
             nav.SelectedItemId = id;
         }
@@ -306,7 +358,8 @@ public sealed class MainActivity : AppCompatActivity
             attention.AddView(Ui.Row(attention, new RowItem(item.Title, item.Detail, tone, Icon: leading), actionId is null ? null : () => Perform(actionId)));
         }
 
-        bool anything = state.Status.Items.Count > 0;
+        // One item is already the hero's headline: list them only when there is more than one.
+        bool anything = state.Status.Items.Count > 1;
         page.FindViewById(Resource.Id.attention_title)!.Visibility = anything ? ViewStates.Visible : ViewStates.Gone;
         attention.Visibility = anything ? ViewStates.Visible : ViewStates.Gone;
 
@@ -853,6 +906,7 @@ public sealed class MainActivity : AppCompatActivity
         }
 
         _onboardingStep = step;
+        UpdateBack();
         View overlay = FindViewById(Resource.Id.onboarding)!;
         overlay.Visibility = ViewStates.Visible;
         var badge = overlay.FindViewById(Resource.Id.onboarding_badge)!;
@@ -928,6 +982,7 @@ public sealed class MainActivity : AppCompatActivity
     private void FinishOnboarding()
     {
         _onboardingStep = -1;
+        UpdateBack();
         FindViewById(Resource.Id.onboarding)!.Visibility = ViewStates.Gone;
         using (ISharedPreferencesEditor editor = GetSharedPreferences(Preferences, FileCreationMode.Private)!.Edit()!)
         {

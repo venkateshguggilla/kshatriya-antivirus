@@ -12,5 +12,6 @@
   <uses-permission android:name="android.permission.INTERNET" />
   <!-- Android 14+ require it to schedule a job that needs a network (the daily update check). -->
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-  <application android:label="Kshatriya" android:icon="@mipmap/appicon" android:allowBackup="false" />
+  <!-- Predictive back (ADR 0021): back is handled through the AndroidX back dispatcher. -->
+  <application android:label="Kshatriya" android:icon="@mipmap/appicon" android:allowBackup="false" android:enableOnBackInvokedCallback="true" />
 </manifest>

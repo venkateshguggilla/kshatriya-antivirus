@@ -137,3 +137,23 @@ internal sealed class NavListener(Func<int, bool> selected) : Java.Lang.Object, 
 {
     public bool OnNavigationItemSelected(IMenuItem item) => selected(item.ItemId);
 }
+
+/// <summary>Back handling registered with the activity's back dispatcher (supports predictive back).</summary>
+internal sealed class BackCallback(Action back) : AndroidX.Activity.OnBackPressedCallback(false)
+{
+    public override void HandleOnBackPressed() => back();
+}
+
+/// <summary>Hands the system bar and display cutout insets to the activity; the insets are passed on unchanged.</summary>
+internal sealed class InsetsListener(Action<AndroidX.Core.Graphics.Insets> apply) : Java.Lang.Object, AndroidX.Core.View.IOnApplyWindowInsetsListener
+{
+    public AndroidX.Core.View.WindowInsetsCompat? OnApplyWindowInsets(View? v, AndroidX.Core.View.WindowInsetsCompat? insets)
+    {
+        if (insets is not null)
+        {
+            apply(insets.GetInsets(AndroidX.Core.View.WindowInsetsCompat.Type.SystemBars() | AndroidX.Core.View.WindowInsetsCompat.Type.DisplayCutout())!);
+        }
+
+        return insets;
+    }
+}

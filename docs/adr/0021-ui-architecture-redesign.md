@@ -295,3 +295,13 @@ settings file an administrator edits.
     Settings opens Android's notification settings rather than asking again.
   - **Background jobs:** the new-apps and update jobs record into the findings store and notify only about
     findings not reported before.
+- **Slice 8 (2026-11-21):** platform behaviour on Android. The app targets SDK 36, where both of these are
+  enforced.
+  - **Edge-to-edge:** `EdgeToEdge.Enable` with inset padding for the system bars and display cutout.
+  - **Predictive back:** an AndroidX back callback that steps back through onboarding or returns to Home,
+    and `enableOnBackInvokedCallback`.
+  - **Notification channels:** "Threats found" (high importance) and "Signature updates" (low). Updates
+    installed in the background are announced only on the low-importance channel.
+  - **Checked on the emulator:** onboarding, Home before and after a full scan of 255 apps, Apps, History,
+    Settings and back.
+  - **Not done:** dismissing a recommendation on Android has no control yet.
