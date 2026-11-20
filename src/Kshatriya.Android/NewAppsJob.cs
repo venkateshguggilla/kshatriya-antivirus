@@ -91,6 +91,7 @@ public sealed class NewAppsJob : JobService
         editor.PutInt("boot", boot);
         editor.PutInt("sequence", next);
         editor.Apply();
+        Protection.SaveCache(context);
         return found;
     }
 }

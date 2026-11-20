@@ -164,9 +164,10 @@ public sealed class MainActivity : Activity
         {
             try
             {
+                var clock = System.Diagnostics.Stopwatch.StartNew();
                 List<MobileScanTarget> list = targets();
                 int done = 0;
-                var progress = new Progress<MobileScanResult>(_ => { });
+                int cachedBefore = protection.Scanner.CacheHits;
                 foreach (MobileScanTarget target in list)
                 {
                     MobileScanResult result = await protection.Scanner.ScanAsync(target, CancellationToken.None);
@@ -179,10 +180,12 @@ public sealed class MainActivity : Activity
                     });
                 }
 
+                int reused = protection.Scanner.CacheHits - cachedBefore;
+                string timing = $" Took {clock.Elapsed.TotalSeconds:0} s" + (reused > 0 ? $"; {reused} unchanged file(s) were not read again." : ".");
                 RunOnUiThread(() =>
                 {
                     SortResults();
-                    _summary!.Text = MobileText.Summary(_results) + (_results.Any(r => r.Target.PackageName is not null && r.Item.Status is ScanStatus.Detected or ScanStatus.Suspicious) ? " Tap a finding to review the app." : string.Empty);
+                    _summary!.Text = MobileText.Summary(_results) + timing + (_results.Any(r => r.Target.PackageName is not null && r.Item.Status is ScanStatus.Detected or ScanStatus.Suspicious) ? " Tap a finding to review the app." : string.Empty);
                 });
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -191,6 +194,7 @@ public sealed class MainActivity : Activity
             }
             finally
             {
+                Protection.SaveCache(this);
                 RunOnUiThread(() => SetBusy(false, null));
             }
         });

@@ -74,7 +74,9 @@ public sealed class MobileContentStore
             try
             {
                 content = ContentPackage.Verify(package, TrustedKeysUnlocked(), now);
-                _ = SignaturesOf(content); // the signature lists must parse before anything is replaced
+                // The lists must parse before anything is replaced.
+                _ = SignaturesOf(content);
+                _ = AppIndicatorsOf(content);
             }
             catch (ContentVerificationException ex)
             {
@@ -82,7 +84,7 @@ public sealed class MobileContentStore
             }
             catch (FormatException ex)
             {
-                return new ContentImportResult(false, ContentErrors.ContentInvalid, $"The package's signature list is invalid: {ex.Message}");
+                return new ContentImportResult(false, ContentErrors.ContentInvalid, $"A list in the package is invalid: {ex.Message}");
             }
 
             long highest = ReadState().HighestSequence;
@@ -118,6 +120,14 @@ public sealed class MobileContentStore
         ArgumentNullException.ThrowIfNull(content);
         return HashSignatureDatabase.Merge(content.Manifest.Files.Where(f => f.Kind == "hashdb")
             .Select(f => HashSignatureDatabase.Parse(Encoding.UTF8.GetString(content.Files[f.Name]), f.Name)));
+    }
+
+    /// <summary>The app indicator lists (<c>*.appblock</c>) of a package, merged.</summary>
+    public static AppIndicatorSet AppIndicatorsOf(VerifiedContent content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        return new AppIndicatorSet(content.Manifest.Files.Where(f => f.Kind == "appblock")
+            .SelectMany(f => AppBlockList.Parse(Encoding.UTF8.GetString(content.Files[f.Name]), f.Name)));
     }
 
     private IReadOnlyList<ContentKey> TrustedKeysUnlocked() => [.. _builtInKeys, .. UserKeys()];

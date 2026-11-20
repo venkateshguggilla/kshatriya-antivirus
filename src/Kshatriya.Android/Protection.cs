@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Android.Content;
 using Android.Content.PM;
 using Kshatriya.Engines;
@@ -24,11 +25,37 @@ internal sealed class Protection
     /// <summary>One line about the signatures in use, for the screen.</summary>
     public string ContentStatus { get; }
 
+    private static readonly object s_cacheGate = new();
+    private static FileHashCache? s_cache;
+
+    /// <summary>The process-wide hash cache in app-private storage (ADR 0020, point 11).</summary>
+    public static FileHashCache Cache(Context context)
+    {
+        lock (s_cacheGate)
+        {
+            return s_cache ??= new FileHashCache(System.IO.Path.Combine(context.FilesDir!.AbsolutePath, "hash-cache.json"));
+        }
+    }
+
+    /// <summary>Writes the hash cache; a failure only costs time on the next scan.</summary>
+    public static void SaveCache(Context context)
+    {
+        try
+        {
+            Cache(context).Save();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Android.Util.Log.Warn("Kshatriya", $"The hash cache was not saved: {ex.Message}");
+        }
+    }
+
     /// <summary>Builds the scanner from the built-in signatures plus the installed signed update, if any.</summary>
     public static Protection Load(Context context)
     {
         var store = new MobileContentStore(System.IO.Path.Combine(context.FilesDir!.AbsolutePath, "content"));
         HashSignatureDatabase signatures = HashSignatureDatabase.Empty;
+        AppIndicatorSet indicators = AppIndicatorSet.Empty;
         string status;
         try
         {
@@ -40,6 +67,7 @@ internal sealed class Protection
             else
             {
                 signatures = MobileContentStore.SignaturesOf(content);
+                indicators = MobileContentStore.AppIndicatorsOf(content);
                 status = $"Signatures: update {content.Manifest.Sequence}" + (content.Expired
                     ? $", EXPIRED on {content.Manifest.ExpiresUtc:yyyy-MM-dd}; import a newer update."
                     : $", valid until {content.Manifest.ExpiresUtc:yyyy-MM-dd}.");
@@ -51,7 +79,9 @@ internal sealed class Protection
         }
 
         HashEngine engine = HashEngine.CreateDefault(signatures);
-        return new Protection(store, new MobileScanner([engine]), $"{status} {engine.SignatureCount} signature(s) in use.");
+        var scanner = new MobileScanner([engine], indicators: indicators, cache: Cache(context));
+        string counts = $"{engine.SignatureCount} file signature(s)" + (indicators.Count > 0 ? $" and {indicators.Count} app indicator(s)" : string.Empty);
+        return new Protection(store, scanner, $"{status} {counts} in use.");
     }
 
     /// <summary>The APK files of one installed app (base and splits).</summary>
@@ -60,12 +90,14 @@ internal sealed class Protection
         string label = packages.GetApplicationLabel(app) ?? app.PackageName ?? "app";
         if (app.SourceDir is { } baseApk)
         {
-            yield return FileTarget(label, baseApk, app.PackageName);
+            // The app's identity goes with its base APK, so an indicator match is reported once per app.
+            AppIdentity? identity = app.PackageName is { } name ? Identity(packages, name) : null;
+            yield return FileTarget(label, baseApk, app.PackageName, identity);
         }
 
         foreach (string split in app.SplitSourceDirs ?? [])
         {
-            yield return FileTarget($"{label} ({System.IO.Path.GetFileName(split)})", split, app.PackageName);
+            yield return FileTarget($"{label} ({System.IO.Path.GetFileName(split)})", split, app.PackageName, null);
         }
     }
 
@@ -89,6 +121,64 @@ internal sealed class Protection
         }
     }
 
+    /// <summary>
+    /// The app's package name and the SHA-1 and SHA-256 of its signing certificates (current signers and,
+    /// where Android keeps it, the rotation history). Null if the app is gone.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA5350:Do Not Use Weak Cryptographic Algorithms",
+        Justification = "SHA-1 only looks up published certificate fingerprints (Echap lists SHA-1). A collision could only make an app match a list, which helps no attacker; SHA-256 is computed too.")]
+    public static AppIdentity? Identity(PackageManager packages, string packageName)
+    {
+        IEnumerable<Android.Content.PM.Signature> signatures;
+        try
+        {
+            signatures = SigningCertificates(packages, packageName);
+        }
+        catch (PackageManager.NameNotFoundException)
+        {
+            return null;
+        }
+
+        var sha1 = new List<string>();
+        var sha256 = new List<string>();
+        foreach (Android.Content.PM.Signature signature in signatures)
+        {
+            byte[]? der = signature.ToByteArray();
+            if (der is { Length: > 0 })
+            {
+                sha1.Add(Convert.ToHexStringLower(SHA1.HashData(der)));
+                sha256.Add(Convert.ToHexStringLower(SHA256.HashData(der)));
+            }
+        }
+
+        return new AppIdentity(packageName, [.. sha1.Distinct()], [.. sha256.Distinct()]);
+    }
+
+    private static IEnumerable<Android.Content.PM.Signature> SigningCertificates(PackageManager packages, string packageName)
+    {
+        if (OperatingSystem.IsAndroidVersionAtLeast(28))
+        {
+            PackageInfo info = OperatingSystem.IsAndroidVersionAtLeast(33)
+                ? packages.GetPackageInfo(packageName, PackageManager.PackageInfoFlags.Of((long)PackageInfoFlags.SigningCertificates))
+                : GetPackageInfoLegacy(packages, packageName, PackageInfoFlags.SigningCertificates);
+            SigningInfo? signing = info.SigningInfo;
+            if (signing is null)
+            {
+                return [];
+            }
+
+            return signing.HasMultipleSigners
+                ? signing.GetApkContentsSigners() ?? []
+                : signing.GetSigningCertificateHistory() ?? [];
+        }
+
+        return GetPackageInfoLegacy(packages, packageName, PackageInfoFlags.Signatures).Signatures ?? [];
+    }
+
+    [System.Runtime.Versioning.ObsoletedOSPlatform("android33.0")]
+    private static PackageInfo GetPackageInfoLegacy(PackageManager packages, string packageName, PackageInfoFlags flags) =>
+        packages.GetPackageInfo(packageName, flags)!;
+
     private static IList<ApplicationInfo> InstalledApps(PackageManager packages) =>
         OperatingSystem.IsAndroidVersionAtLeast(33)
             ? packages.GetInstalledApplications(PackageManager.ApplicationInfoFlags.Of(0))
@@ -102,9 +192,13 @@ internal sealed class Protection
     private static ApplicationInfo GetApplicationInfoLegacy(PackageManager packages, string packageName) =>
         packages.GetApplicationInfo(packageName, 0);
 
-    private static MobileScanTarget FileTarget(string name, string path, string? packageName)
+    private static MobileScanTarget FileTarget(string name, string path, string? packageName, AppIdentity? identity)
     {
-        long? size = File.Exists(path) ? new FileInfo(path).Length : null;
-        return new MobileScanTarget(name, path, size, () => File.OpenRead(path), packageName);
+        var file = new FileInfo(path);
+        long? size = file.Exists ? file.Length : null;
+        // Installed APKs are not changed in place (an update gets a new path), so path, size and time identify
+        // the content for the hash cache.
+        string? cacheKey = file.Exists ? FileHashCache.KeyFor(path, file.Length, file.LastWriteTimeUtc) : null;
+        return new MobileScanTarget(name, path, size, () => File.OpenRead(path), packageName, identity, cacheKey);
     }
 }

@@ -10,7 +10,9 @@ namespace Kshatriya.Mobile;
 /// <param name="Size">Size in bytes when the platform reports it.</param>
 /// <param name="Open">Opens the content for reading. The scanner disposes the stream.</param>
 /// <param name="PackageName">For installed apps: the package the APK belongs to.</param>
-public sealed record MobileScanTarget(string DisplayName, string Location, long? Size, Func<Stream> Open, string? PackageName = null);
+/// <param name="App">For an installed app's base APK: its identity, checked against app indicators.</param>
+/// <param name="CacheKey">When set, the file's hash may be reused from the cache under this key.</param>
+public sealed record MobileScanTarget(string DisplayName, string Location, long? Size, Func<Stream> Open, string? PackageName = null, AppIdentity? App = null, string? CacheKey = null);
 
 /// <summary>The result for one target, with the target it belongs to.</summary>
 public sealed record MobileScanResult(MobileScanTarget Target, ScanItemResult Item);
@@ -25,14 +27,23 @@ public sealed class MobileScanner
     public const long DefaultMaxBytes = 512L * 1024 * 1024;
 
     private readonly IReadOnlyList<IDetectionEngine> _engines;
+    private readonly AppIndicatorSet _indicators;
+    private readonly IHashCache? _cache;
 
-    public MobileScanner(IReadOnlyList<IDetectionEngine> engines, long maxBytes = DefaultMaxBytes)
+    public MobileScanner(IReadOnlyList<IDetectionEngine> engines, long maxBytes = DefaultMaxBytes, AppIndicatorSet? indicators = null, IHashCache? cache = null)
     {
         ArgumentNullException.ThrowIfNull(engines);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxBytes);
         _engines = engines;
         MaxBytes = maxBytes;
+        _indicators = indicators ?? AppIndicatorSet.Empty;
+        _cache = cache;
     }
+
+    /// <summary>How many hashes came from the cache instead of reading the file.</summary>
+    public int CacheHits => _cacheHits;
+
+    private int _cacheHits;
 
     public long MaxBytes { get; }
 
@@ -62,38 +73,18 @@ public sealed class MobileScanner
 
     private async Task<ScanItemResult> ScanItemAsync(MobileScanTarget target, CancellationToken cancellationToken)
     {
-        if (target.Size > MaxBytes)
+        // The app's identity needs no file access: check it first, so a listed app is reported even if its
+        // file cannot be read.
+        IReadOnlyList<Detection> byIdentity = target.App is { } app ? _indicators.Match(app) : [];
+        (string? sha256, long length, ScanItemResult? failure) = await HashTargetAsync(target, cancellationToken).ConfigureAwait(false);
+        if (failure is not null)
         {
-            return NotScanned(target, ScanReason.TooLarge, $"Larger than the {MaxBytes / (1024 * 1024)} MiB limit.");
-        }
-
-        string sha256;
-        long length;
-        try
-        {
-            await using Stream stream = target.Open();
-            (sha256, length) = await HashAsync(stream, cancellationToken).ConfigureAwait(false);
-        }
-        catch (TooLargeException)
-        {
-            return NotScanned(target, ScanReason.TooLarge, $"Larger than the {MaxBytes / (1024 * 1024)} MiB limit.");
-        }
-        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
-        {
-            return NotScanned(target, ScanReason.NotFound, "It was moved or deleted before the scan.");
-        }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
-        {
-            return NotScanned(target, ScanReason.AccessDenied, "Kshatriya is not allowed to read it.");
-        }
-        catch (IOException ex)
-        {
-            return NotScanned(target, ScanReason.IoError, ex.Message);
+            return byIdentity.Count == 0 ? failure : Result(target, byIdentity, null, null) with { Message = $"Its file was not scanned: {failure.Message}" };
         }
 
         // The engines get the hash; no engine used here reads the bytes again (nothing is parsed).
-        var subject = new ScanSubject(target.Location, length, sha256, Stream.Null);
-        var detections = new List<Detection>();
+        var subject = new ScanSubject(target.Location, length, sha256!, Stream.Null);
+        var detections = new List<Detection>(byIdentity);
         foreach (IDetectionEngine engine in _engines)
         {
             try
@@ -106,6 +97,11 @@ public sealed class MobileScanner
             }
         }
 
+        return Result(target, detections, length, sha256);
+    }
+
+    private static ScanItemResult Result(MobileScanTarget target, IReadOnlyList<Detection> detections, long? length, string? sha256)
+    {
         ScanStatus status = detections.Any(d => d.Category != DetectionCategory.Suspicious) ? ScanStatus.Detected
             : detections.Count > 0 ? ScanStatus.Suspicious
             : ScanStatus.Clean;
@@ -114,10 +110,53 @@ public sealed class MobileScanner
             Path = target.Location,
             Kind = ScanItemKind.File,
             Status = status,
-            SizeBytes = length,
+            SizeBytes = length ?? target.Size,
             Sha256 = sha256,
             Detections = detections,
         };
+    }
+
+    /// <summary>The file's SHA-256 and length, from the cache when possible, or the reason it could not be read.</summary>
+    private async Task<(string? Sha256, long Length, ScanItemResult? Failure)> HashTargetAsync(MobileScanTarget target, CancellationToken cancellationToken)
+    {
+        if (target.Size > MaxBytes)
+        {
+            return (null, 0, NotScanned(target, ScanReason.TooLarge, $"Larger than the {MaxBytes / (1024 * 1024)} MiB limit."));
+        }
+
+        if (target.CacheKey is { } key && _cache is not null && _cache.TryGet(key, out string cached, out long cachedLength))
+        {
+            Interlocked.Increment(ref _cacheHits);
+            return (cached, cachedLength, null);
+        }
+
+        try
+        {
+            await using Stream stream = target.Open();
+            (string sha256, long length) = await HashAsync(stream, cancellationToken).ConfigureAwait(false);
+            if (target.CacheKey is { } newKey)
+            {
+                _cache?.Store(newKey, sha256, length);
+            }
+
+            return (sha256, length, null);
+        }
+        catch (TooLargeException)
+        {
+            return (null, 0, NotScanned(target, ScanReason.TooLarge, $"Larger than the {MaxBytes / (1024 * 1024)} MiB limit."));
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return (null, 0, NotScanned(target, ScanReason.NotFound, "It was moved or deleted before the scan."));
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return (null, 0, NotScanned(target, ScanReason.AccessDenied, "Kshatriya is not allowed to read it."));
+        }
+        catch (IOException ex)
+        {
+            return (null, 0, NotScanned(target, ScanReason.IoError, ex.Message));
+        }
     }
 
     private async Task<(string Sha256, long Length)> HashAsync(Stream stream, CancellationToken cancellationToken)

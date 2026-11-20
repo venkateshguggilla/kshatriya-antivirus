@@ -68,6 +68,30 @@ Platform facts this design relies on (checked 2026-11-19):
    exact-hash scanner cannot use yet). Matching Echap's package names and signing certificates would
    also catch new builds of the same apps; that needs a reviewed change to the scanner.
 
+10. **App indicators: package names and signing certificates (2026-11-20).** A new signed content kind,
+    `*.appblock` (`# kshatriya-appblock v1`; lines `package <name> <detection name> <category>` or
+    `cert-sha1|cert-sha256 <hex> <detection name> <category>`), lists apps by identity instead of by
+    file. The app reads each installed app's package name and signing certificates from
+    `PackageManager` (no file is read, nothing is parsed) and compares them:
+    - a **signing certificate** match is strong evidence (only the developer holds the key) and is
+      reported with the list's category (`pua` for Echap) at high confidence;
+    - a **package name** match alone is reported as **suspicious** (medium confidence) whatever the list
+      says, because a sideloaded app can take any package name and some listed names are generic
+      (`com.systemservice`); a certificate match on the same app supersedes it.
+    Echap's "watchware" apps are mainstream family-safety apps (Life360, FamiSafe) that can be misused,
+    so the build script lists them as `suspicious` and lets that win when an app is also listed as
+    stalkerware; the app words such findings as possible monitoring software the user may have installed
+    on purpose.
+    Lists that name the public AOSP test, platform, shared or media keys are refused, because any app
+    signed with them would match. Limits: 100,000 entries, package names in Java package form, hex
+    digests of the right length. `kshatriya-content pack` checks lists before signing; the parser is
+    fuzzed (`Kshatriya.Fuzz appblock`). Indicators apply to the app (its base APK result), not to files.
+11. **Faster rescans.** The app keeps the SHA-256 of each installed APK in an app-private cache keyed by
+    path, size and modification time (installed APKs are not changed in place: an update gets a new
+    path). A rescan hashes only new or changed APKs; signatures and indicators are always checked
+    against the current lists, so a new list applies to cached apps at once. The cache holds at most
+    20,000 entries and a damaged cache file is discarded.
+
 ## Consequences
 
 - Detection on Android is exactly as strong as the signature lists. Only the EICAR signature is

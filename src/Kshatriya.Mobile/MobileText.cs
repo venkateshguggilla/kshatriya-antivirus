@@ -41,7 +41,10 @@ public static class MobileText
                 };
                 return (ResultTone.Danger, $"{name}: {first.Name} ({what})");
             case ScanStatus.Suspicious:
-                return (ResultTone.Warn, $"{name} looks suspicious");
+                Detection hint = item.Detections[0];
+                return hint.Name.StartsWith("Android.Watchware.", StringComparison.Ordinal) || hint.EngineId == AppIndicatorSet.EngineId
+                    ? (ResultTone.Warn, $"{name} may be monitoring software ({hint.Name}). Fine if you installed it on purpose; otherwise review it")
+                    : (ResultTone.Warn, $"{name} looks suspicious");
             case ScanStatus.Clean:
                 return (ResultTone.Ok, $"{name}: no threats found");
             default:

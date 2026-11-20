@@ -1,5 +1,5 @@
 // Mutation fuzz harness for Kshatriya parsers.
-//   dotnet run -c Release --project tools/Kshatriya.Fuzz -- <pe|zip|hashdb|frame|report|content|model|usn|webblock|all> [iterations] [seed] [crashDir]
+//   dotnet run -c Release --project tools/Kshatriya.Fuzz -- <pe|zip|hashdb|frame|report|content|model|usn|webblock|appblock|all> [iterations] [seed] [crashDir]
 // Any exception escaping a parser counts as a failure; the offending input is saved to crashDir.
 // This is unguided mutation fuzzing; coverage-guided fuzzing (SharpFuzz + libFuzzer) is future work.
 
@@ -21,7 +21,7 @@ int seed = args.Length > 2 ? int.Parse(args[2], CultureInfo.InvariantCulture) : 
 string crashDir = args.Length > 3 ? args[3] : Path.Combine(Path.GetTempPath(), "kshatriya-fuzz-crashes");
 
 int failures = 0;
-foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "report", "content", "model", "usn", "webblock" } : [target])
+foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "report", "content", "model", "usn", "webblock", "appblock" } : [target])
 {
     failures += t switch
     {
@@ -34,6 +34,7 @@ foreach (string t in target == "all" ? new[] { "pe", "zip", "hashdb", "frame", "
         "content" => FuzzContent(iterations, seed, crashDir),
         "model" => FuzzModel(iterations, seed, crashDir),
         "webblock" => FuzzWebBlock(iterations, seed, crashDir),
+        "appblock" => FuzzAppBlock(iterations, seed, crashDir),
         _ => throw new ArgumentException($"Unknown target '{t}'."),
     };
 }
@@ -357,6 +358,51 @@ static int FuzzWebBlock(long iterations, int seed, string crashDir)
     }
 
     Report("webblock", iterations, failures, sw.Elapsed, $"domains {domains:N0}");
+    return failures;
+}
+
+// Android app indicator lists: the only acceptable failure is FormatException, and every accepted entry
+// must be well formed.
+static int FuzzAppBlock(long iterations, int seed, string crashDir)
+{
+    byte[] seedBytes = Encoding.UTF8.GetBytes("# kshatriya-appblock v1\n# c\npackage com.thetruth Android.Stalkerware.TheTruthSpy pua\ncert-sha1 31a6ececd97cf39bc4126b8745cd94a7c30bf81c Android.Stalkerware.TheTruthSpy pua\ncert-sha256 " + new string('b', 64) + " Android.Test.X malware\n");
+    _ = AppBlockList.Parse(Encoding.UTF8.GetString(seedBytes), "seed"); // the seed itself must be valid
+    var mutator = new Mutator(seed);
+    long entries = 0;
+    int failures = 0;
+    var sw = Stopwatch.StartNew();
+    for (long i = 0; i < iterations; i++)
+    {
+        byte[] input = mutator.Mutate(seedBytes);
+        try
+        {
+            foreach (AppIndicator indicator in AppBlockList.Parse(Encoding.UTF8.GetString(input), "fuzz"))
+            {
+                bool valid = indicator.Kind switch
+                {
+                    AppIndicatorKind.Package => AppBlockList.IsPackageName(indicator.Value),
+                    AppIndicatorKind.CertificateSha1 => indicator.Value.Length == 40,
+                    _ => indicator.Value.Length == 64,
+                };
+                if (!valid || indicator.Category is not ("malware" or "pua" or "suspicious"))
+                {
+                    throw new InvalidOperationException($"Accepted an invalid indicator {indicator}.");
+                }
+
+                entries++;
+            }
+        }
+        catch (FormatException)
+        {
+            // Expected: refused.
+        }
+        catch (Exception ex)
+        {
+            failures += Save(crashDir, "appblock", i, input, ex);
+        }
+    }
+
+    Report("appblock", iterations, failures, sw.Elapsed, $"entries {entries:N0}");
     return failures;
 }
 
