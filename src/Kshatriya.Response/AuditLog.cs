@@ -15,6 +15,12 @@ public static class AuditActions
     public const string ExclusionAdd = "exclusionAdd";
     public const string ExclusionRemove = "exclusionRemove";
     public const string AuditRead = "auditRead";
+    public const string HardeningApply = "hardeningApply";
+    public const string HardeningUndo = "hardeningUndo";
+    public const string DeviceUnlock = "deviceUnlock";
+    public const string DeviceLockOn = "deviceLockOn";
+    public const string DeviceLockOff = "deviceLockOff";
+    public const string PasswordSet = "passwordSet";
 }
 
 /// <summary>Stable outcome names written to the audit log.</summary>

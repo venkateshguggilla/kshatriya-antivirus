@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Reflection;
 using System.Text;
 using Kshatriya.Core;
@@ -57,6 +57,16 @@ public static class CliApp
                 return await StatusAsync(options, stdout, stderr, cancellationToken);
             case CliCommand.Quarantine or CliCommand.Exclusions or CliCommand.Audit or CliCommand.Update or CliCommand.Detections:
                 return await ManageAsync(options, stdout, stderr, cancellationToken);
+            case CliCommand.Check or CliCommand.Harden or CliCommand.Lock or CliCommand.Password:
+                try
+                {
+                    return await SecurityCommands.RunAsync(options, () => ConnectAsync(options, cancellationToken), stdin, stdout, stderr, cancellationToken);
+                }
+                catch (Exception ex) when (IsServiceFailure(ex))
+                {
+                    await stderr.WriteLineAsync($"error: {ex.Message}");
+                    return ExitCodes.Fatal;
+                }
         }
 
         return options.UseService

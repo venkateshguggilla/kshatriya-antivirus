@@ -1,13 +1,15 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Reflection;
 using Microsoft.Extensions.Logging;
 using Kshatriya.Core;
 using Kshatriya.Protocol;
+using Kshatriya.Posture;
 using Kshatriya.Response;
 using Kshatriya.Runtime;
 using Kshatriya.Runtime.Workers;
 using Kshatriya.Scanning.Targets;
 using Kshatriya.Service.Net;
+using Kshatriya.Service.Posture;
 using Kshatriya.Service.RealTime;
 using Kshatriya.Updates;
 
@@ -44,6 +46,15 @@ public sealed record ServiceCoreOptions
 
     /// <summary>Targets of quick and full scans (tests); null gathers them from this machine.</summary>
     public Func<ScanKind, QuickScanScope, IReadOnlyList<string>>? ScanTargetProvider { get; init; }
+
+    /// <summary>Reads system settings for the security check (tests); null reads this machine.</summary>
+    public IPostureSource? PostureSource { get; init; }
+
+    /// <summary>Where hardening fixes are written (tests); null writes this machine's registry and Defender settings.</summary>
+    public IHardeningTarget? HardeningTarget { get; init; }
+
+    /// <summary>Watch for security-relevant changes (startup entries, gateway, DNS) while running.</summary>
+    public bool WatchPosture { get; init; } = true;
 }
 
 /// <summary>
@@ -73,6 +84,32 @@ public sealed class ServiceCore : IDisposable
         Quarantine = quarantine;
         _logger = logger;
         _started = options.Time.GetUtcNow();
+        Hardening = new HardeningService(options.HardeningTarget ?? new WindowsHardeningTarget(), options.Paths.StateDirectory, options.Paths.Production, options.Time);
+        Posture = new PostureService(
+            options.PostureSource ?? new WindowsPostureSource(),
+            () => Hardening.Applied,
+            () => (false, false),
+            options.Paths.StateDirectory,
+            options.Paths.Production,
+            options.Time,
+            logger);
+        Posture.Changed += OnPostureChanged;
+    }
+
+    /// <summary>The security check and change watch (ADR 0022).</summary>
+    public PostureService Posture { get; }
+
+    /// <summary>Consented hardening fixes (ADR 0022).</summary>
+    public HardeningService Hardening { get; }
+
+    private void OnPostureChanged(PostureChange change)
+    {
+        History.Add(PostureService.ToRecord(change, _options.Time.GetUtcNow()));
+        if (change.Path is { } path && Path.IsPathFullyQualified(path) && File.Exists(path))
+        {
+            // The program behind a new startup entry is scanned like any new file.
+            RealTime?.Enqueue(path, "security check");
+        }
     }
 
     public static string Version { get; } =
@@ -338,7 +375,11 @@ public sealed class ServiceCore : IDisposable
             : null;
         try
         {
-            await Task.WhenAll(server.RunAsync(cancellationToken), scheduler.RunAsync(cancellationToken), RealTime?.RunAsync(cancellationToken) ?? Task.CompletedTask);
+            await Task.WhenAll(
+                server.RunAsync(cancellationToken),
+                scheduler.RunAsync(cancellationToken),
+                RealTime?.RunAsync(cancellationToken) ?? Task.CompletedTask,
+                _options.WatchPosture ? Posture.RunAsync(cancellationToken) : Task.CompletedTask);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -437,6 +478,7 @@ public sealed class ServiceCore : IDisposable
     {
         Network?.Dispose();
         Coordinator.Dispose();
+        Posture.Dispose();
         _contentGate.Dispose();
     }
 

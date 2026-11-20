@@ -1,10 +1,12 @@
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Kshatriya.Core;
 using Kshatriya.Protocol;
+using Kshatriya.Posture;
+using Kshatriya.Service.Posture;
 using Kshatriya.Response;
 using Kshatriya.Runtime.Ipc;
 using Kshatriya.Scanning;
@@ -271,6 +273,13 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
                 case MessageType.AuditQuery:
                     await AuditAsync(ProtocolJson.Deserialize<AuditQueryDto>(frame.Json), actor, canManage, cancellationToken);
                     break;
+                case MessageType.PostureQuery:
+                    ProtocolJson.Deserialize<EmptyDto>(frame.Json);
+                    await PostureAsync(caller, canManage, cancellationToken);
+                    break;
+                case MessageType.HardeningRequest:
+                    await HardeningAsync(ProtocolJson.Deserialize<HardeningRequestDto>(frame.Json), actor, canManage, cancellationToken);
+                    break;
                 case MessageType.Cancel:
                     // No scan running; nothing to cancel.
                     break;
@@ -532,6 +541,65 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
         }
 
         await SendAsync(MessageType.ExclusionsReply, ExclusionsReply(), cancellationToken);
+    }
+
+    /// <summary>Runs the security check (read-only). Other users' entries only for an administrator (ADR 0022).</summary>
+    private async Task PostureAsync(WindowsIdentity caller, bool canManage, CancellationToken cancellationToken)
+    {
+        string? sid = caller.User?.Value;
+        IReadOnlyList<PostureCheck> checks = await Task.Run(() => core.Posture.Evaluate(sid, canManage), cancellationToken);
+        await SendAsync(MessageType.PostureReply, new PostureReplyDto
+        {
+            CheckedUtc = DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+            Checks = [.. checks.Select(c => new PostureCheckDto
+            {
+                Id = c.Id,
+                Area = PostureWire.Of(c.Area),
+                State = PostureWire.Of(c.State),
+                Title = c.Title,
+                Detail = c.Detail,
+                Fix = c.FixId,
+                FixApplied = c.FixApplied,
+            })],
+        }, cancellationToken);
+    }
+
+    /// <summary>Applies or undoes a hardening fix: elevated administrator only, always audited (ADR 0022).</summary>
+    private async Task HardeningAsync(HardeningRequestDto request, Actor actor, bool canManage, CancellationToken cancellationToken)
+    {
+        string? action = request.Operation switch
+        {
+            HardeningOperations.Apply => AuditActions.HardeningApply,
+            HardeningOperations.Undo => AuditActions.HardeningUndo,
+            _ => null,
+        };
+        if (action is null || request.Mode is not (null or HardeningOperations.Audit or HardeningOperations.Block) || !Fixes.IsKnown(request.Fix))
+        {
+            await SendErrorAsync(ErrorCodes.BadRequest, $"Unknown hardening request '{request.Operation}' for '{request.Fix}'.", cancellationToken);
+            return;
+        }
+
+        if (!canManage)
+        {
+            const string reason = "Changing security settings requires an elevated administrator.";
+            core.Quarantine.AuditDenied(actor, action, request.Fix, reason);
+            Log.Denied(logger, action, actor.Name, reason);
+            await SendErrorAsync(ErrorCodes.AccessDenied, reason, cancellationToken);
+            return;
+        }
+
+        HardeningResult result = action == AuditActions.HardeningApply
+            ? core.Hardening.Apply(request.Fix, request.Mode == HardeningOperations.Block)
+            : core.Hardening.Undo(request.Fix);
+        string detail = request.Mode is null ? result.Message : $"{request.Mode}: {result.Message}";
+        core.Quarantine.AuditEvent(actor, action, request.Fix, result.Succeeded ? AuditOutcomes.Succeeded : AuditOutcomes.Failed, detail);
+        Log.Hardening(logger, actor.Name, request.Operation, request.Fix, result.Succeeded ? "done" : result.Code);
+        await SendAsync(MessageType.OperationReply, new OperationReplyDto
+        {
+            Succeeded = result.Succeeded,
+            Code = result.Code,
+            Message = result.Message,
+        }, cancellationToken);
     }
 
     private async Task WebBlocklistAsync(WebBlocklistQueryDto request, CancellationToken cancellationToken)

@@ -4,7 +4,7 @@ using Kshatriya.Core;
 
 namespace Kshatriya.Protocol;
 
-/// <summary>Frame type bytes. Worker messages are 0x01–0x0F, service messages 0x20–0x3F.</summary>
+/// <summary>Frame type bytes. Worker messages are 0x01–0x0F, service messages 0x20–0x4F.</summary>
 public static class MessageType
 {
     public const byte WorkerInit = 0x01;
@@ -41,13 +41,23 @@ public static class MessageType
     public const byte ContentImportReply = 0x3C;
     public const byte DetectionsQuery = 0x3D;
     public const byte DetectionsReply = 0x3E;
+
+    // Security check, hardening and the removable-drive lock (ADR 0022, ADR 0023).
+    public const byte PostureQuery = 0x40;
+    public const byte PostureReply = 0x41;
+    public const byte HardeningRequest = 0x42;
+    public const byte DeviceLockQuery = 0x43;
+    public const byte DeviceLockReply = 0x44;
+    public const byte DeviceUnlock = 0x45;
+    public const byte DeviceLockConfigure = 0x46;
+    public const byte PasswordSet = 0x47;
 }
 
 /// <summary>Protocol versions. A peer that sees a different version refuses to continue.</summary>
 public static class ProtocolVersion
 {
     public const int Worker = 3;
-    public const int Service = 11;
+    public const int Service = 12;
 }
 
 // ---- Shared ----
@@ -562,6 +572,110 @@ public sealed class ScanResultDto
     public required string Report { get; init; }
 }
 
+// ---- Security check and hardening (ADR 0022) ----
+
+/// <summary>One security check result. Area and state are wire names (see Kshatriya.Posture.PostureWire).</summary>
+public sealed class PostureCheckDto
+{
+    public required string Id { get; init; }
+
+    public required string Area { get; init; }
+
+    public required string State { get; init; }
+
+    public required string Title { get; init; }
+
+    public required string Detail { get; init; }
+
+    /// <summary>The hardening fix that would resolve this check, if any.</summary>
+    public string? Fix { get; init; }
+
+    /// <summary>True when Kshatriya applied that fix and can undo it.</summary>
+    public required bool FixApplied { get; init; }
+}
+
+public sealed class PostureReplyDto
+{
+    public required string CheckedUtc { get; init; }
+
+    public required List<PostureCheckDto> Checks { get; init; }
+}
+
+/// <summary>Applies or undoes one hardening fix; needs an elevated administrator. Answered with an operation reply.</summary>
+public sealed class HardeningRequestDto
+{
+    public required string Fix { get; init; }
+
+    /// <summary>"apply" or "undo".</summary>
+    public required string Operation { get; init; }
+
+    /// <summary>For ASR fixes: "audit" (default) or "block".</summary>
+    public string? Mode { get; init; }
+}
+
+/// <summary>Values of <see cref="HardeningRequestDto.Operation"/> and <see cref="HardeningRequestDto.Mode"/>.</summary>
+public static class HardeningOperations
+{
+    public const string Apply = "apply";
+    public const string Undo = "undo";
+    public const string Audit = "audit";
+    public const string Block = "block";
+}
+
+// ---- Removable-drive lock (ADR 0023) ----
+
+public sealed class LockedDriveDto
+{
+    /// <summary>The disk's device instance id.</summary>
+    public required string Id { get; init; }
+
+    public required string Name { get; init; }
+
+    public long? SizeBytes { get; init; }
+
+    /// <summary>"locked", "approved", "couldNotLock" or "presentBeforeLock".</summary>
+    public required string State { get; init; }
+
+    public required string ArrivedUtc { get; init; }
+
+    public string? Message { get; init; }
+}
+
+public sealed class DeviceLockReplyDto
+{
+    public required bool Enabled { get; init; }
+
+    public required bool PasswordSet { get; init; }
+
+    /// <summary>"off", "on" or "unavailable: ...".</summary>
+    public required string State { get; init; }
+
+    /// <summary>Seconds to wait before the next password attempt is accepted (0 when none).</summary>
+    public required int RetryAfterSeconds { get; init; }
+
+    public required List<LockedDriveDto> Drives { get; init; }
+}
+
+public sealed class DeviceUnlockDto
+{
+    public required string Id { get; init; }
+
+    public required string Password { get; init; }
+}
+
+public sealed class DeviceLockConfigureDto
+{
+    public required bool Enabled { get; init; }
+}
+
+public sealed class PasswordSetDto
+{
+    public required string NewPassword { get; init; }
+
+    /// <summary>Required unless the caller is an elevated administrator.</summary>
+    public string? CurrentPassword { get; init; }
+}
+
 public sealed class ErrorDto
 {
     public required string Code { get; init; }
@@ -618,6 +732,12 @@ public static class ErrorCodes
 [JsonSerializable(typeof(DetectionsReplyDto))]
 [JsonSerializable(typeof(WebBlocklistQueryDto))]
 [JsonSerializable(typeof(WebBlocklistReplyDto))]
+[JsonSerializable(typeof(PostureReplyDto))]
+[JsonSerializable(typeof(HardeningRequestDto))]
+[JsonSerializable(typeof(DeviceLockReplyDto))]
+[JsonSerializable(typeof(DeviceUnlockDto))]
+[JsonSerializable(typeof(DeviceLockConfigureDto))]
+[JsonSerializable(typeof(PasswordSetDto))]
 internal sealed partial class ProtocolJsonContext : JsonSerializerContext
 {
 }

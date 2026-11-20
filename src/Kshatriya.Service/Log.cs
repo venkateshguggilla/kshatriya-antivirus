@@ -97,4 +97,25 @@ internal static partial class Log
 
     [LoggerMessage(5005, LogLevel.Warning, "{User} {Operation} exclusion '{Value}': {Outcome}.")]
     public static partial void ExclusionChanged(ILogger logger, string user, string operation, string value, string outcome);
+
+    [LoggerMessage(9000, LogLevel.Warning, "Security check change: {Title}. {Detail} No automatic action was taken.")]
+    public static partial void PostureChange(ILogger logger, string title, string detail);
+
+    [LoggerMessage(9001, LogLevel.Warning, "Security check problem: {Problem}")]
+    public static partial void PostureProblem(ILogger logger, string problem);
+
+    [LoggerMessage(9002, LogLevel.Warning, "{User} {Operation} hardening fix {Fix}: {Outcome}.")]
+    public static partial void Hardening(ILogger logger, string user, string operation, string fix, string outcome);
+
+    [LoggerMessage(9100, LogLevel.Warning, "USB drive {Name} ({Id}) {Outcome}.")]
+    public static partial void DriveLock(ILogger logger, string name, string id, string outcome);
+
+    [LoggerMessage(9101, LogLevel.Warning, "Unlock of USB drive {Id} by {User}: {Outcome}.")]
+    public static partial void DriveUnlock(ILogger logger, string id, string user, string outcome);
+
+    [LoggerMessage(9102, LogLevel.Warning, "{User} {Operation}: {Outcome}.")]
+    public static partial void LockSettingChanged(ILogger logger, string user, string operation, string outcome);
+
+    [LoggerMessage(9103, LogLevel.Warning, "{Problem}")]
+    public static partial void DriveLockProblem(ILogger logger, string problem);
 }

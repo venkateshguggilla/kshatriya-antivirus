@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Worker">
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Kshatriya.Runtime\Kshatriya.Runtime.csproj" />
     <ProjectReference Include="..\Kshatriya.Response\Kshatriya.Response.csproj" />
     <ProjectReference Include="..\Kshatriya.Updates\Kshatriya.Updates.csproj" />
+    <ProjectReference Include="..\Kshatriya.Posture\Kshatriya.Posture.csproj" />
     <!-- The service launches the worker from its own directory. -->
     <ProjectReference Include="..\Kshatriya.Worker\Kshatriya.Worker.csproj" />
   </ItemGroup>

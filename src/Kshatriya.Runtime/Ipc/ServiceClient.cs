@@ -215,6 +215,35 @@ public sealed class ServiceClient : IAsyncDisposable
     public Task<ContentImportReplyDto> ImportContentAsync(string packagePath, CancellationToken cancellationToken = default) =>
         RequestAsync<ContentImportDto, ContentImportReplyDto>(MessageType.ContentImport, new ContentImportDto { Path = packagePath }, MessageType.ContentImportReply, cancellationToken);
 
+    /// <summary>Runs the security check (ADR 0022). Takes a few seconds: it reads many system settings.</summary>
+    public Task<PostureReplyDto> GetPostureAsync(CancellationToken cancellationToken = default) =>
+        RequestAsync<EmptyDto, PostureReplyDto>(MessageType.PostureQuery, new EmptyDto(), MessageType.PostureReply, cancellationToken);
+
+    /// <summary>Applies or undoes a hardening fix (elevated administrator only).</summary>
+    public Task<OperationReplyDto> HardenAsync(string fix, bool undo, bool block = false, CancellationToken cancellationToken = default) =>
+        RequestAsync<HardeningRequestDto, OperationReplyDto>(MessageType.HardeningRequest, new HardeningRequestDto
+        {
+            Fix = fix,
+            Operation = undo ? HardeningOperations.Undo : HardeningOperations.Apply,
+            Mode = undo ? null : block ? HardeningOperations.Block : null,
+        }, MessageType.OperationReply, cancellationToken);
+
+    /// <summary>The removable-drive lock state and the drives it knows (ADR 0023).</summary>
+    public Task<DeviceLockReplyDto> GetDeviceLockAsync(CancellationToken cancellationToken = default) =>
+        RequestAsync<EmptyDto, DeviceLockReplyDto>(MessageType.DeviceLockQuery, new EmptyDto(), MessageType.DeviceLockReply, cancellationToken);
+
+    /// <summary>Unlocks a locked USB drive with the Kshatriya password.</summary>
+    public Task<OperationReplyDto> UnlockDeviceAsync(string id, string password, CancellationToken cancellationToken = default) =>
+        RequestAsync<DeviceUnlockDto, OperationReplyDto>(MessageType.DeviceUnlock, new DeviceUnlockDto { Id = id, Password = password }, MessageType.OperationReply, cancellationToken);
+
+    /// <summary>Turns the removable-drive lock on or off (elevated administrator only).</summary>
+    public Task<OperationReplyDto> ConfigureDeviceLockAsync(bool enabled, CancellationToken cancellationToken = default) =>
+        RequestAsync<DeviceLockConfigureDto, OperationReplyDto>(MessageType.DeviceLockConfigure, new DeviceLockConfigureDto { Enabled = enabled }, MessageType.OperationReply, cancellationToken);
+
+    /// <summary>Sets the Kshatriya password (administrator, or anyone with the current password).</summary>
+    public Task<OperationReplyDto> SetPasswordAsync(string newPassword, string? currentPassword, CancellationToken cancellationToken = default) =>
+        RequestAsync<PasswordSetDto, OperationReplyDto>(MessageType.PasswordSet, new PasswordSetDto { NewPassword = newPassword, CurrentPassword = currentPassword }, MessageType.OperationReply, cancellationToken);
+
     public ValueTask DisposeAsync() => _pipe.DisposeAsync();
 
     private async Task<TReply> RequestAsync<TRequest, TReply>(byte type, TRequest request, byte replyType, CancellationToken cancellationToken)

@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Kshatriya.Scanning;
 
 namespace Kshatriya.Cli;
@@ -14,6 +14,10 @@ public enum CliCommand
     Audit,
     Update,
     Detections,
+    Check,
+    Harden,
+    Lock,
+    Password,
 }
 
 /// <summary>Parsed command line. Hand-written parser: tiny surface, no third-party dependency.</summary>
@@ -84,6 +88,12 @@ public sealed record CliOptions
     /// <summary>Number of audit records to show.</summary>
     public int AuditLast { get; init; } = 50;
 
+    /// <summary>harden: undo the fix instead of applying it.</summary>
+    public bool Undo { get; init; }
+
+    /// <summary>harden asr.*: block instead of audit.</summary>
+    public bool Block { get; init; }
+
     public const string HelpText = """
         Kshatriya scanner (milestone 12 prototype)
 
@@ -98,6 +108,10 @@ public sealed record CliOptions
           kshatriya audit [--last <n>] [--service [--dev]]
           kshatriya update import <package.kstu> --service [--dev]
           kshatriya detections [--last <n>] --service [--dev]
+          kshatriya check [--json] [--dev]
+          kshatriya harden list | <fix> [--block] | <fix> --undo   [--dev]
+          kshatriya lock status | on | off | unlock <id> [--stdin]   [--dev]
+          kshatriya password set [--stdin] [--dev]
           kshatriya version
           kshatriya help
 
@@ -139,6 +153,14 @@ public sealed record CliOptions
           elevated administrator. Restore never overwrites an existing file and marks the restored
           file as downloaded from the internet. Exclusions apply to Kshatriya only, never to Defender.
 
+        Security check, hardening and USB lock:
+          check runs read-only checks of Defender, app installs, USB, network and startup programs
+          (exit 0 nothing to do, 5 something to look at, 1 a risk). harden applies or undoes one fix:
+          each makes a Windows protection stricter, is audited and can be undone; it needs an elevated
+          administrator. lock keeps new USB drives disabled until the Kshatriya password is entered (a
+          convenience lock: a drive is usable for a moment before it locks). With --stdin, passwords are
+          read one per line from standard input (password set: new password, then the current one).
+
         Exit codes:
           0 clean   1 detections   5 suspicious only   2 incomplete   3 usage error   4 fatal error
           (precedence: 1, then 5, then 2)
@@ -174,6 +196,8 @@ public sealed record CliOptions
                 return ParseManagement(args, CliCommand.Detections, []);
             case "update":
                 return ParseManagement(args, CliCommand.Update, ["import"]);
+            case "check" or "harden" or "lock" or "password":
+                return ParseSecurity(args);
             default:
                 throw new CliUsageException($"Unknown command '{args[0]}'.");
         }
@@ -412,6 +436,60 @@ public sealed record CliOptions
             Argument = argument,
             RestoreTo = options.RestoreTo is null ? null : Path.GetFullPath(options.RestoreTo),
         };
+    }
+
+    /// <summary>check, harden, lock and password: always talk to the service.</summary>
+    private static CliOptions ParseSecurity(IReadOnlyList<string> args)
+    {
+        CliCommand command = args[0] switch { "check" => CliCommand.Check, "harden" => CliCommand.Harden, "lock" => CliCommand.Lock, _ => CliCommand.Password };
+        var options = new CliOptions { Command = command, UseService = true };
+        var positional = new List<string>();
+        for (int i = 1; i < args.Count; i++)
+        {
+            string arg = args[i];
+            options = arg switch
+            {
+                "--dev" => options with { DevService = true },
+                "--json" when command == CliCommand.Check => options with { Json = true },
+                "--undo" when command == CliCommand.Harden => options with { Undo = true },
+                "--block" when command == CliCommand.Harden => options with { Block = true },
+                "--stdin" when command is CliCommand.Lock or CliCommand.Password => options with { ReadStdin = true },
+                _ when arg.StartsWith("--", StringComparison.Ordinal) => throw new CliUsageException($"Unknown option '{arg}' for {args[0]}."),
+                _ => options,
+            };
+            if (!arg.StartsWith("--", StringComparison.Ordinal))
+            {
+                positional.Add(arg);
+            }
+        }
+
+        switch (command)
+        {
+            case CliCommand.Check:
+                return positional.Count == 0 ? options : throw new CliUsageException("check takes no arguments.");
+            case CliCommand.Harden:
+                if (positional.Count != 1)
+                {
+                    throw new CliUsageException("Use: harden list | <fix> [--block] | <fix> --undo.");
+                }
+
+                if (options.Undo && options.Block)
+                {
+                    throw new CliUsageException("--block and --undo cannot be combined.");
+                }
+
+                return options with { Action = positional[0] == "list" ? "list" : "apply", Argument = positional[0] == "list" ? null : positional[0] };
+            case CliCommand.Lock:
+                string[] lockActions = ["status", "on", "off", "unlock"];
+                if (positional.Count == 0 || !lockActions.Contains(positional[0]) || positional.Count != (positional[0] == "unlock" ? 2 : 1))
+                {
+                    throw new CliUsageException("Use: lock status | on | off | unlock <id>.");
+                }
+
+                return options with { Action = positional[0], Argument = positional.Count > 1 ? positional[1] : null };
+            default:
+                return positional is ["set"] ? options with { Action = "set" } : throw new CliUsageException("Use: password set [--stdin].");
+        }
     }
 
     private static CliOptions ParseStatus(IReadOnlyList<string> args)
