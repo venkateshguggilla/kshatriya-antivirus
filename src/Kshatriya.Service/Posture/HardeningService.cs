@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Management;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -180,7 +180,7 @@ public sealed class HardeningService
 
         if (_state.Fixes.TryGetValue(fixId, out AppliedFix? existing))
         {
-            existing.Values[0].Applied = wanted; // audit â†’ block keeps the original previous state
+            existing.Values[0].Applied = wanted; // audit → block keeps the original previous state
         }
         else
         {

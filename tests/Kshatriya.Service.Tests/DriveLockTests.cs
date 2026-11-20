@@ -1,4 +1,4 @@
-﻿using System.Security.Principal;
+using System.Security.Principal;
 using Kshatriya.Protocol;
 using Kshatriya.Runtime.Ipc;
 using Kshatriya.Service.DeviceLock;

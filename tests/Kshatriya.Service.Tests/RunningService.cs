@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Kshatriya.Runtime.Ipc;
 using Kshatriya.Service;
 using Kshatriya.Tests.Shared;

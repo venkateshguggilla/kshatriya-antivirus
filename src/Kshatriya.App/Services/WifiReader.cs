@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using Kshatriya.Posture;
 
 namespace Kshatriya.App.Services;

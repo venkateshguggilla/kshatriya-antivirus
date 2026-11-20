@@ -1,4 +1,4 @@
-﻿namespace Kshatriya.Posture;
+namespace Kshatriya.Posture;
 
 /// <summary>An attack surface reduction rule Kshatriya recommends (ADR 0022). GUIDs are Microsoft's.</summary>
 public sealed record AsrRule(string Key, string Id, string Name, string Why, bool NeedsCloud);

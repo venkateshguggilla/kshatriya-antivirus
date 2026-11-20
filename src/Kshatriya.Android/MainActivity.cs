@@ -415,6 +415,21 @@ public sealed class MainActivity : AppCompatActivity
         UpdateSettings updates = UpdateJob.ReadSettings(this);
         bool notifications = NotificationManagerCompat.From(this)!.AreNotificationsEnabled();
 
+        // Phone security check (ADR 0022): read-only; each row opens the Android setting to change.
+        Section(list, "Phone security");
+        foreach (Kshatriya.Posture.PostureCheck check in Kshatriya.Posture.AndroidRules.Evaluate(DeviceSecurity.Read(this)))
+        {
+            ResultTone tone = check.State switch
+            {
+                Kshatriya.Posture.PostureState.Ok => ResultTone.Ok,
+                Kshatriya.Posture.PostureState.Attention => ResultTone.Warn,
+                Kshatriya.Posture.PostureState.Risk => ResultTone.Danger,
+                _ => ResultTone.Info,
+            };
+            Intent? open = DeviceSecurity.SettingsFor(check.Id);
+            list.AddView(Ui.Row(list, new RowItem(check.Title, check.Detail, tone), open is null ? null : () => OpenSetting(open)));
+        }
+
         Section(list, "Updates");
         list.AddView(Ui.Row(list, new RowItem("Automatic updates", updates.Enabled ? "On: once a day" + (updates.UnmeteredOnly ? " on Wi-Fi" : string.Empty) : "Off. Turn on to download signed updates daily.", ResultTone.Info, Icon: Resource.Drawable.ic_download), ShowUpdateSettings));
         list.AddView(Ui.Row(list, new RowItem("Check for updates now", _protection?.ContentStatus ?? string.Empty, ResultTone.Info, Icon: Resource.Drawable.ic_download), CheckForUpdates));
@@ -428,6 +443,18 @@ public sealed class MainActivity : AppCompatActivity
         list.AddView(Ui.Row(list, new RowItem("Kshatriya Antivirus · prototype", "Version " + (PackageManager!.GetPackageInfo(PackageName!, 0)?.VersionName ?? "?") + ". Not a replacement for Google Play Protect or any commercial antivirus.", ResultTone.Info, Icon: Resource.Mipmap.appicon)));
         list.AddView(Ui.Row(list, new RowItem("Privacy", "Checks run on this phone. Nothing about your apps or files is sent anywhere. With automatic updates on, the update server sees your IP address.", ResultTone.Info, Icon: Resource.Drawable.ic_lock)));
         list.AddView(Ui.Row(list, new RowItem("Show the introduction again", string.Empty, ResultTone.Info, Icon: Resource.Drawable.ic_history), () => ShowOnboarding(0)));
+    }
+
+    private void OpenSetting(Intent intent)
+    {
+        try
+        {
+            StartActivity(intent);
+        }
+        catch (ActivityNotFoundException)
+        {
+            StartActivity(new Intent(Android.Provider.Settings.ActionSettings));
+        }
     }
 
     private void Section(LinearLayout list, string title)

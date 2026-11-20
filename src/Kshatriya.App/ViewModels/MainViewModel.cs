@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using Kshatriya.App.Infrastructure;
 using Kshatriya.App.Services;
 using Kshatriya.Presentation;

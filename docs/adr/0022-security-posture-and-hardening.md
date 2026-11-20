@@ -95,6 +95,20 @@ developer options, screen lock, apps that can install other apps, and (Android 1
 Each result explains how to change the setting in Android's own Settings. A managed "family device" build
 would need its own ADR.
 
+## Implementation notes (2026-11-21)
+
+- Built: `Kshatriya.Posture` (rules), service collectors and change watch, hardening with undo, protocol 12,
+  CLI `check`/`harden`, the Protection page (security check first, Fix/Block/Undo, Wi-Fi read in the app with
+  the Native Wifi API), and the Android "Phone security" section in Settings (each row opens the Android
+  setting to change).
+- First run on the owner's PC (development service, as a normal user, 2 seconds): Defender healthy; most ASR
+  rules off; installs need only a click; AutoRun allowed for removable drives; LLMNR on; port 445 open; router
+  admin page over plain HTTP; no startup entry flagged.
+- Not yet: Home does not list security-check risks (they are on the Protection page); Android does not read
+  Advanced Protection Mode, because `QUERY_ADVANCED_PROTECTION_MODE` is outside the permission list fixed by
+  ADR 0020; the hardening fixes and the change alerts have been exercised against in-memory fakes and the
+  read path against this machine, but no fix has been applied to a real machine yet.
+
 ## Consequences
 
 - Kshatriya can tell a user, in one place, which Windows protections are off and switch most of them on.

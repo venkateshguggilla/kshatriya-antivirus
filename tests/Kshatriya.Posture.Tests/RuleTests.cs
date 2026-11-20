@@ -1,4 +1,4 @@
-﻿using Kshatriya.Posture;
+using Kshatriya.Posture;
 
 namespace Kshatriya.Posture.Tests;
 
@@ -289,7 +289,7 @@ public sealed class StartupAndBaselineTests
             [Run("App", "app.exe --changed"), Run("Evil", "\"C:\\Users\\Public\\e.exe\"")]);
         (IReadOnlyList<PostureChange> changes, PostureBaseline updated) = BaselineComparer.Compare(baseline, second);
 
-        Assert.Single(changes, c => c.Kind == PostureChangeKinds.Gateway); // the new cafÃ© network is not a change
+        Assert.Single(changes, c => c.Kind == PostureChangeKinds.Gateway); // the new café network is not a change
         Assert.Single(changes, c => c.Kind == PostureChangeKinds.Dns);
         Assert.Equal(2, changes.Count(c => c.Kind == PostureChangeKinds.Startup));
         Assert.Contains(changes, c => c.Path == "C:\\Users\\Public\\e.exe");

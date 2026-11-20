@@ -1,4 +1,4 @@
-﻿namespace Kshatriya.Posture;
+namespace Kshatriya.Posture;
 
 /// <summary>What the service read about Microsoft Defender. Null values could not be read.</summary>
 public sealed record DefenderSnapshot(

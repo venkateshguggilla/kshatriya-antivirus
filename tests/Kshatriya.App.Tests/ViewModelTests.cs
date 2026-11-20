@@ -1,4 +1,4 @@
-﻿using Kshatriya.App.Services;
+using Kshatriya.App.Services;
 using Kshatriya.App.ViewModels;
 using Kshatriya.Core;
 using Kshatriya.Protocol;

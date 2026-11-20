@@ -1,4 +1,4 @@
-﻿using Kshatriya.Core;
+using Kshatriya.Core;
 using Kshatriya.Protocol;
 using Kshatriya.Runtime.Ipc;
 

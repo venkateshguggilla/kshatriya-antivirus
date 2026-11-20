@@ -17,6 +17,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Kshatriya.Mobile\Kshatriya.Mobile.csproj" />
+    <!-- Security check rules shared with Windows (ADR 0022). -->
+    <ProjectReference Include="..\Kshatriya.Posture\Kshatriya.Posture.csproj" />
     <!-- Material 3 components and AndroidX (ADR 0021; MIT AND Apache-2.0, checked against ADR 0003). -->
     <PackageReference Include="Xamarin.Google.Android.Material" />
   </ItemGroup>

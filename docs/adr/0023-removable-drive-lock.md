@@ -1,4 +1,4 @@
-﻿# ADR 0023: Removable-drive lock and the Kshatriya password
+# ADR 0023: Removable-drive lock and the Kshatriya password
 
 - Status: accepted (owner choice, 2026-11-21); prototype
 - Date: 2026-11-21
@@ -85,6 +85,15 @@ for installs.
   console without echo, or from standard input with `--stdin`).
 - Desktop app: a notification "USB drive locked" opens an unlock dialog with a password box. The Protection
   page shows the lock switch and the password action.
+
+## Implementation notes (2026-11-21)
+
+- Built: `LockSettings` (password hash, attempt delay), `DriveLock` (arrivals, approvals, sweep of unplugged
+  drives), `WindowsDeviceControl` (cfgmgr32), pipe handlers with audit, CLI `lock`/`password`, the installer
+  prompt, and the app's Protection section plus an on-top unlock prompt while the lock is on.
+- Tested with a fake device layer; a read-only test lists this machine's real disks and checks that the
+  Windows disk is marked protected. Disabling and enabling a real USB stick has not been tried yet: it needs
+  the installed service (administrator) and a USB drive plugged in by the owner.
 
 ## Consequences
 
