@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kshatriya's colours (ADR 0021). Status colours carry meaning only and always come with an icon shape and text. -->
+<resources>
+  <color name="brand">#3550A8</color>
+  <color name="brand_container">#DCE1FF</color>
+  <color name="on_brand_container">#0A1A5E</color>
+  <color name="surface">#FBF8FF</color>
+  <color name="surface_variant">#EFEDF4</color>
+  <color name="on_surface">#1B1B21</color>
+  <color name="on_surface_variant">#45464F</color>
+  <color name="ok">#0E6B37</color>
+  <color name="ok_container">#D8F0DF</color>
+  <color name="on_ok_container">#0E3B22</color>
+  <color name="warn">#8A5300</color>
+  <color name="warn_container">#FDF1DC</color>
+  <color name="on_warn_container">#4A3000</color>
+  <color name="danger">#B3261E</color>
+  <color name="danger_container">#FCE8E6</color>
+  <color name="on_danger_container">#5C1714</color>
+  <color name="info">#45464F</color>
+  <color name="info_container">#EFEDF4</color>
+</resources>

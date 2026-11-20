@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A list row (Material 3 three-line list item): leading avatar or icon, title, supporting text, status icon. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/row"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:gravity="center_vertical"
+    android:minHeight="72dp"
+    android:orientation="horizontal"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="8dp">
+
+  <TextView
+      android:id="@+id/avatar"
+      android:layout_width="40dp"
+      android:layout_height="40dp"
+      android:gravity="center"
+      android:importantForAccessibility="no"
+      android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+  <LinearLayout
+      android:layout_width="0dp"
+      android:layout_height="wrap_content"
+      android:layout_marginStart="16dp"
+      android:layout_weight="1"
+      android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+    <TextView
+        android:id="@+id/detail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textAppearance="?attr/textAppearanceBodyMedium" />
+  </LinearLayout>
+
+  <TextView
+      android:id="@+id/trailing"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:layout_marginStart="8dp"
+      android:textAppearance="?attr/textAppearanceLabelSmall" />
+
+  <ImageView
+      android:id="@+id/status"
+      android:layout_width="22dp"
+      android:layout_height="22dp"
+      android:layout_marginStart="8dp"
+      android:importantForAccessibility="no" />
+</LinearLayout>

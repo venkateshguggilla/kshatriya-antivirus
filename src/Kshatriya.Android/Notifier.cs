@@ -17,6 +17,33 @@ internal static class Notifier
         });
     }
 
+    /// <summary>
+    /// Notifies about findings not reported before: one notification for one finding, one summary for several.
+    /// Nothing is shown for none: there are no "all clear" notifications (ADR 0021).
+    /// </summary>
+    public static void ShowFindings(Context context, IReadOnlyList<Kshatriya.Mobile.MobileFinding> fresh, string where)
+    {
+        if (fresh.Count == 0)
+        {
+            return;
+        }
+
+        if (fresh.Count == 1)
+        {
+            Kshatriya.Mobile.MobileFinding f = fresh[0];
+            string title = f.Confirmed ? $"Threat found {where}" : $"Something to review {where}";
+            string text = f.Confirmed
+                ? $"{f.DisplayName}: {f.DetectionName}. Open Kshatriya to review it."
+                : $"{f.DisplayName} may be monitoring software. Fine if you installed it on purpose; open Kshatriya to review it.";
+            Show(context, 1000 + Math.Abs(f.Key.GetHashCode(StringComparison.Ordinal) % 100_000), title, text);
+            return;
+        }
+
+        int threats = fresh.Count(f => f.Confirmed);
+        Show(context, 999, $"{fresh.Count} findings {where}",
+            (threats > 0 ? $"{threats} threat(s), " : string.Empty) + $"latest: {fresh[^1].DisplayName}. Open Kshatriya to review them.");
+    }
+
     public static void Show(Context context, int id, string title, string text)
     {
         EnsureChannel(context);

@@ -8,6 +8,8 @@
     <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.14" />
     <PackageVersion Include="System.Management" Version="10.0.14" />
     <PackageVersion Include="SharpFuzz" Version="2.3.0" />
+    <!-- Android app only (ADR 0021): Material Components and AndroidX bindings, MIT AND Apache-2.0 (Microsoft, dotnet/android-libraries). -->
+    <PackageVersion Include="Xamarin.Google.Android.Material" Version="1.14.0.6" />
   </ItemGroup>
   <ItemGroup>
     <!-- Test-only dependencies (not shipped) -->

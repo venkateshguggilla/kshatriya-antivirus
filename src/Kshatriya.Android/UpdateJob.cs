@@ -103,25 +103,20 @@ public sealed class UpdateJob : JobService
         if (result.Outcome == UpdateCheckOutcome.Installed)
         {
             Protection updated = Protection.Load(context);
-            int found = 0;
+            var results = new List<MobileScanResult>();
             foreach (MobileScanTarget target in Protection.InstalledAppTargets(context.PackageManager!))
             {
-                if (target.PackageName == context.PackageName)
+                if (target.PackageName != context.PackageName)
                 {
-                    continue;
-                }
-
-                MobileScanResult scan = await updated.Scanner.ScanAsync(target, cancellationToken);
-                if (scan.Item.Status is ScanStatus.Detected or ScanStatus.Suspicious)
-                {
-                    found++;
-                    (_, string text) = MobileText.Describe(scan);
-                    Notifier.Show(context, 2000 + Math.Abs(target.PackageName?.GetHashCode(StringComparison.Ordinal) ?? 0) % 100_000, "Threat found after a signature update", text + ". Open Kshatriya to review it.");
+                    results.Add(await updated.Scanner.ScanAsync(target, cancellationToken));
                 }
             }
 
+            // Recorded for Home and History; only findings not reported before are notified (ADR 0021).
+            IReadOnlyList<MobileFinding> fresh = Protection.Findings(context).Record(results, "update", "update", DateTimeOffset.UtcNow, allApps: true);
+            Notifier.ShowFindings(context, fresh, "after a signature update");
             Protection.SaveCache(context);
-            Android.Util.Log.Info("Kshatriya", $"Update {result.Sequence} installed; {found} finding(s) in installed apps.");
+            Android.Util.Log.Info("Kshatriya", $"Update {result.Sequence} installed; {fresh.Count} new finding(s) in installed apps.");
         }
 
         return result;

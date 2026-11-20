@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Material 3 (ADR 0021). Dynamic colour (Android 12+) recolours surfaces and accents; status colours stay fixed. -->
+  <style name="Theme.Kshatriya" parent="Theme.Material3.DayNight.NoActionBar">
+    <item name="colorPrimary">@color/brand</item>
+    <item name="colorPrimaryContainer">@color/brand_container</item>
+    <item name="colorOnPrimaryContainer">@color/on_brand_container</item>
+    <item name="android:windowLightStatusBar">@bool/light_bars</item>
+    <item name="android:windowLightNavigationBar">@bool/light_bars</item>
+  </style>
+
+  <style name="Kshatriya.Title" parent="TextAppearance.Material3.HeadlineSmall" />
+  <style name="Kshatriya.Card" parent="Widget.Material3.CardView.Outlined">
+    <item name="cardCornerRadius">16dp</item>
+  </style>
+</resources>

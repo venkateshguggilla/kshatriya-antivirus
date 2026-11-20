@@ -11,11 +11,33 @@ namespace Kshatriya.AndroidApp;
 /// <summary>The scanner, the signed content and the installed-app targets, shared by the screen and the job.</summary>
 internal sealed class Protection
 {
-    private Protection(MobileContentStore store, MobileScanner scanner, string contentStatus)
+    private Protection(MobileContentStore store, MobileScanner scanner, string contentStatus, VerifiedContent? content)
     {
         Store = store;
         Scanner = scanner;
         ContentStatus = contentStatus;
+        ContentSequence = content?.Manifest.Sequence ?? 0;
+        ContentExpiresUtc = content?.Manifest.ExpiresUtc;
+        ContentExpired = content?.Expired ?? false;
+    }
+
+    /// <summary>The installed signed update (0: built-in signatures only), its expiry and whether it has expired.</summary>
+    public long ContentSequence { get; }
+
+    public DateTimeOffset? ContentExpiresUtc { get; }
+
+    public bool ContentExpired { get; }
+
+    private static readonly object s_findingsGate = new();
+    private static FindingsStore? s_findings;
+
+    /// <summary>The process-wide findings and scan history in app-private storage (ADR 0021, slice 6).</summary>
+    public static FindingsStore Findings(Context context)
+    {
+        lock (s_findingsGate)
+        {
+            return s_findings ??= new FindingsStore(System.IO.Path.Combine(context.FilesDir!.AbsolutePath, "findings.json"));
+        }
     }
 
     public MobileContentStore Store { get; }
@@ -57,9 +79,10 @@ internal sealed class Protection
         HashSignatureDatabase signatures = HashSignatureDatabase.Empty;
         AppIndicatorSet indicators = AppIndicatorSet.Empty;
         string status;
+        VerifiedContent? content = null;
         try
         {
-            VerifiedContent? content = store.LoadActive(DateTimeOffset.UtcNow);
+            content = store.LoadActive(DateTimeOffset.UtcNow);
             if (content is null)
             {
                 status = "Signatures: built-in only (no signed update installed).";
@@ -75,13 +98,14 @@ internal sealed class Protection
         }
         catch (Exception ex) when (ex is ContentVerificationException or IOException or FormatException)
         {
+            content = null;
             status = $"Signatures: built-in only. The installed update was not loaded: {ex.Message}";
         }
 
         HashEngine engine = HashEngine.CreateDefault(signatures);
         var scanner = new MobileScanner([engine], indicators: indicators, cache: Cache(context));
         string counts = $"{engine.SignatureCount} file signature(s)" + (indicators.Count > 0 ? $" and {indicators.Count} app indicator(s)" : string.Empty);
-        return new Protection(store, scanner, $"{status} {counts} in use.");
+        return new Protection(store, scanner, $"{status} {counts} in use.", content);
     }
 
     /// <summary>The APK files of one installed app (base and splits).</summary>
@@ -178,6 +202,42 @@ internal sealed class Protection
     [System.Runtime.Versioning.ObsoletedOSPlatform("android33.0")]
     private static PackageInfo GetPackageInfoLegacy(PackageManager packages, string packageName, PackageInfoFlags flags) =>
         packages.GetPackageInfo(packageName, flags)!;
+
+    /// <summary>The package names of every installed app (to resolve findings of removed apps).</summary>
+    public static IReadOnlySet<string> InstalledPackageNames(PackageManager packages) =>
+        new HashSet<string>(InstalledApps(packages).Select(a => a.PackageName).OfType<string>(), StringComparer.Ordinal);
+
+    /// <summary>Installed apps for the Apps page: label, whether it is a system app, and when it was last updated.</summary>
+    public static IReadOnlyList<InstalledApp> InstalledAppList(Context context)
+    {
+        PackageManager packages = context.PackageManager!;
+        var apps = new List<InstalledApp>();
+        foreach (ApplicationInfo app in InstalledApps(packages))
+        {
+            if (app.PackageName is not { } name || name == context.PackageName)
+            {
+                continue;
+            }
+
+            DateTimeOffset? updated = null;
+            try
+            {
+                PackageInfo info = OperatingSystem.IsAndroidVersionAtLeast(33)
+                    ? packages.GetPackageInfo(name, PackageManager.PackageInfoFlags.Of(0L))
+                    : GetPackageInfoLegacy(packages, name, 0);
+                updated = DateTimeOffset.FromUnixTimeMilliseconds(info.LastUpdateTime);
+            }
+            catch (PackageManager.NameNotFoundException)
+            {
+                continue; // removed meanwhile
+            }
+
+            bool system = (app.Flags & (ApplicationInfoFlags.System | ApplicationInfoFlags.UpdatedSystemApp)) != 0;
+            apps.Add(new InstalledApp(name, packages.GetApplicationLabel(app) ?? name, system, updated));
+        }
+
+        return apps;
+    }
 
     private static IList<ApplicationInfo> InstalledApps(PackageManager packages) =>
         OperatingSystem.IsAndroidVersionAtLeast(33)

@@ -66,6 +66,7 @@ public sealed class NewAppsJob : JobService
         if (!firstRun && changes is not null)
         {
             Protection protection = Protection.Load(context);
+            var results = new List<MobileScanResult>();
             foreach (string name in changes.PackageNames.Distinct())
             {
                 if (name == context.PackageName || Protection.FindApp(packages, name) is not { } app)
@@ -75,15 +76,19 @@ public sealed class NewAppsJob : JobService
 
                 foreach (MobileScanTarget target in Protection.AppTargets(packages, app))
                 {
-                    MobileScanResult result = protection.Scanner.ScanAsync(target, CancellationToken.None).GetAwaiter().GetResult();
-                    if (result.Item.Status is ScanStatus.Detected or ScanStatus.Suspicious)
-                    {
-                        found++;
-                        (_, string text) = MobileText.Describe(result);
-                        Notifier.Show(context, 1000 + Math.Abs(name.GetHashCode(StringComparison.Ordinal) % 100_000), "Threat found in a new app", text + ". Open Kshatriya to review it.");
-                    }
+                    results.Add(protection.Scanner.ScanAsync(target, CancellationToken.None).GetAwaiter().GetResult());
                 }
             }
+
+            if (results.Count > 0)
+            {
+                // Recorded for Home and History; only findings not reported before are notified (ADR 0021).
+                IReadOnlyList<MobileFinding> fresh = Protection.Findings(context).Record(results, "new apps", "new app", DateTimeOffset.UtcNow);
+                Notifier.ShowFindings(context, fresh, "in a new or updated app");
+                found = fresh.Count;
+            }
+
+            Protection.Findings(context).AppsRemoved(Protection.InstalledPackageNames(packages));
         }
 
         // The first run only records the starting point, so apps installed earlier are not reported here.

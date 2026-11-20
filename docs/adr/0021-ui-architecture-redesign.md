@@ -283,3 +283,15 @@ settings file an administrator edits.
     recommendations are "apps never checked" and "notifications off"; the latter can be dismissed.
   - `MobileScreens` builds Home, Apps, History and the finding sheet as plain records. The sheet carries the
     safety note for monitoring apps.
+- **Slice 7 (2026-11-21):** the Android app is rebuilt on Material 3.
+  - **Dependency:** it uses `Xamarin.Google.Android.Material` 1.14.0.6, which brings AndroidX with it. The
+    licence check was run on 2026-11-21: all 71 binding packages, including transitive ones, are
+    "MIT AND Apache-2.0" (Microsoft, dotnet/android-libraries), which ADR 0003 allows.
+  - **Navigation:** one activity with a navigation bar for Home, Apps, History and Settings. Each page
+    renders the `MobileScreens` state.
+  - **Findings:** a bottom sheet shows each finding, with "Review in Android settings" and keep or stop
+    keeping. Monitoring apps get a safety note linking to the Coalition Against Stalkerware's advice.
+  - **Onboarding:** three steps. The notification permission is asked once, in context; after a denial,
+    Settings opens Android's notification settings rather than asking again.
+  - **Background jobs:** the new-apps and update jobs record into the findings store and notify only about
+    findings not reported before.
