@@ -55,6 +55,9 @@ public sealed record ServiceCoreOptions
 
     /// <summary>Watch for security-relevant changes (startup entries, gateway, DNS) while running.</summary>
     public bool WatchPosture { get; init; } = true;
+
+    /// <summary>Disk notifications and enable/disable for the USB drive lock (tests); null uses cfgmgr32.</summary>
+    public Kshatriya.Service.DeviceLock.IDeviceControl? DeviceControl { get; init; }
 }
 
 /// <summary>
@@ -85,10 +88,15 @@ public sealed class ServiceCore : IDisposable
         _logger = logger;
         _started = options.Time.GetUtcNow();
         Hardening = new HardeningService(options.HardeningTarget ?? new WindowsHardeningTarget(), options.Paths.StateDirectory, options.Paths.Production, options.Time);
+        DriveLock = new Kshatriya.Service.DeviceLock.DriveLock(
+            options.DeviceControl ?? new Kshatriya.Service.DeviceLock.WindowsDeviceControl(),
+            new Kshatriya.Service.DeviceLock.LockSettings(options.Paths.StateDirectory, options.Paths.Production, options.Time),
+            options.Time,
+            logger);
         Posture = new PostureService(
             options.PostureSource ?? new WindowsPostureSource(),
             () => Hardening.Applied,
-            () => (false, false),
+            () => (DriveLock.Settings.Enabled, DriveLock.Settings.PasswordSet),
             options.Paths.StateDirectory,
             options.Paths.Production,
             options.Time,
@@ -101,6 +109,9 @@ public sealed class ServiceCore : IDisposable
 
     /// <summary>Consented hardening fixes (ADR 0022).</summary>
     public HardeningService Hardening { get; }
+
+    /// <summary>The removable-drive lock and the Kshatriya password (ADR 0023).</summary>
+    public Kshatriya.Service.DeviceLock.DriveLock DriveLock { get; }
 
     private void OnPostureChanged(PostureChange change)
     {
@@ -379,7 +390,8 @@ public sealed class ServiceCore : IDisposable
                 server.RunAsync(cancellationToken),
                 scheduler.RunAsync(cancellationToken),
                 RealTime?.RunAsync(cancellationToken) ?? Task.CompletedTask,
-                _options.WatchPosture ? Posture.RunAsync(cancellationToken) : Task.CompletedTask);
+                _options.WatchPosture ? Posture.RunAsync(cancellationToken) : Task.CompletedTask,
+                DriveLock.RunAsync(cancellationToken));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -479,6 +491,7 @@ public sealed class ServiceCore : IDisposable
         Network?.Dispose();
         Coordinator.Dispose();
         Posture.Dispose();
+        DriveLock.Dispose();
         _contentGate.Dispose();
     }
 

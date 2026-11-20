@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
@@ -25,6 +25,10 @@
 .PARAMETER RequireSignature
     With -FromRelease: also require a valid Authenticode signature on every Kshatriya executable and library.
 
+.PARAMETER NoLockPassword
+    Do not ask for a Kshatriya password. The password unlocks USB drives when the USB drive lock is on
+    (ADR 0023); it can be set later with: kshatriya password set
+
 .EXAMPLE
     ./scripts/Get-YaraX.ps1
     ./scripts/Install-KshatriyaService.ps1
@@ -34,7 +38,8 @@
 param(
     [string] $InstallDirectory = (Join-Path $env:ProgramFiles 'Kshatriya'),
     [string] $FromRelease,
-    [switch] $RequireSignature
+    [switch] $RequireSignature,
+    [switch] $NoLockPassword
 )
 
 $ErrorActionPreference = 'Stop'
@@ -185,4 +190,39 @@ if ($PSCmdlet.ShouldProcess($serviceName, 'Register and start service')) {
 
     Start-Service -Name $serviceName
     Write-Host "Installed $serviceName to $InstallDirectory. Check it with: & '$InstallDirectory\kshatriya.exe' status"
+}
+
+# The Kshatriya password (ADR 0023): unlocks USB drives when the USB drive lock is turned on. Only a salted hash
+# is stored by the service; the password is passed over the local pipe and never written to disk or logs. A
+# reinstall keeps an existing password (it lives in the data folder).
+$cli = Join-Path $InstallDirectory 'kshatriya.exe'
+if (-not $NoLockPassword -and -not $WhatIfPreference -and [Environment]::UserInteractive -and (Test-Path $cli)) {
+    Start-Sleep -Seconds 3   # let the service open its pipe
+    $lockStatus = & $cli lock status 2>$null
+    if ($lockStatus -match 'Kshatriya password: set') {
+        Write-Host 'A Kshatriya password is already set (change it with: kshatriya password set).'
+    }
+    else {
+        Write-Host ''
+        Write-Host 'Choose a Kshatriya password. It unlocks USB drives when you turn on the USB drive lock'
+        Write-Host '(Protection page, or: kshatriya lock on). At least 8 characters. Press Enter to skip.'
+        for ($attempt = 0; $attempt -lt 3; $attempt++) {
+            $first = Read-Host -AsSecureString 'Kshatriya password'
+            if ($first.Length -eq 0) { Write-Host 'Skipped. Set it later with: kshatriya password set'; break }
+            $second = Read-Host -AsSecureString 'Type it again'
+            $a = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($first)
+            $b = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($second)
+            try {
+                $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($a)
+                if ($plain -ne [Runtime.InteropServices.Marshal]::PtrToStringBSTR($b)) { Write-Warning 'The passwords do not match.'; continue }
+                $plain | & $cli password set --stdin
+                if ($LASTEXITCODE -eq 0) { break }
+            }
+            finally {
+                [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($a)
+                [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($b)
+                $plain = $null
+            }
+        }
+    }
 }

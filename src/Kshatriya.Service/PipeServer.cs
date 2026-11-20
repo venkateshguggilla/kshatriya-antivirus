@@ -7,6 +7,7 @@ using Kshatriya.Core;
 using Kshatriya.Protocol;
 using Kshatriya.Posture;
 using Kshatriya.Service.Posture;
+using Kshatriya.Service.DeviceLock;
 using Kshatriya.Response;
 using Kshatriya.Runtime.Ipc;
 using Kshatriya.Scanning;
@@ -279,6 +280,19 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
                     break;
                 case MessageType.HardeningRequest:
                     await HardeningAsync(ProtocolJson.Deserialize<HardeningRequestDto>(frame.Json), actor, canManage, cancellationToken);
+                    break;
+                case MessageType.DeviceLockQuery:
+                    ProtocolJson.Deserialize<EmptyDto>(frame.Json);
+                    await SendAsync(MessageType.DeviceLockReply, DeviceLockReply(), cancellationToken);
+                    break;
+                case MessageType.DeviceUnlock:
+                    await DeviceUnlockAsync(ProtocolJson.Deserialize<DeviceUnlockDto>(frame.Json), actor, cancellationToken);
+                    break;
+                case MessageType.DeviceLockConfigure:
+                    await DeviceLockConfigureAsync(ProtocolJson.Deserialize<DeviceLockConfigureDto>(frame.Json), actor, canManage, cancellationToken);
+                    break;
+                case MessageType.PasswordSet:
+                    await PasswordSetAsync(ProtocolJson.Deserialize<PasswordSetDto>(frame.Json), actor, canManage, cancellationToken);
                     break;
                 case MessageType.Cancel:
                     // No scan running; nothing to cancel.
@@ -600,6 +614,81 @@ internal sealed class ClientSession(NamedPipeServerStream pipe, ServiceCore core
             Code = result.Code,
             Message = result.Message,
         }, cancellationToken);
+    }
+
+    /// <summary>The lock state and the drives it knows. Any local user may read it (names and sizes only).</summary>
+    private DeviceLockReplyDto DeviceLockReply() => new()
+    {
+        Enabled = core.DriveLock.Settings.Enabled,
+        PasswordSet = core.DriveLock.Settings.PasswordSet,
+        State = core.DriveLock.State,
+        RetryAfterSeconds = core.DriveLock.Settings.RetryAfterSeconds,
+        Drives = [.. core.DriveLock.Drives.Select(d => new LockedDriveDto
+        {
+            Id = d.Id,
+            Name = d.Name,
+            SizeBytes = d.SizeBytes,
+            State = d.State,
+            ArrivedUtc = d.ArrivedUtc.UtcDateTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+            Message = d.Message,
+        })],
+    };
+
+    /// <summary>
+    /// Unlocks a drive with the Kshatriya password (ADR 0023): no administrator needed, since it only returns the
+    /// drive to Windows' normal behaviour. Every attempt is audited; the password never is.
+    /// </summary>
+    private async Task DeviceUnlockAsync(DeviceUnlockDto request, Actor actor, CancellationToken cancellationToken)
+    {
+        if (request.Id.Length is 0 or > 400 || request.Password.Length > LockSettings.MaxLength)
+        {
+            await SendErrorAsync(ErrorCodes.BadRequest, "Invalid unlock request.", cancellationToken);
+            return;
+        }
+
+        LockResult result = await Task.Run(() => core.DriveLock.Unlock(request.Id, request.Password), cancellationToken);
+        string outcome = result.Succeeded ? AuditOutcomes.Succeeded : result.Code is "wrongPassword" or "tooManyAttempts" ? AuditOutcomes.Denied : AuditOutcomes.Failed;
+        core.Quarantine.AuditEvent(actor, AuditActions.DeviceUnlock, request.Id, outcome, result.Succeeded ? null : result.Code);
+        Log.DriveUnlock(logger, request.Id, actor.Name, result.Succeeded ? "unlocked" : result.Code);
+        await SendAsync(MessageType.OperationReply, new OperationReplyDto { Succeeded = result.Succeeded, Code = result.Code, Message = result.Message }, cancellationToken);
+    }
+
+    /// <summary>Turns the lock on or off: elevated administrator only (turning it off weakens protection).</summary>
+    private async Task DeviceLockConfigureAsync(DeviceLockConfigureDto request, Actor actor, bool canManage, CancellationToken cancellationToken)
+    {
+        string action = request.Enabled ? AuditActions.DeviceLockOn : AuditActions.DeviceLockOff;
+        if (!canManage)
+        {
+            const string reason = "Turning the USB drive lock on or off requires an elevated administrator.";
+            core.Quarantine.AuditDenied(actor, action, "usb", reason);
+            Log.Denied(logger, action, actor.Name, reason);
+            await SendErrorAsync(ErrorCodes.AccessDenied, reason, cancellationToken);
+            return;
+        }
+
+        LockResult result = core.DriveLock.Configure(request.Enabled);
+        core.Quarantine.AuditEvent(actor, action, "usb", result.Succeeded ? AuditOutcomes.Succeeded : AuditOutcomes.Failed, result.Succeeded ? null : result.Message);
+        Log.LockSettingChanged(logger, actor.Name, action, result.Succeeded ? "done" : result.Code);
+        await SendAsync(MessageType.OperationReply, new OperationReplyDto { Succeeded = result.Succeeded, Code = result.Code, Message = result.Message }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sets the Kshatriya password: an elevated administrator always (first set and resets), anyone else only with
+    /// the current password. Audited without the password.
+    /// </summary>
+    private async Task PasswordSetAsync(PasswordSetDto request, Actor actor, bool canManage, CancellationToken cancellationToken)
+    {
+        if (request.NewPassword.Length > LockSettings.MaxLength || request.CurrentPassword?.Length > LockSettings.MaxLength)
+        {
+            await SendErrorAsync(ErrorCodes.BadRequest, "The password is too long.", cancellationToken);
+            return;
+        }
+
+        LockResult result = await Task.Run(() => core.DriveLock.SetPassword(request.NewPassword, request.CurrentPassword, canManage), cancellationToken);
+        string outcome = result.Succeeded ? AuditOutcomes.Succeeded : result.Code is "accessDenied" or "wrongPassword" or "tooManyAttempts" ? AuditOutcomes.Denied : AuditOutcomes.Failed;
+        core.Quarantine.AuditEvent(actor, AuditActions.PasswordSet, "kshatriya password", outcome, result.Succeeded ? (canManage ? "set by an administrator" : "changed with the current password") : result.Code);
+        Log.LockSettingChanged(logger, actor.Name, AuditActions.PasswordSet, result.Succeeded ? "done" : result.Code);
+        await SendAsync(MessageType.OperationReply, new OperationReplyDto { Succeeded = result.Succeeded, Code = result.Code, Message = result.Message }, cancellationToken);
     }
 
     private async Task WebBlocklistAsync(WebBlocklistQueryDto request, CancellationToken cancellationToken)

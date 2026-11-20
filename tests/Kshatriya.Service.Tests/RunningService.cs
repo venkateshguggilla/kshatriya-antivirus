@@ -35,7 +35,7 @@ internal sealed class RunningService : IAsyncDisposable
     /// <summary>Benign bytes that the service's custom signature database flags as a test detection.</summary>
     public byte[] KnownBad { get; }
 
-    public static async Task<RunningService> StartAsync(ServiceSettings? settings = null, TimeProvider? time = null, bool requireAdministrator = false, Kshatriya.Service.RealTime.IProcessStartSource? processes = null, Func<IEnumerable<string>>? removableDrives = null, Microsoft.Extensions.Logging.ILogger? logger = null, Func<Kshatriya.Scanning.Targets.ScanKind, Kshatriya.Scanning.Targets.QuickScanScope, IReadOnlyList<string>>? scanTargets = null, Kshatriya.Service.Posture.IPostureSource? posture = null, Kshatriya.Service.Posture.IHardeningTarget? hardening = null)
+    public static async Task<RunningService> StartAsync(ServiceSettings? settings = null, TimeProvider? time = null, bool requireAdministrator = false, Kshatriya.Service.RealTime.IProcessStartSource? processes = null, Func<IEnumerable<string>>? removableDrives = null, Microsoft.Extensions.Logging.ILogger? logger = null, Func<Kshatriya.Scanning.Targets.ScanKind, Kshatriya.Scanning.Targets.QuickScanScope, IReadOnlyList<string>>? scanTargets = null, Kshatriya.Service.Posture.IPostureSource? posture = null, Kshatriya.Service.Posture.IHardeningTarget? hardening = null, Kshatriya.Service.DeviceLock.IDeviceControl? devices = null)
     {
         var temp = new TempDirectory();
         byte[] knownBad = TestData.BenignBytes(77, 4096);
@@ -60,6 +60,7 @@ internal sealed class RunningService : IAsyncDisposable
                 PostureSource = posture ?? new FakePostureSource(),
                 HardeningTarget = hardening ?? new FakeHardeningTarget(),
                 WatchPosture = false,
+                DeviceControl = devices ?? new FakeDeviceControl(),
             },
             logger ?? NullLogger.Instance,
             CancellationToken.None);

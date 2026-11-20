@@ -1,4 +1,4 @@
-# ADR 0023: Removable-drive lock and the Kshatriya password
+﻿# ADR 0023: Removable-drive lock and the Kshatriya password
 
 - Status: accepted (owner choice, 2026-11-21); prototype
 - Date: 2026-11-21
@@ -37,6 +37,7 @@ two parts, and the owner chose both:
 - **How.** `CM_Disable_DevNode` with `CM_DISABLE_POLITE | CM_DISABLE_UI_NOT_OK` on the disk's device node:
   the drive's volumes disappear. **Not persistent** (no `CM_DISABLE_PERSIST`): after a restart or a re-plug
   the device starts enabled and is locked again, so a crash or uninstall can never strand a disabled device.
+  When the service stops normally it enables the drives it locked.
   If the disk is in use, Windows vetoes a polite disable; the drive is then reported as "could not be locked".
 - **When the service starts** with the lock on, USB disks already connected are left alone (they may hold
   open files) and listed as "connected before the lock started".
