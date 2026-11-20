@@ -1,12 +1,12 @@
-<p align="center"><img src="assets/brand/kshatriya-icon-512.png" alt="Kshatriya emblem: an archer drawing a bow" width="160"></p>
+﻿<p align="center"><img src="assets/brand/kshatriya-icon-512.png" alt="Kshatriya emblem: an archer drawing a bow" width="160"></p>
 
 # Kshatriya Antivirus
 
-> **Status: Milestone 12 prototype (roadmap M1–M12 complete as prototypes).** Kshatriya is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
+> **Status: Milestone 12 prototype (roadmap M1â€“M12 complete as prototypes).** Kshatriya is an early-stage, defensive Windows security project. It is **not** a replacement for Microsoft Defender or any commercial antivirus product, and makes no claim of equivalent protection. Keep Microsoft Defender enabled.
 
 "Kshatriya" means warrior; the emblem is an archer drawing a bow ([brand assets](assets/brand/README.md)).
 
-## What works today (M1–M12)
+## What works today (M1â€“M12)
 
 - `kshatriya scan <path>...`: on-demand, **read-only** scan of files and folders
   - **Sandboxed parsing (M3):** file contents are analysed in separate worker processes. Each worker runs on a restricted token with the account SID deny-only and low integrity, inside a Job Object (one process, memory cap, killed with its parent) with process mitigations. Workers cannot write your files, start programs or read files private to your account. A crashed or hung worker is replaced and the item is reported as not scanned. `--no-sandbox` turns this off for development only.
@@ -14,7 +14,7 @@
   - **YARA engine:** YARA-X rules (one built-in test rule, plus your own via `--rules`; `include` is disabled)
   - **PE heuristics:** static indicators such as packer section names, high-entropy code, writable+executable sections, odd entry points and injection API sets. Results are only ever **suspicious**, never "malware", and validly signed files are not scored
   - **Authenticode trust:** embedded and catalog signatures are verified offline (no revocation or network lookups) and shown per executable
-  - **Archives:** ZIP-based files (`.zip`, `.docx`, `.jar`, …) are expanded in memory up to 3 levels deep, with limits on entries, sizes and compression ratio; findings show the path inside the archive
+  - **Archives:** ZIP-based files (`.zip`, `.docx`, `.jar`, â€¦) are expanded in memory up to 3 levels deep, with limits on entries, sizes and compression ratio; findings show the path inside the archive
   - Never follows symbolic links, junctions or other reparse points inside a tree (they are reported as skipped)
   - Never reads cloud placeholders (OneDrive "online-only" files), so it cannot trigger downloads
   - Supports paths longer than 260 characters
@@ -28,7 +28,7 @@
   - The client verifies that the pipe really belongs to the installed service before sending anything.
 
 - **Quarantine (M4), opt-in:** `scan --quarantine` moves confirmed, high-confidence detections (category malware or test, confidence high) into an encrypted vault. Suspicious (heuristic) and PUA findings are only reported. `kshatriya quarantine add <file>` quarantines a file by hand.
-  - The file is removed only through the same handle that was verified: opened without following links and shared for reading only, checked (regular file, one hard link, ≤ 1 GiB), re-hashed while it is encrypted into the vault, and deleted only after the vault copy is on disk. If anything fails (the file changed, is locked, is a running program, …) the file is left where it was and the report says why.
+  - The file is removed only through the same handle that was verified: opened without following links and shared for reading only, checked (regular file, one hard link, â‰¤ 1 GiB), re-hashed while it is encrypted into the vault, and deleted only after the vault copy is on disk. If anything fails (the file changed, is locked, is a running program, â€¦) the file is left where it was and the report says why.
   - The vault uses AES-256-GCM with a DPAPI-protected key; the service's vault is readable only by SYSTEM and Administrators.
   - `kshatriya quarantine restore <id> [--to <path>]` never overwrites an existing file, verifies the content and marks the restored file as downloaded from the internet. `quarantine list` and `quarantine delete <id>` manage the vault.
   - Running programs are **not** stopped; quarantining one fails with `inUse`.
@@ -74,7 +74,7 @@ formats and has no web protection yet. Only the EICAR test signature is built in
 builds a signature list of 3,228 known stalkerware APKs from the [Echap stalkerware indicators](https://github.com/AssoEchap/stalkerware-indicators)
 (CC BY 4.0) to sign and import; it covers stalkerware only, not other Android malware.
 
-Signed updates can also be downloaded automatically once a day (off by default; "Automatic updates…" in the
+Signed updates can also be downloaded automatically once a day (off by default; "Automatic updatesâ€¦" in the
 app). The app downloads one `.kstu` file over https, by default the `android-content.kstu` asset of this
 repository's `content-android` release, and installs it only if it verifies against a key you added and is
 newer than the installed one. The request sends nothing about the phone or its apps. To publish a new
@@ -200,15 +200,15 @@ Microsoft Defender will (correctly) quarantine an EICAR file written to disk, an
 
 ## Performance
 
-Measured 2026-11-08 with `scripts/New-PerfTree.ps1` (50,000 files, 512 B–16 KiB, 404 MiB total), Release build, Intel Core i9-9980HK (16 logical CPUs), default settings, warm file cache:
+Measured 2026-11-08 with `scripts/New-PerfTree.ps1` (50,000 files, 512 Bâ€“16 KiB, 404 MiB total), Release build, Intel Core i9-9980HK (16 logical CPUs), default settings, warm file cache:
 
 | Run | Time | Throughput |
 |---|---|---|
-| M1, hash engine only (3 runs) | 1.00–1.06 s | ≈ 47,000–50,000 files/s |
-| M2/M3, all engines in-process (`--no-sandbox`, 4 runs) | 1.33–1.42 s | ≈ 35,000–37,000 files/s |
-| M3, all engines in sandboxed workers (default, 3 runs) | 3.22–3.80 s | ≈ 13,000–15,500 files/s |
+| M1, hash engine only (3 runs) | 1.00â€“1.06 s | â‰ˆ 47,000â€“50,000 files/s |
+| M2/M3, all engines in-process (`--no-sandbox`, 4 runs) | 1.33â€“1.42 s | â‰ˆ 35,000â€“37,000 files/s |
+| M3, all engines in sandboxed workers (default, 3 runs) | 3.22â€“3.80 s | â‰ˆ 13,000â€“15,500 files/s |
 
-Isolation costs about 2.3× on many tiny files: each item crosses a pipe to a worker. An early version starved the thread pool because .NET anonymous pipes do synchronous I/O (about 10,500 files/s); switching the broker side to overlapped named pipes fixed it. On large real-world files the cost disappears: the false-positive corpus below took 71 s sandboxed versus 80 s in-process (both warm). These are warm-cache numbers; M1's acceptance threshold was ≥ 200 files/s.
+Isolation costs about 2.3Ã— on many tiny files: each item crosses a pipe to a worker. An early version starved the thread pool because .NET anonymous pipes do synchronous I/O (about 10,500 files/s); switching the broker side to overlapped named pipes fixed it. On large real-world files the cost disappears: the false-positive corpus below took 71 s sandboxed versus 80 s in-process (both warm). These are warm-cache numbers; M1's acceptance threshold was â‰¥ 200 files/s.
 
 Verdict cache (service, `--dev`, `C:\Windows\System32\drivers`, 684 files, 116 MiB): first scan 1.76 s, repeat scan 0.01 s (684 cache hits). Files changed in the last 2 seconds are never cached.
 
@@ -244,11 +244,11 @@ CI runs 100,000 iterations per target.
 
 Coverage-guided fuzzing (`tools/Kshatriya.CoverageFuzz`: SharpFuzz edge instrumentation, in-process AFL-style loop, seed 20261109), **5 minutes per target, 0 failures**:
 
-| Target | Executions | Edges (seeds → end) | Corpus |
+| Target | Executions | Edges (seeds â†’ end) | Corpus |
 |---|---|---|---|
-| PE parser, heuristics and ML features | 3.0 M (10,024/s) | 431 → 574 | 199 |
-| ZIP expansion through the scan pipeline | 5.6 M (18,518/s) | 229 → 292 | 51 |
-| Content-package container | 4.3 M (14,261/s) | 173 → 208 | 20 |
+| PE parser, heuristics and ML features | 3.0 M (10,024/s) | 431 â†’ 574 | 199 |
+| ZIP expansion through the scan pipeline | 5.6 M (18,518/s) | 229 â†’ 292 | 51 |
+| Content-package container | 4.3 M (14,261/s) | 173 â†’ 208 | 20 |
 
 Coverage levels off within the first minute (the PE target reached 567 edges after 20 s), so longer runs mostly re-check the same paths. The content target almost never passes the signature check, so the signed manifest parser is covered by unit tests rather than by this fuzzer.
 
@@ -276,6 +276,7 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 | `extension/` | Edge and Chrome extension (Manifest V3, no build step); tests in `tests/extension` |
 | `src/Kshatriya.Mobile` | Platform-independent logic of the Android app: SHA-256 scanner, signed content store and update checker, wording |
 | `src/Kshatriya.Android` | Android app (prototype, .NET for Android; not in `Kshatriya.slnx`) |
+| `src/Kshatriya.Posture` | Security check rules (Defender and ASR, installs, USB, network, startup, Android) and the hardening fix catalogue, evaluated from snapshots ([ADR 0022](docs/adr/0022-security-posture-and-hardening.md)) |
 | `src/Kshatriya.Presentation` | Status model, status evaluator and notification policy shared by the desktop and Android apps ([ADR 0021](docs/adr/0021-ui-architecture-redesign.md)) |
 | `tests/` | xUnit tests (shared helpers in `tests/Shared`) |
 | `docs/` | [Architecture](docs/architecture.md), [threat model](docs/threat-model.md), [ADRs](docs/adr), [schemas](docs/schemas) |
@@ -286,7 +287,7 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 
 ## Roadmap
 
-See [docs/architecture.md](docs/architecture.md#roadmap). All planned user-mode milestones (M1–M12) exist as prototypes. What a beta would still need is listed in the [release checklist](docs/release-checklist.md). The optional kernel minifilter (M13+) stays out of scope until the user-mode design has been reviewed.
+See [docs/architecture.md](docs/architecture.md#roadmap). All planned user-mode milestones (M1â€“M12) exist as prototypes. What a beta would still need is listed in the [release checklist](docs/release-checklist.md). The optional kernel minifilter (M13+) stays out of scope until the user-mode design has been reviewed.
 
 ## Security
 
