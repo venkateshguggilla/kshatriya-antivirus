@@ -26,4 +26,5 @@ Licensing policy: only permissive licenses (MIT, BSD, Apache-2.0, or similar) ma
 | Item | Notes |
 |---|---|
 | EICAR test file signature | Industry-standard harmless test file defined by EICAR. Only its SHA-256 hash is embedded. |
+| [Echap stalkerware-indicators](https://github.com/AssoEchap/stalkerware-indicators) APK hashes | CC BY 4.0, © Echap and contributors. Not committed to this repository: the owner builds signed Android signature packages from `samples.csv` with `scripts/Build-AndroidSignatures.ps1` ([ADR 0020](docs/adr/0020-android-prototype.md)); each list carries the source and licence in its header. Any published package must credit Echap and link the licence. |
 | [Phishing.Database](https://github.com/Phishing-Database/Phishing.Database) phishing domains | MIT, © 2018-2025 Mitchell Krog, Nissar Chababy and the Phishing.Database Contributors. Not committed to this repository: the owner builds signed web-blocklist packages from `phishing-domains-ACTIVE.txt` ([ADR 0019](docs/adr/0019-web-blocklists-in-signed-content.md)). Any published package must carry this notice and the MIT licence text. |

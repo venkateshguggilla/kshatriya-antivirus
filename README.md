@@ -70,8 +70,9 @@ It compares installed apps (their APK files), and files or folders you pick, wit
 SHA-256, checks new and updated apps about every 15 minutes in the background, and imports signed
 content packages with the same verification as on Windows. It reports only: tapping an app finding opens
 Android's app details, where you can uninstall it. It has no real-time file protection, parses no file
-formats and has no web protection yet. Only the EICAR test signature is built in, so it detects real
-threats only once a signed update with real APK fingerprints is imported.
+formats and has no web protection yet. Only the EICAR test signature is built in. `scripts/Build-AndroidSignatures.ps1`
+builds a signature list of 3,228 known stalkerware APKs from the [Echap stalkerware indicators](https://github.com/AssoEchap/stalkerware-indicators)
+(CC BY 4.0) to sign and import; it covers stalkerware only, not other Android malware.
 
 Building it needs the .NET `android` workload (`dotnet workload install android`), the Android SDK and
 **JDK 21** (the .NET Android tools do not support the JDK 25 that Android Studio bundles):

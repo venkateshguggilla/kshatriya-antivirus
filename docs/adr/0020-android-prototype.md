@@ -56,10 +56,23 @@ Platform facts this design relies on (checked 2026-11-19):
 8. **Not in the first version:** web protection (a local `VpnService` filter using the ADR 0019 lists, off
    by default because of the one-VPN limit), all-files scanning, Play Store publishing and signing.
 
+9. **First signature source: Echap stalkerware indicators (2026-11-20).** The owner chose
+   [AssoEchap/stalkerware-indicators](https://github.com/AssoEchap/stalkerware-indicators), licensed
+   CC BY 4.0 (stated in its README; it has no LICENSE file). Its `samples.csv` lists 3,228 stalkerware
+   APKs by SHA-256, with package name and signing certificate. `scripts/Build-AndroidSignatures.ps1`
+   turns it into a `.hashdb` named `Android.Stalkerware.<App>` in the category `pua`: these are
+   commercial surveillance apps, not confirmed malware. The list is not committed; the owner signs it
+   with their own key. Rejected for now: MalwareBazaar (its FAQ says CC0, but the abuse.ch terms forbid
+   derivative works without consent and charge for commercial use), research datasets such as AndroZoo
+   (no redistribution licence), and android-sigma-rules (certificate and package indicators, which the
+   exact-hash scanner cannot use yet). Matching Echap's package names and signing certificates would
+   also catch new builds of the same apps; that needs a reviewed change to the scanner.
+
 ## Consequences
 
-- Detection on Android is exactly as strong as the signature lists. With only the EICAR signature
-  shipped, the app is plumbing until signed content with real APK hashes is chosen and imported.
+- Detection on Android is exactly as strong as the signature lists. Only the EICAR signature is
+  built in. With the Echap list imported it recognises known stalkerware builds, not banking trojans,
+  adware or other malware, for which no source with a clear licence has been found.
 - No real-time protection: new apps are checked within roughly 15 minutes of installation, and files only
   when the user scans them.
 - The Android build needs the .NET `android` workload; the main solution and CI job stay free of it, and a
