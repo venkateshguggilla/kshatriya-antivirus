@@ -1,6 +1,7 @@
 # ADR 0021: UI and app-layer redesign for desktop and Android
 
-- Status: proposed (2026-11-20). The owner chooses which parts to build. Nothing here is implemented yet.
+- Status: accepted (2026-11-20). The owner chose to build all eight slices below, in order. Nothing is
+  implemented yet.
 - Date: 2026-11-20
 - Research: [UI and UX review of security apps](../research/ui-ux-review-2026-11.md)
 - Mockups (sample data only): [Kshatriya UI redesign mockups](https://claude.ai/artifact/KCQ7Yeby76HnAmeAzDWxm5)
