@@ -275,3 +275,11 @@ settings file an administrator edits.
   `StatusAlerts` turns state changes into critical notifications: the service stopping (not during its
   delayed start or while the app exits) and the audit log failing its check. Notifications follow
   `NotificationPolicy`; ADR 0015 is amended accordingly.
+- **Slice 6 (2026-11-21):** `Kshatriya.Mobile` gains the Android app's state layer.
+  - `FindingsStore` keeps findings and recent scans in app-private storage: source-generated JSON,
+    trim-safe, at most 1,000 findings and 50 scans, and a damaged file is discarded. It marks a finding
+    resolved when the app is removed or no longer matches, and records "keep" choices.
+  - `MobileStatusEvaluator` (in `Kshatriya.Presentation`) applies the section 1 rules to Android. Its
+    recommendations are "apps never checked" and "notifications off"; the latter can be dismissed.
+  - `MobileScreens` builds Home, Apps, History and the finding sheet as plain records. The sheet carries the
+    safety note for monitoring apps.

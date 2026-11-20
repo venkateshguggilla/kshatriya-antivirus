@@ -47,6 +47,8 @@ public static class StatusActions
     public const string OpenWindowsSecurity = "open-windows-security";
     public const string ProtectionSettings = "protection-settings";
     public const string RestartElevated = "restart-elevated";
+    public const string ScanApps = "scan-apps";
+    public const string AllowNotifications = "allow-notifications";
 }
 
 /// <summary>One cause behind the overall level, in plain language, with at most one action.</summary>

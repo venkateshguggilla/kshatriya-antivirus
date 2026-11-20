@@ -8,5 +8,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Kshatriya.Engines.Hash\Kshatriya.Engines.Hash.csproj" />
     <ProjectReference Include="..\Kshatriya.Updates\Kshatriya.Updates.csproj" />
+    <ProjectReference Include="..\Kshatriya.Presentation\Kshatriya.Presentation.csproj" />
   </ItemGroup>
 </Project>
