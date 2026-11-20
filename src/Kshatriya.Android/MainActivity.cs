@@ -58,7 +58,7 @@ public sealed class MainActivity : Activity
         var title = new TextView(this) { Text = "Kshatriya Antivirus (prototype)", TextSize = 22 };
         var note = new TextView(this)
         {
-            Text = "Works alongside Google Play Protect; keep it on. Checks run on this phone and nothing is sent anywhere. "
+            Text = "Works alongside Google Play Protect; keep it on. Checks run on this phone and nothing about your apps or files is sent anywhere. "
                 + "Apps and files are compared with known threats by their exact fingerprint (SHA-256).",
             TextSize = 13,
         };
@@ -73,6 +73,8 @@ public sealed class MainActivity : Activity
             AddButton(root, "Scan installed apps", (_, _) => ScanInstalledApps()),
             AddButton(root, "Scan files…", (_, _) => Pick(Intent.ActionOpenDocument, PickFiles, multiple: true)),
             AddButton(root, "Scan a folder…", (_, _) => StartActivityForResult(new Intent(Intent.ActionOpenDocumentTree), PickFolder)),
+            AddButton(root, "Check for updates now", (_, _) => CheckForUpdates()),
+            AddButton(root, "Automatic updates…", (_, _) => ShowUpdateSettings()),
             AddButton(root, "Import signed update…", (_, _) => Pick(Intent.ActionOpenDocument, PickUpdate, multiple: false)),
             AddButton(root, "Add trusted update key…", (_, _) => Pick(Intent.ActionOpenDocument, PickKey, multiple: false)),
         ];
@@ -365,7 +367,88 @@ public sealed class MainActivity : Activity
             .Show();
     }
 
-    private void ShowStatus() => _status!.Text = _protection?.ContentStatus;
+    private void ShowStatus()
+    {
+        if (_protection is { } protection)
+        {
+            _status!.Text = protection.ContentStatus + "\n" + UpdateJob.StatusLine(this, protection);
+        }
+    }
+
+    private void CheckForUpdates()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        SetBusy(true, "Checking for updates…");
+        Task.Run(async () =>
+        {
+            string message;
+            try
+            {
+                UpdateCheckResult result = await UpdateJob.RunAsync(ApplicationContext!, CancellationToken.None);
+                message = result.Outcome == UpdateCheckOutcome.Installed
+                    ? result.Message + " Installed apps were checked against it; you are notified about any finding."
+                    : result.Message;
+                _protection = Protection.Load(this);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                message = $"The update check failed: {ex.Message}";
+            }
+
+            RunOnUiThread(() =>
+            {
+                SetBusy(false, message);
+                ShowStatus();
+            });
+        });
+    }
+
+    private void ShowUpdateSettings()
+    {
+        UpdateSettings current = UpdateJob.ReadSettings(this);
+        int pad = Dp(20);
+        var layout = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        layout.SetPadding(pad, Dp(8), pad, 0);
+        layout.AddView(new TextView(this)
+        {
+            Text = "Once a day Kshatriya downloads the signed update from this address and installs it only if it is signed "
+                + "with a key you trust and is newer than the one installed. The request contains nothing about you, this "
+                + "phone or your apps, but the server sees your IP address.",
+            TextSize = 13,
+        });
+        var source = new EditText(this) { Text = current.Source, TextSize = 13 };
+        source.SetSingleLine(true);
+        layout.AddView(source);
+        var unmetered = new CheckBox(this) { Text = "Only on Wi-Fi (unmetered networks)", Checked = current.UnmeteredOnly };
+        layout.AddView(unmetered);
+
+        new AlertDialog.Builder(this)
+            .SetTitle("Automatic updates")!
+            .SetView(layout)!
+            .SetPositiveButton("Turn on", (_, _) =>
+            {
+                string address = source.Text?.Trim() ?? string.Empty;
+                if (ContentUpdateChecker.ValidateSource(address) is { } problem)
+                {
+                    Toast.MakeText(this, problem, ToastLength.Long)!.Show();
+                    return;
+                }
+
+                UpdateJob.Apply(this, new UpdateSettings(true, address, unmetered.Checked));
+                ShowStatus();
+            })!
+            .SetNeutralButton("Turn off", (_, _) =>
+            {
+                UpdateJob.Apply(this, current with { Enabled = false });
+                ShowStatus();
+            })!
+            .SetNegativeButton("Cancel", (_, _) => { })!
+            .Show();
+    }
 
     private void SetBusy(bool busy, string? message)
     {

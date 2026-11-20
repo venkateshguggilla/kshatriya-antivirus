@@ -52,7 +52,8 @@ Platform facts this design relies on (checked 2026-11-19):
    (still empty) plus public keys the user adds from a file, after a confirmation that names the key id.
    A trusted key can only add signatures and lists; it cannot turn protection off.
 7. **Permissions:** `QUERY_ALL_PACKAGES` (installed apps), `POST_NOTIFICATIONS` (findings, Android 13+)
-   and `RECEIVE_BOOT_COMPLETED` (the persisted job). No internet, storage, VPN or accessibility permission.
+   and `RECEIVE_BOOT_COMPLETED` (the persisted job). No storage, VPN or accessibility permission. (Point 12
+   adds `INTERNET` and `ACCESS_NETWORK_STATE`, used only for automatic updates.)
 8. **Not in the first version:** web protection (a local `VpnService` filter using the ADR 0019 lists, off
    by default because of the one-VPN limit), all-files scanning, Play Store publishing and signing.
 
@@ -92,11 +93,38 @@ Platform facts this design relies on (checked 2026-11-19):
     against the current lists, so a new list applies to cached apps at once. The cache holds at most
     20,000 entries and a damaged cache file is discarded.
 
+12. **Automatic updates (2026-11-20).** Importing each package by hand does not scale, so the app can
+    download it. Off until the user turns it on in "Automatic updates…", which states what is sent.
+    - **One address,** an `https://` URL to a `.kstu` file (no user name or password in it). The default
+      is the project's GitHub release asset
+      `…/releases/download/content-android/android-content.kstu`; the user can change it. Redirects are
+      followed (GitHub serves assets from another host), but a final non-https address is refused.
+    - **Nothing is trusted because of where it came from.** The download goes through the same
+      `MobileContentStore.Import` as a hand import: signature before parsing, hashes, expiry, and a
+      sequence higher than any installed. A package with the installed sequence counts as "up to date".
+      Because `ContentTrust.ProductionKeys` is still empty, only packages signed with a key the user has
+      added are accepted.
+    - **Privacy:** the request is a plain GET with the User-Agent `Kshatriya-Android/0.1`, no cookies and
+      no device, user or app information. The server sees the phone's IP address and the time; the
+      dialog says so. ETag/Last-Modified validators are stored and sent so an unchanged package is not
+      downloaded again; validators of a refused package are not kept.
+    - **Limits:** 64 MiB per download (checked against Content-Length and while reading), a 2-minute
+      timeout, one check at a time in the process.
+    - **When:** a persisted `JobScheduler` job once a day, needing an unmetered network unless the user
+      allows mobile data; "Check for updates now" runs at once on any network. Since Android 14 a job that
+      needs a network requires `ACCESS_NETWORK_STATE` (Android developer documentation, `JobInfo.Builder`,
+      checked 2026-11-20).
+    - **After a new update** every installed app is checked against it (unchanged APKs come from the hash
+      cache, point 11) and findings are notified, so a newly listed app is reported within a day.
+    - Not done: notifying when updates have failed for days, mirrors, or key rotation.
+
 ## Consequences
 
 - Detection on Android is exactly as strong as the signature lists. Only the EICAR signature is
   built in. With the Echap list imported it recognises known stalkerware builds, not banking trojans,
   adware or other malware, for which no source with a clear licence has been found.
+- With automatic updates on, the phone contacts the update host once a day; that host learns the phone's IP
+  address. With them off (the default) the app makes no network requests.
 - No real-time protection: new apps are checked within roughly 15 minutes of installation, and files only
   when the user scans them.
 - The Android build needs the .NET `android` workload; the main solution and CI job stay free of it, and a

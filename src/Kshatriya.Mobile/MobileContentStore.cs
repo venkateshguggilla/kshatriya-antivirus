@@ -64,6 +64,18 @@ public sealed class MobileContentStore
         }
     }
 
+    /// <summary>The highest update sequence ever installed (0 if none).</summary>
+    public long InstalledSequence
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return ReadState().HighestSequence;
+            }
+        }
+    }
+
     /// <summary>Verifies and installs a package. Any failure leaves the current content in place.</summary>
     public ContentImportResult Import(byte[] package, DateTimeOffset now)
     {
@@ -90,7 +102,7 @@ public sealed class MobileContentStore
             long highest = ReadState().HighestSequence;
             if (content.Manifest.Sequence <= highest)
             {
-                return new ContentImportResult(false, ContentErrors.Rollback, $"Update {content.Manifest.Sequence} is not newer than update {highest}, which was already installed.");
+                return new ContentImportResult(false, ContentErrors.Rollback, $"Update {content.Manifest.Sequence} is not newer than update {highest}, which was already installed.", content.Manifest.Sequence);
             }
 
             string temporary = Path.Combine(_folder, ActiveFile + ".new");

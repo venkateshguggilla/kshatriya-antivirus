@@ -74,6 +74,16 @@ formats and has no web protection yet. Only the EICAR test signature is built in
 builds a signature list of 3,228 known stalkerware APKs from the [Echap stalkerware indicators](https://github.com/AssoEchap/stalkerware-indicators)
 (CC BY 4.0) to sign and import; it covers stalkerware only, not other Android malware.
 
+Signed updates can also be downloaded automatically once a day (off by default; "Automatic updates…" in the
+app). The app downloads one `.kstu` file over https, by default the `android-content.kstu` asset of this
+repository's `content-android` release, and installs it only if it verifies against a key you added and is
+newer than the installed one. The request sends nothing about the phone or its apps. To publish a new
+package there:
+
+```powershell
+gh release upload content-android android-content.kstu --clobber
+```
+
 Building it needs the .NET `android` workload (`dotnet workload install android`), the Android SDK and
 **JDK 21** (the .NET Android tools do not support the JDK 25 that Android Studio bundles):
 
@@ -264,7 +274,7 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 | `src/Kshatriya.Cli` | `kshatriya` command-line tool |
 | `src/Kshatriya.BrowserHost` | Native messaging helper for the browser extension (asks the service to scan downloads) |
 | `extension/` | Edge and Chrome extension (Manifest V3, no build step); tests in `tests/extension` |
-| `src/Kshatriya.Mobile` | Platform-independent logic of the Android app: SHA-256 scanner, signed content store, wording |
+| `src/Kshatriya.Mobile` | Platform-independent logic of the Android app: SHA-256 scanner, signed content store and update checker, wording |
 | `src/Kshatriya.Android` | Android app (prototype, .NET for Android; not in `Kshatriya.slnx`) |
 | `tests/` | xUnit tests (shared helpers in `tests/Shared`) |
 | `docs/` | [Architecture](docs/architecture.md), [threat model](docs/threat-model.md), [ADRs](docs/adr), [schemas](docs/schemas) |

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Permissions are fixed by ADR 0020: see the list there before adding one. No internet, storage, VPN or
+<!-- Permissions are fixed by ADR 0020: see the list there before adding one. No storage, VPN or
      accessibility permission. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <!-- See every installed app to scan it (Google Play allows this for antivirus apps). -->
@@ -8,5 +8,9 @@
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <!-- Keep the new-apps check scheduled after a restart (persisted job). -->
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+  <!-- Download signed signature updates, only when the user turns automatic updates on (ADR 0020, point 12). -->
+  <uses-permission android:name="android.permission.INTERNET" />
+  <!-- Android 14+ require it to schedule a job that needs a network (the daily update check). -->
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <application android:label="Kshatriya" android:icon="@mipmap/appicon" android:allowBackup="false" />
 </manifest>
