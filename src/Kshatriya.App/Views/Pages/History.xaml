@@ -1,21 +1,114 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:vm="clr-namespace:Kshatriya.App.ViewModels">
-  <!-- History page (ADR 0021): findings, quarantine and the actions log as tabs, each with its own template. -->
+  <!-- History page (ADR 0021): one filterable list of findings, quarantine and actions, with a detail pane. -->
 
-  <DataTemplate DataType="{x:Type vm:HistoryHubViewModel}">
-    <TabControl ItemsSource="{Binding Tabs}" SelectedItem="{Binding Selected, Mode=TwoWay}" AutomationProperties.Name="History"
-                Background="Transparent" BorderThickness="0" Padding="0,16,0,0">
-      <TabControl.ItemTemplate>
-        <DataTemplate>
-          <TextBlock Text="{Binding Title}" />
-        </DataTemplate>
-      </TabControl.ItemTemplate>
-      <TabControl.ContentTemplate>
-        <DataTemplate>
-          <ContentControl Content="{Binding}" Focusable="False" />
-        </DataTemplate>
-      </TabControl.ContentTemplate>
-    </TabControl>
+  <!-- A filter: a radio button that looks like a toggle button, so the group has one keyboard stop. -->
+  <Style x:Key="FilterButton" TargetType="RadioButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+    <Setter Property="GroupName" Value="HistoryFilter" />
+    <Setter Property="Margin" Value="0,0,8,8" />
+    <Setter Property="Padding" Value="12,5" />
+  </Style>
+
+  <DataTemplate DataType="{x:Type vm:HistoryViewModel}">
+    <StackPanel>
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PageHeader}" Focusable="False" />
+      <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
+
+      <DockPanel Margin="0,20,0,0">
+        <WrapPanel DockPanel.Dock="Right">
+          <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged, Delay=200}" Width="220" Margin="8,0,8,8" VerticalAlignment="Top"
+                   AutomationProperties.Name="Search history" ToolTip="Search by name, path or source" />
+          <Button Content="Refresh" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryButton}" VerticalAlignment="Top" Margin="0,0,0,8" />
+        </WrapPanel>
+        <WrapPanel AutomationProperties.Name="Filter history">
+          <RadioButton Style="{StaticResource FilterButton}" IsChecked="{Binding IsAll}" Content="All" />
+          <RadioButton Style="{StaticResource FilterButton}" IsChecked="{Binding IsNeedsDecision}">
+            <TextBlock><Run Text="Needs decision · " /><Run Text="{Binding NeedsDecisionCount, Mode=OneWay}" /></TextBlock>
+          </RadioButton>
+          <RadioButton Style="{StaticResource FilterButton}" IsChecked="{Binding IsQuarantined}">
+            <TextBlock><Run Text="Quarantined · " /><Run Text="{Binding QuarantinedCount, Mode=OneWay}" /></TextBlock>
+          </RadioButton>
+          <RadioButton Style="{StaticResource FilterButton}" IsChecked="{Binding IsKept}">
+            <TextBlock><Run Text="Kept · " /><Run Text="{Binding KeptCount, Mode=OneWay}" /></TextBlock>
+          </RadioButton>
+          <RadioButton Style="{StaticResource FilterButton}" IsChecked="{Binding IsActionsLog}" Content="Actions log" />
+        </WrapPanel>
+      </DockPanel>
+
+      <TextBlock Text="{Binding AuditState}" Style="{StaticResource Caption}" Margin="0,0,0,8" TextWrapping="Wrap"
+                 Visibility="{Binding IsActionsLog, Converter={StaticResource BoolToVisibility}}" />
+
+      <!-- Empty state -->
+      <Border Style="{StaticResource Surface}" Visibility="{Binding Entries.Count, Converter={x:Static vm:Converters.ZeroToVisible}}">
+        <TextBlock Style="{StaticResource Secondary}" Text="Nothing here. Findings from scans, scheduled scans and real-time monitoring appear here; the service keeps its recent history until it restarts." />
+      </Border>
+
+      <Grid Visibility="{Binding Entries.Count, Converter={x:Static vm:Converters.NonZeroToVisible}}">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="3*" MinWidth="260" />
+          <ColumnDefinition Width="16" />
+          <ColumnDefinition Width="2*" MinWidth="240" />
+        </Grid.ColumnDefinitions>
+
+        <!-- List -->
+        <Border Style="{StaticResource Surface}" Padding="0" VerticalAlignment="Top">
+          <ListBox ItemsSource="{Binding Entries}" SelectedItem="{Binding Selected, Mode=TwoWay}" MaxHeight="560"
+                   Background="Transparent" BorderThickness="0" AutomationProperties.Name="History entries"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <DockPanel Margin="4,6">
+                  <TextBlock DockPanel.Dock="Left" Style="{StaticResource ToneGlyph}" Tag="{Binding Tone}" FontSize="16" Margin="0,2,12,0" VerticalAlignment="Top" />
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding TimeLocal}" Style="{StaticResource Caption}" Margin="12,2,0,0" VerticalAlignment="Top" />
+                  <StackPanel>
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </DockPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Border>
+
+        <!-- Detail pane -->
+        <Border Grid.Column="2" Style="{StaticResource Surface}" VerticalAlignment="Top" DataContext="{Binding Selected}"
+                AutomationProperties.Name="Details">
+          <StackPanel>
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Left" Style="{StaticResource ToneGlyph}" Tag="{Binding Tone}" FontSize="20" Margin="0,2,12,0" VerticalAlignment="Top" />
+              <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" AutomationProperties.HeadingLevel="Level2" />
+            </DockPanel>
+            <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Secondary}" Margin="0,6,0,0" />
+            <TextBlock Text="Location" Style="{StaticResource Caption}" Margin="0,12,0,0" />
+            <TextBlock Text="{Binding Path}" FontFamily="Consolas" TextWrapping="Wrap" />
+            <TextBlock Text="Why" Style="{StaticResource Caption}" Margin="0,10,0,0" />
+            <TextBlock Text="{Binding Why}" TextWrapping="Wrap" />
+            <TextBlock Text="When" Style="{StaticResource Caption}" Margin="0,10,0,0" />
+            <TextBlock Text="{Binding TimeLocal}" />
+
+            <!-- Actions come from the page, not the entry. -->
+            <WrapPanel Margin="0,16,0,0" DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Grid}}">
+              <Button Content="Quarantine…" Command="{Binding QuarantineCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,8"
+                      Visibility="{Binding IsEnabled, RelativeSource={RelativeSource Self}, Converter={StaticResource BoolToVisibility}}" />
+              <Button Content="Keep file" Command="{Binding KeepCommand}" Style="{StaticResource SecondaryButton}" Margin="0,0,8,8"
+                      AutomationProperties.HelpText="Stops this finding counting on Home. Scans still report it; this is not an exclusion."
+                      Visibility="{Binding IsEnabled, RelativeSource={RelativeSource Self}, Converter={StaticResource BoolToVisibility}}" />
+              <Button Content="Stop keeping" Command="{Binding UnkeepCommand}" Style="{StaticResource SecondaryButton}" Margin="0,0,8,8"
+                      Visibility="{Binding IsEnabled, RelativeSource={RelativeSource Self}, Converter={StaticResource BoolToVisibility}}" />
+              <Button Content="Show in folder" Command="{Binding OpenFolderCommand}" Style="{StaticResource SecondaryButton}" Margin="0,0,8,8"
+                      Visibility="{Binding IsEnabled, RelativeSource={RelativeSource Self}, Converter={StaticResource BoolToVisibility}}" />
+              <Button Content="Restore…" Command="{Binding RestoreCommand}" Style="{StaticResource SecondaryButton}" Margin="0,0,8,8"
+                      AutomationProperties.HelpText="Needs an administrator; written to the actions log"
+                      Visibility="{Binding IsEnabled, RelativeSource={RelativeSource Self}, Converter={StaticResource BoolToVisibility}}" />
+              <Button Content="Restore to…" Command="{Binding RestoreToCommand}" Style="{StaticResource SecondaryButton}" Margin="0,0,8,8"
+                      Visibility="{Binding IsEnabled, RelativeSource={RelativeSource Self}, Converter={StaticResource BoolToVisibility}}" />
+              <Button Content="Delete permanently…" Command="{Binding DeleteCommand}" Style="{StaticResource DangerButton}" Margin="0,0,8,8"
+                      Visibility="{Binding IsEnabled, RelativeSource={RelativeSource Self}, Converter={StaticResource BoolToVisibility}}" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </StackPanel>
   </DataTemplate>
 </ResourceDictionary>

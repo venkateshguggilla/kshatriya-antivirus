@@ -31,6 +31,9 @@ public interface IServiceGateway
 
     Task<DetectionsReplyDto> GetDetectionsAsync(int max, CancellationToken cancellationToken);
 
+    /// <summary>Moves a file into quarantine at the user's request; the service opens it as the caller (reversible).</summary>
+    Task<OperationReplyDto> QuarantineFileAsync(string path, CancellationToken cancellationToken);
+
     /// <summary>Asks the service to verify and install a signed content package; it reads the file as the caller.</summary>
     Task<ContentImportReplyDto> ImportContentAsync(string packagePath, CancellationToken cancellationToken);
 }
@@ -80,6 +83,9 @@ public sealed class ServiceGateway(ServiceEndpoint endpoint, string description)
 
     public Task<DetectionsReplyDto> GetDetectionsAsync(int max, CancellationToken cancellationToken) =>
         WithClient(c => c.GetDetectionsAsync(max, cancellationToken), cancellationToken);
+
+    public Task<OperationReplyDto> QuarantineFileAsync(string path, CancellationToken cancellationToken) =>
+        WithClient(c => c.QuarantineFileAsync(path, cancellationToken), cancellationToken);
 
     public Task<ContentImportReplyDto> ImportContentAsync(string packagePath, CancellationToken cancellationToken) =>
         WithClient(c => c.ImportContentAsync(packagePath, cancellationToken), cancellationToken);

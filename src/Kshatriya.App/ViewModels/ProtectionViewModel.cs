@@ -35,8 +35,9 @@ public sealed class ProtectionViewModel(IServiceGateway gateway, IAppHost host)
 
     protected override async Task RefreshCoreAsync()
     {
-        AntivirusHealth antivirus = AntivirusSource();
-        int? folderAccess = FolderAccessSource();
+        // Windows Security Center and WMI can take a moment: read them off the UI thread.
+        AntivirusHealth antivirus = await Task.Run(AntivirusSource);
+        int? folderAccess = await Task.Run(FolderAccessSource);
         Windows.Clear();
         Windows.Add(new ProtectionRow(Glyphs.Shield, "Windows antivirus",
             $"{SecurityCenter.Describe(antivirus)} Kshatriya adds to it and does not replace it.",

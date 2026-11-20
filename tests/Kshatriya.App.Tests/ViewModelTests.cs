@@ -137,6 +137,16 @@ internal sealed class FakeGateway : IServiceGateway
         });
     }
 
+    public List<string> Quarantined { get; } = [];
+
+    public Task<OperationReplyDto> QuarantineFileAsync(string path, CancellationToken cancellationToken)
+    {
+        ThrowIfFailing();
+        Quarantined.Add(path);
+        Quarantine.Add(new QuarantineItemDto { Id = "m" + Quarantined.Count, OriginalPath = path, Sha256 = new string('0', 64), SizeBytes = 1, QuarantinedUtc = "2026-11-21T10:00:00Z", User = "alice", Detections = [], Origin = "manual" });
+        return Task.FromResult(new OperationReplyDto { Succeeded = true, Code = "none", Path = path, QuarantineId = "m" + Quarantined.Count });
+    }
+
     public string? LastImport { get; private set; }
 
     public Task<ContentImportReplyDto> ImportContentAsync(string packagePath, CancellationToken cancellationToken)
@@ -195,6 +205,10 @@ internal sealed class FakeHost : IAppHost
     public void OpenWindowsSecurity() => WindowsSecurityOpened++;
 
     public void OpenBrowserExtension() => BrowserExtensionOpened++;
+
+    public List<string> ShownInFolder { get; } = [];
+
+    public void ShowInFolder(string path) => ShownInFolder.Add(path);
 }
 
 public class ViewModelTests
@@ -354,12 +368,14 @@ public class ViewModelTests
     [Fact]
     public async Task History_warns_when_the_audit_chain_is_broken()
     {
-        var vm = new AuditLogViewModel(new FakeGateway());
+        var vm = new HistoryViewModel(new FakeGateway(), new FakeDialogs(), new FakeHost(), new Services.InMemoryReviewStore());
 
         await vm.RefreshCommand.ExecuteAsync(null);
+        vm.Filter = HistoryFilter.ActionsLog;
 
-        Assert.Single(vm.Records);
-        Assert.Contains("FAILED", vm.ChainState, StringComparison.Ordinal);
+        Assert.Single(vm.Entries);
+        Assert.Contains("FAILED", vm.AuditState, StringComparison.Ordinal);
+        Assert.Equal(Tone.Critical, vm.AuditTone);
     }
 
     [Fact]
@@ -370,9 +386,8 @@ public class ViewModelTests
         var main = new MainViewModel(gateway, new FakeDialogs(), new FakeHost());
 
         main.Current = main.History;
-        main.History.Selected = main.Quarantine;
 
-        Assert.Single(main.Quarantine.Items);
+        Assert.Single(main.History.Entries, e => e.Kind == HistoryKind.Quarantined);
         Assert.Equal(["Home", "Scan", "Protection", "History", "Updates"], main.Pages.Select(p => p.Title));
         Assert.Equal(["Settings", "Help and about"], main.FooterPages.Select(p => p.Title));
         Assert.Contains("prototype", main.Title, StringComparison.Ordinal);
@@ -381,13 +396,14 @@ public class ViewModelTests
     [Fact]
     public async Task Detections_page_lists_recent_findings()
     {
-        var vm = new DetectionsViewModel(new FakeGateway());
+        var vm = new HistoryViewModel(new FakeGateway(), new FakeDialogs(), new FakeHost(), new Services.InMemoryReviewStore());
 
         await vm.RefreshCommand.ExecuteAsync(null);
 
-        DetectionRow row = Assert.Single(vm.Items);
-        Assert.Equal("Detected", row.Status);
+        HistoryEntry row = Assert.Single(vm.Entries);
+        Assert.Equal(HistoryKind.Finding, row.Kind);
         Assert.Equal("real-time (file)", row.Source);
+        Assert.True(row.NeedsDecision);
     }
 
     [Fact]

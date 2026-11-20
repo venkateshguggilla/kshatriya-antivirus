@@ -6,9 +6,6 @@
     <ResourceDictionary Source="Pages/Scan.xaml" />
     <ResourceDictionary Source="Pages/Protection.xaml" />
     <ResourceDictionary Source="Pages/History.xaml" />
-    <ResourceDictionary Source="Pages/Detections.xaml" />
-    <ResourceDictionary Source="Pages/Quarantine.xaml" />
-    <ResourceDictionary Source="Pages/AuditLog.xaml" />
     <ResourceDictionary Source="Pages/Updates.xaml" />
     <ResourceDictionary Source="Pages/Settings.xaml" />
     <ResourceDictionary Source="Pages/Exclusions.xaml" />

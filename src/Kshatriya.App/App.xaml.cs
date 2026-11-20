@@ -79,6 +79,38 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
 
     public void OpenBrowserExtension() => OpenBrowserExtensionFolder();
 
+    /// <summary>Selects the file in File Explorer (its folder if the file is gone). Nothing is opened or run.</summary>
+    public void ShowInFolder(string path)
+    {
+        if (!Path.IsPathFullyQualified(path) || path.StartsWith(@"\\", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var start = new ProcessStartInfo("explorer.exe") { UseShellExecute = false };
+        if (File.Exists(path))
+        {
+            start.ArgumentList.Add("/select," + path);
+        }
+        else if (Path.GetDirectoryName(path) is { } folder && Directory.Exists(folder))
+        {
+            start.ArgumentList.Add(folder);
+        }
+        else
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(start);
+        }
+        catch (Win32Exception)
+        {
+            // Explorer could not be started; nothing else to do.
+        }
+    }
+
     bool IAppSettings.Notifications => _preferences?.Notifications ?? true;
 
     bool IAppSettings.ScanExternalDrives => _preferences?.ScanExternalDrives ?? true;
@@ -139,7 +171,7 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
             : new ServiceGateway(ServiceEndpoint.Production, "installed Kshatriya service");
 
         _preferences = new AppPreferences();
-        _main = new MainViewModel(gateway, new WpfDialogs(), this, this);
+        _main = new MainViewModel(gateway, new WpfDialogs(), this, this, new FileReviewStore());
         if (!dev)
         {
             _main.Home.ServiceStartingSource = () => ServiceStartup.IsStarting(ServiceEndpoint.Production.ServiceName);

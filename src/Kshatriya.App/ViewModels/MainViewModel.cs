@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Kshatriya.App.Infrastructure;
 using Kshatriya.App.Services;
+using Kshatriya.Presentation;
 
 namespace Kshatriya.App.ViewModels;
 
@@ -12,9 +13,10 @@ public sealed class MainViewModel : ObservableObject
 {
     private PageViewModel _current;
 
-    public MainViewModel(IServiceGateway gateway, IDialogs dialogs, IAppHost host, IAppSettings? settings = null)
+    public MainViewModel(IServiceGateway gateway, IDialogs dialogs, IAppHost host, IAppSettings? settings = null, IReviewStore? reviews = null)
     {
-        Home = new HomeViewModel(gateway, host);
+        reviews ??= new InMemoryReviewStore();
+        Home = new HomeViewModel(gateway, host) { Reviews = reviews };
         Scan = new ScanViewModel(gateway, dialogs);
         ScanViewModel scan = Scan;
         Home.QuickScanRequested += () =>
@@ -24,10 +26,7 @@ public sealed class MainViewModel : ObservableObject
             scan.QuickScanCommand.Execute(null);
         };
         Protection = new ProtectionViewModel(gateway, host);
-        History = new HistoryHubViewModel(
-            new DetectionsViewModel(gateway) { IsEmbedded = true },
-            new QuarantineViewModel(gateway, dialogs) { IsEmbedded = true },
-            new AuditLogViewModel(gateway) { IsEmbedded = true });
+        History = new HistoryViewModel(gateway, dialogs, host, reviews);
         Updates = new UpdatesViewModel(gateway, dialogs);
         Settings = new SettingsViewModel(settings ?? new InMemorySettings(), host, new ExclusionsViewModel(gateway, dialogs) { IsEmbedded = true });
         About = new AboutViewModel(gateway);
@@ -46,6 +45,7 @@ public sealed class MainViewModel : ObservableObject
             }
         };
         OpenScanCommand = new RelayCommand(_ => Current = Scan);
+        Home.ActionRequested += id => Perform(id, host);
         Pages = [Home, Scan, Protection, History, Updates];
         FooterPages = [Settings, About];
         _current = Home;
@@ -69,17 +69,13 @@ public sealed class MainViewModel : ObservableObject
 
     public ProtectionViewModel Protection { get; }
 
-    public HistoryHubViewModel History { get; }
+    public HistoryViewModel History { get; }
 
     public UpdatesViewModel Updates { get; }
 
     public SettingsViewModel Settings { get; }
 
     public AboutViewModel About { get; }
-
-    public DetectionsViewModel Detections => History.Detections;
-
-    public QuarantineViewModel Quarantine => History.Quarantine;
 
     public ExclusionsViewModel Exclusions => Settings.Exclusions;
 
@@ -89,10 +85,46 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Opens the Scan page (the strip's View button).</summary>
     public RelayCommand OpenScanCommand { get; }
 
-    /// <summary>Opens History on its findings tab (for example from a notification).</summary>
+    /// <summary>Performs a status item's action (ADR 0021): open the page that resolves it, or ask the host.</summary>
+    internal void Perform(string actionId, IAppHost host)
+    {
+        switch (actionId)
+        {
+            case StatusActions.ReviewFindings:
+                History.Filter = HistoryFilter.NeedsDecision;
+                Current = History;
+                break;
+            case StatusActions.OpenHistory:
+                History.Filter = HistoryFilter.ActionsLog;
+                Current = History;
+                break;
+            case StatusActions.CheckUpdates:
+                Current = Updates;
+                break;
+            case StatusActions.ProtectionSettings:
+                Current = Protection;
+                break;
+            case StatusActions.OpenWindowsSecurity:
+                host.OpenWindowsSecurity();
+                break;
+            case StatusActions.RestartElevated:
+                host.RestartElevated();
+                break;
+            case StatusActions.QuickScan:
+                Home.QuickScanCommand.Execute(null);
+                break;
+        }
+    }
+
+    /// <summary>Opens History on all findings (for example from a notification about a background finding).</summary>
     public void ShowDetections()
     {
-        History.Selected = History.Detections;
+        History.Filter = HistoryFilter.All;
+        if (ReferenceEquals(Current, History))
+        {
+            History.RefreshCommand.Execute(null);
+        }
+
         Current = History;
     }
 

@@ -17,7 +17,10 @@
                        AutomationProperties.HeadingLevel="Level2" AutomationProperties.LiveSetting="Polite" />
             <TextBlock Text="{Binding VerdictDetail}" Style="{StaticResource Secondary}" Margin="0,4,0,0" />
             <WrapPanel Margin="0,14,0,0">
-              <Button Content="Quick scan" Command="{Binding QuickScanCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"
+              <!-- The status's own action (Review, See updates, …) comes first when there is one. -->
+              <Button Content="{Binding PrimaryActionLabel}" Command="{Binding PrimaryActionCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"
+                      Visibility="{Binding PrimaryActionLabel, Converter={x:Static vm:Converters.NotEmptyToVisibility}}" />
+              <Button Content="Quick scan" Command="{Binding QuickScanCommand}" Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"
                       AutomationProperties.HelpText="Opens the Scan page and starts a quick scan" />
               <Button Content="Refresh" Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryButton}" />
             </WrapPanel>

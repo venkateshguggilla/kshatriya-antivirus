@@ -32,6 +32,9 @@ public interface IAppHost
 
     /// <summary>Opens the folder to load in the browser's "Load unpacked" dialog (ADR 0018).</summary>
     void OpenBrowserExtension();
+
+    /// <summary>Shows a file in File Explorer (selects it in its folder). Nothing is opened or run.</summary>
+    void ShowInFolder(string path);
 }
 
 /// <summary>The user's app preferences shown on the Settings page (and in the notification-area menu).</summary>
@@ -81,6 +84,15 @@ public abstract class PageViewModel : ObservableObject
     public string Glyph { get; }
 
     public AsyncCommand RefreshCommand { get; }
+
+    private int _badgeCount;
+
+    /// <summary>A count shown next to the page in the navigation (items waiting for the user); 0 hides it.</summary>
+    public int BadgeCount
+    {
+        get => _badgeCount;
+        protected set => Set(ref _badgeCount, value);
+    }
 
     /// <summary>Shown inside another page (a History tab, Exclusions in Settings): its header is a section heading.</summary>
     public bool IsEmbedded { get; init; }

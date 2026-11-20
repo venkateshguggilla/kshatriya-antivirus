@@ -256,3 +256,13 @@ settings file an administrator edits.
   - Results group findings into "Needs your decision" (suspicious) and "Threats" cards. Items that were not
     scanned are grouped by reason with what to do, and the full table moves into an expander.
   - The last scan's access-denied count feeds Home's status.
+- **Slice 4 (2026-11-21):** History is one filterable list with a detail pane: All, Needs decision,
+  Quarantined, Kept and Actions log, plus a search box.
+  - **Findings:** a finding can be quarantined at the user's request through the service's manual
+    quarantine, which opens the file as the user and is reversible. It can also be kept: a per-user
+    acknowledgement in `%LocalAppData%\Kshatriya\reviewed.json` (at most 1,000 entries), never an
+    exclusion.
+  - **Vault entries** offer restore and delete, which need an administrator, as before.
+  - **Home:** unresolved findings now feed Home's status. Home's verdict shows the status's own action
+    (Review, See updates, …), and the History item shows a count of findings that need a decision. The
+    separate Detections, Quarantine and Actions log pages are gone.

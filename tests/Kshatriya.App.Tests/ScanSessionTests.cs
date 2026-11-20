@@ -144,7 +144,7 @@ public class ScanSessionTests
         Assert.True(main.ShowScanStrip); // Home is shown
         main.OpenScanCommand.Execute(null);
         Assert.False(main.ShowScanStrip);
-        main.Current = main.Protection;
+        main.Current = main.Updates;
         Assert.True(main.ShowScanStrip);
         await running;
 

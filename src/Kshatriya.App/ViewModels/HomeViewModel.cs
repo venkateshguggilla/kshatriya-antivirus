@@ -124,6 +124,7 @@ public sealed class HomeViewModel(IServiceGateway gateway, IAppHost host) : Page
                 Schedules.Add("No scheduled scans are configured.");
             }
 
+            (_unresolvedConfirmed, _unresolvedSuspicious) = await CountFindingsAsync();
             BuildStatus(status);
             ShowInfo(null);
         }
@@ -162,10 +163,31 @@ public sealed class HomeViewModel(IServiceGateway gateway, IAppHost host) : Page
     /// <summary>Ids of status items the user dismissed (none yet: dismissing arrives with the redesigned Home page).</summary>
     public IReadOnlySet<string> Dismissed { get; set; } = new HashSet<string>();
 
+    /// <summary>The status's own action (for example "Review"), shown next to Quick scan; empty when there is none.</summary>
+    public string PrimaryActionLabel => LabelOf(Status.PrimaryActionId);
+
+    /// <summary>Raised with a <see cref="StatusActions"/> id; the shell performs it.</summary>
+    public event Action<string>? ActionRequested;
+
+    public RelayCommand PrimaryActionCommand => new(_ => ActionRequested?.Invoke(Status.PrimaryActionId!), _ => PrimaryActionLabel.Length > 0);
+
+    internal static string LabelOf(string? actionId) => actionId switch
+    {
+        StatusActions.ReviewFindings => "Review",
+        StatusActions.OpenHistory => "Open History",
+        StatusActions.CheckUpdates => "See updates",
+        StatusActions.OpenWindowsSecurity => "Open Windows Security",
+        StatusActions.ProtectionSettings => "See protection",
+        StatusActions.RestartElevated => "Restart as administrator",
+        _ => string.Empty,
+    };
+
     private void ShowStatus(StatusSnapshot snapshot, bool starting = false)
     {
         Status = snapshot;
         (Verdict, VerdictDetail, VerdictTone) = (snapshot.Headline, snapshot.Detail, ToneOf(snapshot.Level, starting));
+        OnPropertyChanged(nameof(PrimaryActionLabel));
+        OnPropertyChanged(nameof(PrimaryActionCommand));
         Attention.Clear();
         foreach (StatusItem item in snapshot.Items)
         {
@@ -224,8 +246,7 @@ public sealed class HomeViewModel(IServiceGateway gateway, IAppHost host) : Page
             status.Schedules.Count == 0 ? "None configured" : string.Join("; ", status.Schedules.Select(s => $"{s.Name}, next {Local(s.NextRunUtc)}")),
             Tone.Neutral));
 
-        // Findings are not inputs yet: their review (quarantine or keep) arrives with the unified History page
-        // (ADR 0021, slice 4); until then they are shown on the History page's Detections tab.
+        // Findings count until the user quarantines or keeps them on the History page (ADR 0021).
         ShowStatus(DesktopStatusEvaluator.Evaluate(new DesktopStatusInputs
         {
             ServiceReachable = true,
@@ -237,6 +258,8 @@ public sealed class HomeViewModel(IServiceGateway gateway, IAppHost host) : Page
             ContentExpired = c.Expired,
             ContentExpiresUtc = DateTimeOffset.TryParse(c.ExpiresUtc, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTimeOffset expires) ? expires : null,
             LastScanAccessDenied = LastScanAccessDenied,
+            UnresolvedConfirmedFindings = _unresolvedConfirmed,
+            UnresolvedSuspiciousFindings = _unresolvedSuspicious,
             Dismissed = Dismissed,
             Now = Clock(),
         }));
@@ -248,6 +271,27 @@ public sealed class HomeViewModel(IServiceGateway gateway, IAppHost host) : Page
 
     /// <summary>Items the last user scan could not read for lack of rights (set by the scan session).</summary>
     public int LastScanAccessDenied { get; set; }
+
+    /// <summary>The user's "keep" choices, so kept findings do not count (ADR 0021).</summary>
+    public IReviewStore Reviews { get; init; } = new InMemoryReviewStore();
+
+    private int _unresolvedConfirmed;
+    private int _unresolvedSuspicious;
+
+    /// <summary>Findings neither quarantined nor kept, from the service's recent history; none when it cannot be read.</summary>
+    private async Task<(int Confirmed, int Suspicious)> CountFindingsAsync()
+    {
+        try
+        {
+            DetectionsReplyDto detections = await gateway.GetDetectionsAsync(500, CancellationToken.None);
+            QuarantineListReplyDto vault = await gateway.ListQuarantineAsync(CancellationToken.None);
+            return HistoryViewModel.CountUnresolved(HistoryViewModel.Build(detections.Items, vault.Items, Reviews));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return (0, 0);
+        }
+    }
 
     private void BuildDisconnected()
     {

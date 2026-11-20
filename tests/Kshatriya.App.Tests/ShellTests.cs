@@ -92,12 +92,12 @@ public class ShellTests
     public void A_notification_click_opens_history_on_its_findings()
     {
         var main = new MainViewModel(new FakeGateway(), new FakeDialogs(), new FakeHost());
-        main.History.Selected = main.Quarantine;
+        main.History.Filter = HistoryFilter.Kept;
 
         main.ShowDetections();
 
         Assert.Same(main.History, main.Current);
-        Assert.Same(main.Detections, main.History.Selected);
+        Assert.Equal(HistoryFilter.All, main.History.Filter);
     }
 
     [Fact]

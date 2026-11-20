@@ -20,7 +20,7 @@ public class RedesignTests
     [Fact]
     public async Task The_dashboard_gives_one_verdict_backed_by_status_rows()
     {
-        var dashboard = new HomeViewModel(new FakeGateway(), new FakeHost())
+        var dashboard = new HomeViewModel(new FakeGateway { Detections = [] }, new FakeHost())
         {
             AntivirusSource = () => AntivirusHealth.Good,
             FolderAccessSource = () => 1,
@@ -44,7 +44,7 @@ public class RedesignTests
     [Fact]
     public async Task Windows_antivirus_off_needs_action_and_comes_first()
     {
-        var dashboard = new HomeViewModel(new FakeGateway(), new FakeHost())
+        var dashboard = new HomeViewModel(new FakeGateway { Detections = [] }, new FakeHost())
         {
             AntivirusSource = () => AntivirusHealth.Snoozed,
             FolderAccessSource = () => null,
