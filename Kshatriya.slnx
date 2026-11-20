@@ -14,6 +14,7 @@
     <Project Path="src/Kshatriya.Scanning/Kshatriya.Scanning.csproj" />
     <Project Path="src/Kshatriya.Service/Kshatriya.Service.csproj" />
     <Project Path="src/Kshatriya.Mobile/Kshatriya.Mobile.csproj" />
+    <Project Path="src/Kshatriya.Presentation/Kshatriya.Presentation.csproj" />
     <Project Path="src/Kshatriya.Updates/Kshatriya.Updates.csproj" />
     <Project Path="src/Kshatriya.Worker/Kshatriya.Worker.csproj" />
   </Folder>
@@ -29,6 +30,7 @@
     <Project Path="tests/Kshatriya.Scanning.Tests/Kshatriya.Scanning.Tests.csproj" />
     <Project Path="tests/Kshatriya.Service.Tests/Kshatriya.Service.Tests.csproj" />
     <Project Path="tests/Kshatriya.Mobile.Tests/Kshatriya.Mobile.Tests.csproj" />
+    <Project Path="tests/Kshatriya.Presentation.Tests/Kshatriya.Presentation.Tests.csproj" />
     <Project Path="tests/Kshatriya.Updates.Tests/Kshatriya.Updates.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

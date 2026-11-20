@@ -28,13 +28,35 @@ public class RedesignTests
 
         await dashboard.RefreshCommand.ExecuteAsync(null);
 
-        // The fake service reports an expired signature update, which needs attention.
-        Assert.Equal("Attention needed", dashboard.Verdict);
+        // The fake service reports an expired signature update: a recommendation, explained under the verdict.
+        Assert.Equal("Signatures have expired", dashboard.Verdict);
         Assert.Equal(Tone.Caution, dashboard.VerdictTone);
+        Assert.Equal(Kshatriya.Presentation.ProtectionLevel.AttentionRecommended, dashboard.Status.Level);
+        AttentionRow cause = Assert.Single(dashboard.Attention);
+        Assert.Equal("Signatures have expired", cause.Title);
+        Assert.Equal(Tone.Caution, cause.Tone);
         Assert.Contains(dashboard.Rows, r => r.Label == "Signatures" && r.Tone == Tone.Caution);
         Assert.Contains(dashboard.Rows, r => r.Label == "Real-time monitoring" && r.Tone == Tone.Success);
         Assert.Contains(dashboard.Rows, r => r.Label == "Audit log" && r.Value == "Intact");
         Assert.True(dashboard.QuickScanCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Windows_antivirus_off_needs_action_and_comes_first()
+    {
+        var dashboard = new DashboardViewModel(new FakeGateway(), new FakeHost())
+        {
+            AntivirusSource = () => AntivirusHealth.Snoozed,
+            FolderAccessSource = () => null,
+        };
+
+        await dashboard.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(Tone.Critical, dashboard.VerdictTone);
+        Assert.Equal("2 problems need your action", dashboard.Verdict);
+        Assert.Equal("Windows antivirus is off or out of date", dashboard.Attention[0].Title);
+        Assert.Equal(Tone.Critical, dashboard.Attention[0].Tone);
+        Assert.Equal(Tone.Caution, dashboard.Attention[1].Tone);
     }
 
     [Fact]

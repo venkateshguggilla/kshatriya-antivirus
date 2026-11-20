@@ -15,6 +15,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Kshatriya.Runtime\Kshatriya.Runtime.csproj" />
+    <ProjectReference Include="..\Kshatriya.Presentation\Kshatriya.Presentation.csproj" />
     <PackageReference Include="System.Management" />
   </ItemGroup>
   <ItemGroup>

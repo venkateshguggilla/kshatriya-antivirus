@@ -276,6 +276,7 @@ Sandbox properties verified by tests with real worker processes: low integrity; 
 | `extension/` | Edge and Chrome extension (Manifest V3, no build step); tests in `tests/extension` |
 | `src/Kshatriya.Mobile` | Platform-independent logic of the Android app: SHA-256 scanner, signed content store and update checker, wording |
 | `src/Kshatriya.Android` | Android app (prototype, .NET for Android; not in `Kshatriya.slnx`) |
+| `src/Kshatriya.Presentation` | Status model, status evaluator and notification policy shared by the desktop and Android apps ([ADR 0021](docs/adr/0021-ui-architecture-redesign.md)) |
 | `tests/` | xUnit tests (shared helpers in `tests/Shared`) |
 | `docs/` | [Architecture](docs/architecture.md), [threat model](docs/threat-model.md), [ADRs](docs/adr), [schemas](docs/schemas) |
 | `tools/Kshatriya.ContentTool` | `kshatriya-content`: signing keys and content packages |

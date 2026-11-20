@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Platform-neutral presentation logic shared by the desktop app and the Android app (ADR 0021):
+       the status model, its evaluator and the notification policy. No UI types, no I/O. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Kshatriya.Presentation</RootNamespace>
+    <!-- Used by the Android app, which is trimmed: keep this library trim-safe. -->
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+</Project>

@@ -3,6 +3,7 @@ using System.Globalization;
 using Kshatriya.App.Infrastructure;
 using Kshatriya.App.Services;
 using Kshatriya.Core;
+using Kshatriya.Presentation;
 using Kshatriya.Protocol;
 
 namespace Kshatriya.App.ViewModels;
@@ -239,6 +240,44 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
     /// <summary>The checks behind the verdict, one row each.</summary>
     public ObservableCollection<StatusRow> Rows { get; } = [];
 
+    private StatusSnapshot _status = StatusSnapshot.Checking;
+
+    /// <summary>The evaluated status the verdict comes from (ADR 0021): one level, one headline, its causes.</summary>
+    public StatusSnapshot Status { get => _status; private set => Set(ref _status, value); }
+
+    /// <summary>"Needs your attention": the causes behind a verdict other than protected, most serious first.</summary>
+    public ObservableCollection<AttentionRow> Attention { get; } = [];
+
+    /// <summary>Ids of status items the user dismissed (none yet: dismissing arrives with the redesigned Home page).</summary>
+    public IReadOnlySet<string> Dismissed { get; set; } = new HashSet<string>();
+
+    private void ShowStatus(StatusSnapshot snapshot, bool starting = false)
+    {
+        Status = snapshot;
+        (Verdict, VerdictDetail, VerdictTone) = (snapshot.Headline, snapshot.Detail, ToneOf(snapshot.Level, starting));
+        Attention.Clear();
+        foreach (StatusItem item in snapshot.Items)
+        {
+            Attention.Add(new AttentionRow(item.Title, item.Detail, item.Level == ProtectionLevel.ActionNeeded ? Tone.Critical : Tone.Caution));
+        }
+    }
+
+    internal static Tone ToneOf(ProtectionLevel level, bool starting = false) => level switch
+    {
+        ProtectionLevel.Protected => Tone.Success,
+        ProtectionLevel.AttentionRecommended => Tone.Caution,
+        ProtectionLevel.ActionNeeded => Tone.Critical,
+        ProtectionLevel.NotRunning => starting ? Tone.Caution : Tone.Critical,
+        _ => Tone.Neutral,
+    };
+
+    internal static WindowsAntivirusState StateOf(AntivirusHealth health) => health switch
+    {
+        AntivirusHealth.Good => WindowsAntivirusState.Good,
+        AntivirusHealth.Unknown => WindowsAntivirusState.Unknown,
+        _ => WindowsAntivirusState.NeedsAttention,
+    };
+
     /// <summary>Raised by the Quick scan button; the shell opens the Scan page and starts a quick scan.</summary>
     public event Action? QuickScanRequested;
 
@@ -252,7 +291,7 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
         {
             AntivirusHealth.Good => Tone.Success,
             AntivirusHealth.Unknown => Tone.Neutral,
-            _ => Tone.Caution,
+            _ => Tone.Critical,
         };
 
         Rows.Clear();
@@ -274,21 +313,26 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
             status.Schedules.Count == 0 ? "None configured" : string.Join("; ", status.Schedules.Select(s => $"{s.Name}, next {Local(s.NextRunUtc)}")),
             Tone.Neutral));
 
-        if (!status.AuditChainValid)
+        // Findings are not inputs yet: their review (quarantine or keep) arrives with the unified History page
+        // (ADR 0021, slice 4); until then they are shown on the Detections page as before.
+        ShowStatus(DesktopStatusEvaluator.Evaluate(new DesktopStatusInputs
         {
-            (Verdict, VerdictDetail, VerdictTone) = ("The audit log may have been tampered with", "Its integrity check failed. Review the History page.", Tone.Critical);
-        }
-        else if (!rt.Enabled || antivirus == Tone.Caution || c.Expired)
-        {
-            (Verdict, VerdictDetail, VerdictTone) = ("Attention needed", "Some protection is off or out of date. The items marked below explain what to do.", Tone.Caution);
-        }
-        else
-        {
-            (Verdict, VerdictDetail, VerdictTone) = ("All checks passed", $"Kshatriya is running alongside {(Antivirus == AntivirusHealth.Good ? "Microsoft Defender" : "your antivirus")}. Real-time monitoring is on.", Tone.Success);
-        }
-
+            ServiceReachable = true,
+            ServiceDescription = gateway.EndpointDescription,
+            WindowsAntivirus = StateOf(Antivirus),
+            RealTimeEnabled = rt.Enabled,
+            AuditChainValid = status.AuditChainValid,
+            ContentSequence = c.Sequence,
+            ContentExpired = c.Expired,
+            ContentExpiresUtc = DateTimeOffset.TryParse(c.ExpiresUtc, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTimeOffset expires) ? expires : null,
+            Dismissed = Dismissed,
+            Now = Clock(),
+        }));
         OnPropertyChanged(nameof(QuickScanCommand));
     }
+
+    /// <summary>The current time (tests replace it).</summary>
+    public Func<DateTimeOffset> Clock { get; set; } = () => DateTimeOffset.UtcNow;
 
     private void BuildDisconnected()
     {
@@ -296,9 +340,14 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
         Rows.Clear();
         Rows.Add(new StatusRow(Glyphs.Shield, "Kshatriya service", starting ? "Starting" : "Not reachable", starting ? Tone.Caution : Tone.Critical));
         Rows.Add(new StatusRow(Glyphs.Shield, "Windows antivirus", SecurityCenter.Describe(Antivirus), Antivirus == AntivirusHealth.Good ? Tone.Success : Tone.Caution));
-        (Verdict, VerdictDetail, VerdictTone) = starting
-            ? ("Kshatriya is starting", "The service starts a minute or two after Windows does. This page updates by itself when it is ready; Microsoft Defender keeps protecting you meanwhile.", Tone.Caution)
-            : ("Kshatriya is not running", $"The {gateway.EndpointDescription} is not reachable. Scans and real-time monitoring need it; Microsoft Defender keeps protecting you. This page checks again every few seconds.", Tone.Critical);
+        ShowStatus(DesktopStatusEvaluator.Evaluate(new DesktopStatusInputs
+        {
+            ServiceReachable = false,
+            ServiceStarting = starting,
+            ServiceDescription = gateway.EndpointDescription,
+            WindowsAntivirus = StateOf(Antivirus),
+            Now = Clock(),
+        }), starting);
         OnPropertyChanged(nameof(QuickScanCommand));
     }
 
@@ -310,6 +359,9 @@ public sealed class DashboardViewModel(IServiceGateway gateway, IAppHost host) :
 
 /// <summary>One check on the dashboard.</summary>
 public sealed record StatusRow(string Glyph, string Label, string Value, Tone Tone);
+
+/// <summary>One cause in "Needs your attention".</summary>
+public sealed record AttentionRow(string Title, string Detail, Tone Tone);
 
 /// <summary>One line in the scan results.</summary>
 public sealed record ResultRow(string Status, string Path, string Detail, string Action)

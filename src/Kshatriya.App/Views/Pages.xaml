@@ -33,6 +33,28 @@
 
       <ContentControl Content="{Binding}" ContentTemplate="{StaticResource MessageLine}" Focusable="False" />
 
+      <!-- The causes behind the verdict, most serious first (ADR 0021). Hidden when protected. -->
+      <StackPanel Visibility="{Binding Attention.Count, Converter={x:Static vm:Converters.NonZeroToVisible}}">
+        <TextBlock Text="Needs your attention" Style="{StaticResource SectionTitle}" />
+        <Border Style="{StaticResource Surface}" Padding="20,4">
+          <ItemsControl ItemsSource="{Binding Attention}" AutomationProperties.Name="Needs your attention" Focusable="False">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Border Style="{StaticResource ListRow}">
+                  <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Style="{StaticResource ToneGlyph}" Tag="{Binding Tone}" FontSize="16" Margin="0,2,14,0" VerticalAlignment="Top" />
+                    <StackPanel>
+                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding Detail}" Style="{StaticResource Secondary}" Margin="0,2,0,0" />
+                    </StackPanel>
+                  </DockPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+      </StackPanel>
+
       <TextBlock Text="Protection" Style="{StaticResource SectionTitle}" />
       <Border Style="{StaticResource Surface}" Padding="20,4">
         <ItemsControl ItemsSource="{Binding Rows}" AutomationProperties.Name="Protection checks" Focusable="False">
