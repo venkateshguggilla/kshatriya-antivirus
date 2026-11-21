@@ -43,6 +43,7 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
     private bool _lockEnabled;
     private bool _checkingLock;
     private readonly HashSet<string> _promptedDrives = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _failedDrives = new(StringComparer.OrdinalIgnoreCase);
 
     public bool IsElevated { get; } = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
 
@@ -556,6 +557,15 @@ public sealed partial class App : Application, IAppHost, IAppSettings, IDisposab
             foreach (LockedDriveDto drive in locked.Where(d => _promptedDrives.Add(d.Id)))
             {
                 await PromptUnlockAsync(drive);
+            }
+
+            // A drive the lock gave up on is open to use: always say so, once per connection.
+            var failed = status.Drives.Where(d => d.State == "couldNotLock").ToList();
+            _failedDrives.IntersectWith(failed.Select(d => d.Id));
+            foreach (LockedDriveDto drive in failed.Where(d => _failedDrives.Add(d.Id)))
+            {
+                _clickAction = () => ShowMainWindow(detections: false);
+                _tray?.Notify("USB drive NOT locked", $"{drive.Name}: {drive.Message ?? "Windows refused to lock it."}", warning: true);
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)

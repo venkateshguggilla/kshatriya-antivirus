@@ -37,6 +37,9 @@ public static class DriveStates
 {
     public const string Locked = "locked";
     public const string Approved = "approved";
+
+    /// <summary>Windows refused the disable (another program has the disk open); the lock keeps trying for a short while.</summary>
+    public const string Locking = "locking";
     public const string CouldNotLock = "couldNotLock";
     public const string PresentBeforeLock = "presentBeforeLock";
 }
@@ -53,7 +56,13 @@ public sealed record LockResult(bool Succeeded, string Code, string Message);
 /// </summary>
 public sealed class DriveLock : IDisposable
 {
-    private static readonly TimeSpan s_sweepInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan s_sweepInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// How long a refused disable is retried. Programs that read disk details (temperature monitors, indexers,
+    /// antivirus) often hold a new disk open for a moment right after it arrives.
+    /// </summary>
+    public static readonly TimeSpan RetryWindow = TimeSpan.FromSeconds(30);
 
     private readonly IDeviceControl _devices;
     private readonly LockSettings _settings;
@@ -61,6 +70,7 @@ public sealed class DriveLock : IDisposable
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, DriveEntry> _drives = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
+    private readonly object _lockGate = new();
     private bool _started;
 
     public DriveLock(IDeviceControl devices, LockSettings settings, TimeProvider time, ILogger logger)
@@ -128,7 +138,10 @@ public sealed class DriveLock : IDisposable
         }
     }
 
-    /// <summary>Forgets drives that were unplugged, so a re-plug is locked again. Runs until cancelled.</summary>
+    /// <summary>
+    /// Forgets drives that were unplugged (so a re-plug is locked again) and retries drives whose disable was
+    /// refused. Runs until cancelled.
+    /// </summary>
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         Start();
@@ -158,6 +171,10 @@ public sealed class DriveLock : IDisposable
             {
                 _drives.TryRemove(drive.Id, out _);
             }
+            else if (drive.State == DriveStates.Locking && _settings.Enabled)
+            {
+                TryLock(drive.Id, drive.Name, drive.SizeBytes, drive.ArrivedUtc);
+            }
         }
     }
 
@@ -175,15 +192,50 @@ public sealed class DriveLock : IDisposable
             return;
         }
 
+        TryLock(instanceId, disk.Name, disk.SizeBytes, arrivedUtc: null);
+    }
+
+    /// <summary>
+    /// Disables the disk. A refusal is retried by <see cref="Sweep"/> until <see cref="RetryWindow"/> has passed
+    /// since the disk arrived; then the drive is reported as could not be locked.
+    /// </summary>
+    private void TryLock(string instanceId, string name, long? sizeBytes, DateTimeOffset? arrivedUtc)
+    {
+        lock (_lockGate)
+        {
+            // A retry only continues a drive that is still waiting (it may have been locked or unplugged meanwhile).
+            if (arrivedUtc is not null && (!_drives.TryGetValue(instanceId, out DriveEntry? current) || current.State != DriveStates.Locking))
+            {
+                return;
+            }
+
+            TryLockCore(instanceId, name, sizeBytes, arrivedUtc);
+        }
+    }
+
+    private void TryLockCore(string instanceId, string name, long? sizeBytes, DateTimeOffset? arrivedUtc)
+    {
+        DateTimeOffset now = _time.GetUtcNow();
+        DateTimeOffset arrived = arrivedUtc ?? now;
         string? problem = _devices.Disable(instanceId);
-        DriveEntry entry = problem is null
-            ? new DriveEntry(instanceId, disk.Name, disk.SizeBytes, DriveStates.Locked, _time.GetUtcNow(), null)
-            : new DriveEntry(instanceId, disk.Name, disk.SizeBytes, DriveStates.CouldNotLock, _time.GetUtcNow(), problem);
-        _drives[instanceId] = entry;
-        Log.DriveLock(_logger, disk.Name, instanceId, problem is null ? "locked until the Kshatriya password is entered" : $"could not be locked: {problem}");
         if (problem is null)
         {
+            var entry = new DriveEntry(instanceId, name, sizeBytes, DriveStates.Locked, arrived, null);
+            _drives[instanceId] = entry;
+            Log.DriveLock(_logger, name, instanceId, "locked until the Kshatriya password is entered");
             Locked?.Invoke(entry);
+            return;
+        }
+
+        bool givingUp = now - arrived >= RetryWindow;
+        string state = givingUp ? DriveStates.CouldNotLock : DriveStates.Locking;
+        string message = givingUp
+            ? $"{problem} Close that program, then unplug the drive and plug it in again."
+            : $"{problem} Kshatriya keeps trying for {RetryWindow.TotalSeconds:0} seconds.";
+        _drives[instanceId] = new DriveEntry(instanceId, name, sizeBytes, state, arrived, message);
+        if (arrivedUtc is null || givingUp)
+        {
+            Log.DriveLock(_logger, name, instanceId, givingUp ? $"could not be locked: {problem}" : $"could not be locked yet, retrying: {problem}");
         }
     }
 

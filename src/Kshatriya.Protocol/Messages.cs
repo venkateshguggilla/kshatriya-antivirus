@@ -633,7 +633,7 @@ public sealed class LockedDriveDto
 
     public long? SizeBytes { get; init; }
 
-    /// <summary>"locked", "approved", "couldNotLock" or "presentBeforeLock".</summary>
+    /// <summary>"locked", "approved", "locking" (being retried), "couldNotLock" or "presentBeforeLock".</summary>
     public required string State { get; init; }
 
     public required string ArrivedUtc { get; init; }

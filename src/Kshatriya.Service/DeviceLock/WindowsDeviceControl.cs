@@ -159,9 +159,44 @@ public sealed unsafe partial class WindowsDeviceControl : IDeviceControl
         return result switch
         {
             CrSuccess => null,
-            CrRemoveVetoed => "The drive is in use (a program has files open on it).",
+            CrRemoveVetoed => BlockingProgram(instanceId) is { } program
+                ? $"{program} has the drive open, so Windows refused to lock it."
+                : "Another program has the drive open, so Windows refused to lock it.",
             _ => $"Windows refused (CONFIGRET 0x{result:X}).",
         };
+    }
+
+    /// <summary>
+    /// The program that vetoed the removal, from the Kernel-PnP event 225 Windows writes to the System log when an
+    /// application stops a removal ("The application X with process id N stopped the removal or ejection for the
+    /// device Y"). Only the file name is returned. Null when there is no such recent event.
+    /// </summary>
+    private static string? BlockingProgram(string instanceId)
+    {
+        const string Query = "*[System[Provider[@Name='Microsoft-Windows-Kernel-PnP'] and EventID=225 and TimeCreated[timediff(@SystemTime) <= 10000]]]";
+        try
+        {
+            using var reader = new System.Diagnostics.Eventing.Reader.EventLogReader(
+                new System.Diagnostics.Eventing.Reader.EventLogQuery("System", System.Diagnostics.Eventing.Reader.PathType.LogName, Query) { ReverseDirection = true });
+            for (int i = 0; i < 20 && reader.ReadEvent() is { } record; i++)
+            {
+                using (record)
+                {
+                    string[] values = [.. record.Properties.Select(p => p.Value?.ToString() ?? string.Empty)];
+                    if (values.Any(v => string.Equals(v, instanceId, StringComparison.OrdinalIgnoreCase))
+                        && values.FirstOrDefault(v => v.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) is { } image)
+                    {
+                        return Path.GetFileName(image.Replace('/', '\\'));
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (ex is System.Diagnostics.Eventing.Reader.EventLogException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            // The name is a convenience; the refusal is reported either way.
+        }
+
+        return null;
     }
 
     public string? Enable(string instanceId)

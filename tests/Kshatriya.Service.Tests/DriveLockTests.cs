@@ -150,9 +150,9 @@ public sealed class DriveLockTests
     }
 
     [Fact]
-    public void InUseDrivesAreReportedNotForced()
+    public void InUseDrivesAreRetriedThenReportedNotForced()
     {
-        (DriveLock driveLock, FakeDeviceControl devices, _, TempDirectory temp) = Create();
+        (DriveLock driveLock, FakeDeviceControl devices, FakeTimeProvider time, TempDirectory temp) = Create();
         using (temp)
         using (driveLock)
         {
@@ -160,8 +160,47 @@ public sealed class DriveLockTests
             devices.Plug(Stick);
 
             DriveEntry entry = Assert.Single(driveLock.Drives);
-            Assert.Equal(DriveStates.CouldNotLock, entry.State);
+            Assert.Equal(DriveStates.Locking, entry.State);
             Assert.NotNull(entry.Message);
+
+            time.Advance(TimeSpan.FromSeconds(10));
+            driveLock.Sweep();
+            Assert.Equal(DriveStates.Locking, Assert.Single(driveLock.Drives).State);
+
+            time.Advance(DriveLock.RetryWindow);
+            driveLock.Sweep();
+            entry = Assert.Single(driveLock.Drives);
+            Assert.Equal(DriveStates.CouldNotLock, entry.State);
+            Assert.Contains("plug it in again", entry.Message, StringComparison.Ordinal);
+            Assert.Empty(devices.Disabled);
+
+            // No more retries after giving up.
+            devices.InUse.Clear();
+            driveLock.Sweep();
+            Assert.Empty(devices.Disabled);
+        }
+    }
+
+    [Fact]
+    public void ADriveReleasedWithinTheRetryWindowIsLocked()
+    {
+        (DriveLock driveLock, FakeDeviceControl devices, FakeTimeProvider time, TempDirectory temp) = Create();
+        using (temp)
+        using (driveLock)
+        {
+            DriveEntry? notified = null;
+            driveLock.Locked += e => notified = e;
+            devices.InUse.Add(Stick.InstanceId);
+            devices.Plug(Stick);
+            Assert.Null(notified);
+
+            devices.InUse.Clear(); // the other program let go
+            time.Advance(TimeSpan.FromSeconds(2));
+            driveLock.Sweep();
+
+            Assert.Contains(Stick.InstanceId, devices.Disabled);
+            Assert.Equal(DriveStates.Locked, Assert.Single(driveLock.Drives).State);
+            Assert.Equal("Test Stick", notified?.Name);
         }
     }
 

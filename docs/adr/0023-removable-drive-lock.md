@@ -38,7 +38,11 @@ two parts, and the owner chose both:
   the drive's volumes disappear. **Not persistent** (no `CM_DISABLE_PERSIST`): after a restart or a re-plug
   the device starts enabled and is locked again, so a crash or uninstall can never strand a disabled device.
   When the service stops normally it enables the drives it locked.
-  If the disk is in use, Windows vetoes a polite disable; the drive is then reported as "could not be locked".
+  If the disk is in use, Windows vetoes a polite disable. The lock then retries every second for 30 seconds
+  (state `locking`), because programs that read disk details (temperature monitors, indexers, antivirus) often
+  hold a new disk open briefly; after that the drive is reported as "could not be locked" (`couldNotLock`) and
+  the app always notifies the user. The program that vetoed is named from the Kernel-PnP event 225 in the
+  System log (file name only). The lock never forces a disable.
 - **When the service starts** with the lock on, USB disks already connected are left alone (they may hold
   open files) and listed as "connected before the lock started".
 - **Unlock.** The app shows the locked drive (name, size) and asks for the Kshatriya password. The service
@@ -92,8 +96,11 @@ for installs.
   drives), `WindowsDeviceControl` (cfgmgr32), pipe handlers with audit, CLI `lock`/`password`, the installer
   prompt, and the app's Protection section plus an on-top unlock prompt while the lock is on.
 - Tested with a fake device layer; a read-only test lists this machine's real disks and checks that the
-  Windows disk is marked protected. Disabling and enabling a real USB stick has not been tried yet: it needs
-  the installed service (administrator) and a USB drive plugged in by the owner.
+  Windows disk is marked protected.
+- First live test (2026-11-21, owner's PC): the service saw the stick arrive within milliseconds, but the
+  disable was vetoed by a temperature-monitor program that opens every new disk (LibreHardwareMonitor based),
+  and the app said nothing because it only prompted for locked drives. Fixed: retries for 30 seconds, the
+  vetoing program is named, and a drive the lock gave up on is always notified.
 
 ## Consequences
 

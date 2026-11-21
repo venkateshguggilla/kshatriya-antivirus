@@ -300,7 +300,8 @@ public sealed class ProtectionViewModel(IServiceGateway gateway, IAppHost host, 
         {
             "locked" => new(d.Id, d.Name, size + "Locked: enter the Kshatriya password to use it.", "Locked", Tone.Caution, true),
             "approved" => new(d.Id, d.Name, size + "Unlocked until it is unplugged.", "Unlocked", Tone.Success, false),
-            "couldNotLock" => new(d.Id, d.Name, size + (d.Message ?? "Could not be locked."), "Not locked", Tone.Caution, false),
+            "locking" => new(d.Id, d.Name, size + (d.Message ?? "Another program has the drive open; still trying to lock it."), "Locking…", Tone.Caution, false),
+            "couldNotLock" => new(d.Id, d.Name, size + (d.Message ?? "Could not be locked."), "Not locked", Tone.Critical, false),
             _ => new(d.Id, d.Name, size + (d.Message ?? "Connected before the lock started; not locked."), "Not locked", Tone.Neutral, false),
         };
     }
