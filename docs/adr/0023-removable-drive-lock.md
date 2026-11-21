@@ -101,6 +101,9 @@ for installs.
   disable was vetoed by a temperature-monitor program that opens every new disk (LibreHardwareMonitor based),
   and the app said nothing because it only prompted for locked drives. Fixed: retries for 30 seconds, the
   vetoing program is named, and a drive the lock gave up on is always notified.
+- Second live test (same day, with the temperature monitor closed): the stick was disabled on arrival, the
+  app showed the password prompt, and the correct password enabled it again (audited as unlocked). The retry
+  path has been exercised only by unit tests so far.
 
 ## Consequences
 
